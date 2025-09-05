@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# Ensure UTF-8 working tree encoding for common text types (ignored by older Git)
+*.{js,ts,jsx,tsx,html,htm,css,scss,less,json,md,txt,yml,yaml,ini,toml,cfg,vue,svelte} working-tree-encoding=UTF-8
+
