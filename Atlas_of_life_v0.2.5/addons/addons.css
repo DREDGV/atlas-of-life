@@ -1,0 +1,13 @@
+/* === Atlas v0.2.6 — Addons CSS === */
+.kbd { display:inline-block; padding:0 6px; border-radius:6px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); font-size:12px; line-height:18px; vertical-align:baseline; }
+.badge.overdue { border:1px solid rgba(255,80,80,0.7); color:#ff8080; padding:1px 6px; border-radius:6px; }
+.ac-popup { position:absolute; z-index:9999; background:#101318; color:#d9e1ee; border:1px solid rgba(255,255,255,0.08); box-shadow:0 8px 22px rgba(0,0,0,0.35); border-radius:10px; overflow:hidden; min-width:220px; max-width:520px; }
+.ac-popup .row { padding:8px 12px; cursor:pointer; display:flex; align-items:center; gap:8px; }
+.ac-popup .row b { color:#fff; }
+.ac-popup .row .pill { font-size:11px; padding:1px 6px; border-radius:999px; border:1px solid rgba(255,255,255,0.12); opacity:0.9; }
+.ac-popup .row:hover, .ac-popup .row.active { background:rgba(255,255,255,0.06); }
+.ac-popup .row .kind { width:18px; text-align:center; opacity:0.75; }
+.ac-dim { position:fixed; inset:0; z-index:9998; background:transparent; }
+button.btn-ics { appearance:none; border:none; border-radius:12px; padding:8px 12px; background:#1f2937; color:#e5e7eb; border:1px solid rgba(255,255,255,0.1); cursor:pointer; }
+button.btn-ics:hover { background:#273244; }
+.btn-strip { display:flex; align-items:center; gap:8px; }

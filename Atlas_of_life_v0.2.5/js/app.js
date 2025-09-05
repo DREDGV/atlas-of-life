@@ -33,6 +33,9 @@ const I18N = {
 };
 window.I18N = I18N;
 
+// Expose state globally for addons compatibility
+try { window.state = state; } catch (_) {}
+
 // App version (SemVer-like label used in UI)
 let APP_VERSION = "Atlas_of_life_v0.2.5";
 
