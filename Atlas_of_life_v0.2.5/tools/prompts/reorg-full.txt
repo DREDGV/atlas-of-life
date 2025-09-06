@@ -1,0 +1,25 @@
+# Reorganize Atlas of life (full)
+
+We are planning a major architectural overhaul of the Atlas of life project. Your task is to implement the following sweeping changes:
+
+1. **Feature‑oriented structure:** Restructure the code into feature modules:
+   - `src/core`: shared infrastructure such as state management, storage adapters with migrations, utility parsers, analytics and theming.
+   - `src/features/inbox`: the quick input UI and parser logic.
+   - `src/features/today`: rendering and logic for the today view.
+   - `src/features/map`: canvas rendering, layout calculations and event handlers for the map.
+   - `src/addons`: keep any existing add-on modules unchanged.
+   - `src/index.js`: entry point that imports the necessary modules and implements lazy loading when features are activated.
+
+2. **State encapsulation:** Remove all direct references to `window.state`. Create a new module (e.g. `src/core/state/facade.js`) that owns the internal state and exposes safe accessors/mutators. All other modules must import and use these methods.
+
+3. **Storage layer:** Implement a storage adapter interface with `save` and `load` methods. Provide a `localStorageAdapter.js` for current use and an empty `indexedDBAdapter.js` for future implementation. Ensure the main state layer imports the adapter via the interface.
+
+4. **Migrations:** Introduce a version number on the persisted data and create a migration system to upgrade older schemas. Define at least one example migration (e.g., adding an `archived` flag to domains).
+
+5. **Theming:** Consolidate theme variables into a single module. Support light and dark themes using CSS custom properties and a `[data-theme]` attribute on the root element. Update styles accordingly.
+
+6. **Import paths:** Update all import statements to reflect the new folder structure. Ensure that modules reference the correct files after relocation.
+
+7. **Documentation:** Update or create `docs/ARCHITECTURE_NOTES.md` to describe the new structure, explain the state facade, storage adapters, migrations, and theming. Note any breaking changes. Update the `CHANGELOG.md` for version 0.3.0.
+
+This overhaul may introduce breaking API changes. Test the application after the refactor to ensure basic functionality. Your deliverables are all updated source files and the new documentation.

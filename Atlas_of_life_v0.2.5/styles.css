@@ -89,7 +89,7 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .domenu .dot{width:14px;height:14px;border:1px solid #1e2a44;border-radius:999px;cursor:pointer}
 
 /* toast */
-.toast{position:fixed; right:16px; top:16px; z-index:60; min-width:220px; max-width:60vw; 
+.toast{display:none; position:fixed; right:16px; top:16px; z-index:60; min-width:220px; max-width:60vw; 
   background:#0e172a; border:1px solid #1a2947; border-radius:10px; padding:10px 12px; 
   color:#d6e2f3; box-shadow:0 10px 30px rgba(0,0,0,.4); font-size:13px;}
 .toast.ok{border-color:#1f5f47}

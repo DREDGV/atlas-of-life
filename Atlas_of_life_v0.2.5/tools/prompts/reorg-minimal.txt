@@ -1,0 +1,19 @@
+# Reorganize Atlas of life (minimal)
+
+You are assisting in refactoring the Atlas of life project. Implement these tasks without moving files:
+
+1. **Migrations:** Add a migration framework in the storage layer. Create `src/core/storage/migrations.js` with an array of migration functions. The first migration should add an `archived` boolean to domains and update a `version` property.
+
+2. **Storage adapter:** Introduce an interface `storageAdapter.js` exporting `save` and `load` functions using `localStorage`. Also create a stub file for a future `indexedDBAdapter.js` with empty methods.
+
+3. **Theming:** Implement CSS custom properties to support light and dark themes. Define variables on `:root` and add a `[data-theme="dark"]` selector with overridden values. Use these variables throughout styles.
+
+4. **Analytics:** Create a lightweight analytics module (e.g. `utils/analytics.js`) that logs events to a circular buffer in localStorage. Export a `logEvent(name)` function.
+
+5. **State facade:** Add a facade around the global state (e.g. `core/state/facade.js`) exposing `getState()` and `patchState(mutator)` functions. New code should import and use these instead of directly accessing `window.state`.
+
+6. **Map fixes:** Clean up `view_map.js`: remove unused legacy branches, implement `fitActiveProject()` to zoom into a project’s bounding box, bind double-click on a project node to call it, skip drawing tasks and links outside the viewport, and throttle redraws on wheel/drag events.
+
+7. **Documentation:** Create or update `docs/ARCHITECTURE_NOTES.md` summarising these changes and outlining future steps (state encapsulation, module restructure, IndexedDB transition, inspector improvements).
+
+Follow the project’s existing coding style and conventions. Do not restructure directories or rename modules. Your changes should be backward compatible with existing data and APIs. Provide updated source files ready for release version 0.2.6.

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Git hook to enforce Conventional Commits style in commit messages.
+
+MSG_FILE=$1
+MSG=$(cat "$MSG_FILE")
+
+# Regex for conventional commits: type(scope?): description
+PATTERN='^(feat|fix|docs|style|refactor|test|chore|perf|build|ci|revert|merge)(\(.+\))?: .{1,50}'
+
+if echo "$MSG" | grep -Eq "$PATTERN"; then
+  exit 0
+else
+  echo "Error: commit message does not follow Conventional Commits standard." >&2
+  echo "Examples: feat(parser): add multi-tag support" >&2
+  exit 1
+fi
