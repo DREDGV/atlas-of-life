@@ -1,22 +1,22 @@
-# Atlas Tools
+# Инструменты Atlas
 
-This directory contains helper scripts and prompts for maintaining and evolving the Atlas of life project. They automate routine tasks and provide guidance for larger refactors.
+Здесь находятся скрипты и подсказки, которые помогают обслуживать и развивать проект Atlas of life. Они автоматизируют рутину и дают опору для более крупных изменений.
 
 ## changelog.ps1 / changelog.sh
 
-Use these scripts to update the `CHANGELOG.md`. They move the **Unreleased** section under a new version heading and insert today’s date. The PowerShell version can optionally create a git tag.
+Скрипты для обновления `CHANGELOG.md`. Переносят блок **[Unreleased]** под заголовок новой версии и проставляют текущую дату. PowerShell‑вариант умеет дополнительно ставить git‑тег.
 
-### Examples
+### Примеры
 
-On Windows/PowerShell:
+Windows / PowerShell:
 
 ```powershell
 pwsh -File tools/changelog.ps1 -Version 0.2.6
-# Optionally tag the repository at the same time:
+# Одновременно поставить тег:
 pwsh -File tools/changelog.ps1 -Version 0.2.6 -Tag
 ```
 
-On Unix-like systems:
+Unix‑подобные системы:
 
 ```bash
 bash tools/changelog.sh 0.2.6
@@ -24,9 +24,9 @@ bash tools/changelog.sh 0.2.6
 
 ## bump.ps1
 
-This script searches the project for version strings like `Atlas of life — vX.Y.Z` and `Atlas_of_life_vX.Y.Z` and replaces them with the new version number. It also updates the changelog by calling `changelog.ps1` under the hood.
+Ищет в проекте строковые версии вида `Atlas of life - vX.Y.Z` и `Atlas_of_life_vX.Y.Z` и заменяет на новое значение. Параллельно обновляет changelog, вызывая `changelog.ps1`.
 
-Example:
+Пример:
 
 ```powershell
 pwsh -File tools/bump.ps1 -Version 0.2.6
@@ -34,43 +34,44 @@ pwsh -File tools/bump.ps1 -Version 0.2.6
 
 ## githooks/commit-msg
 
-A Git commit message hook to enforce the [Conventional Commits](https://www.conventionalcommits.org/) standard. To use it, copy the file to `.git/hooks/commit-msg` in your repository and make sure it is executable. Commits with messages not matching the expected pattern will be rejected.
+Хук проверки сообщений коммитов на соответствие стандарту [Conventional Commits](https://www.conventionalcommits.org/). Чтобы использовать, либо скопируйте файл в `.git/hooks/commit-msg`, либо укажите общий путь хуков (см. ниже). Несоответствующие сообщения будут отклоняться.
 
 ## append-changelog.ps1 + githooks/post-commit
 
-Automatically appends each commit subject into `CHANGELOG.md` under the `## [Unreleased]` section.
+Автоматически добавляет тему последнего коммита в `CHANGELOG.md` в секцию `## [Unreleased]`.
 
-Setup:
+Настройка:
 
-- Point Git to use this repo's hooks directory:
+- Указать Git путь к папке хуков из репозитория:
 
   ```bash
   git config core.hooksPath tools/githooks
   ```
 
-- Ensure PowerShell 7+ (`pwsh`) is available in PATH.
+- Убедиться, что установлен PowerShell 7+ (`pwsh`) и он доступен в PATH.
 
-Behavior:
+Как работает:
 
-- After every commit, the hook runs `tools/append-changelog.ps1` which inserts a line like `- feat: add X (abc123)` right under `## [Unreleased]`. Existing history is preserved and duplicates are avoided by commit hash.
+- После каждого коммита хук запускает `tools/append-changelog.ps1`, который вставляет строку вида `- feat: add X (abc123)` сразу под `## [Unreleased]`. История не затирается; дубликаты по хэшу коммита игнорируются.
 
-## bump-version.ps1 (release helper)
+## bump-version.ps1 (помощник релиза)
 
-Creates a new section like `## Atlas_of_life_vX.Y.Z - YYYY-MM-DD HH:mm` at the top. If `## [Unreleased]` contains items, they are moved under the new section and cleared from `Unreleased`. Also updates `js/app.js` fallback `APP_VERSION`.
+Создаёт наверху секцию вида `## Atlas_of_life_vX.Y.Z - YYYY-MM-DD HH:mm`. Если в `## [Unreleased]` есть записи, они переносятся под новую секцию и «очищают» `Unreleased`. Также обновляется резервное значение `APP_VERSION` в `js/app.js`.
 
-Examples:
+Примеры:
 
 ```powershell
-pwsh -File tools/bump-version.ps1 -Part patch     # 0.2.6 -> 0.2.7
-pwsh -File tools/bump-version.ps1 -Version 0.2.8  # exact version
-pwsh -File tools/bump-version.ps1 -Part minor -Tag # bump + git tag vX.Y.Z
+pwsh -File tools/bump-version.ps1 -Part patch      # 0.2.6 -> 0.2.7
+pwsh -File tools/bump-version.ps1 -Version 0.2.8   # точная версия
+pwsh -File tools/bump-version.ps1 -Part minor -Tag  # бамп + git tag vX.Y.Z
 ```
 
 ## prompts
 
-The `prompts` folder contains instructions for code generation tools, such as GitHub Copilot or the GPT‑powered assistant in VS Code.
+Папка `prompts` содержит инструкции для инструментов автогенерации кода (GitHub Copilot, ассистент в VS Code и т.п.).
 
-- `reorg-minimal.txt` describes a minimal refactoring effort that adds a migration system, storage adapters, theme support, analytics and a state facade without rearranging the existing files. Use this when preparing release 0.2.6.
-- `reorg-full.txt` outlines a comprehensive restructuring into feature‑oriented modules, introducing a clean directory layout and breaking changes. Use this for planning a 0.3.0 release.
+- `reorg-minimal.txt` — минимальная реорганизация: миграции, адаптеры хранилища, тема, аналитика, фасад состояния без переразмещения файлов. Полезно при подготовке релиза 0.2.6.
+- `reorg-full.txt` — полноценная перестройка на модульную архитектуру с новой структурой и потенциальными breaking‑changes. Для планирования 0.3.0.
 
-These prompts are suggestions and should be adapted to your workflow. They aim to provide clear tasks for automated refactoring tools.
+Подсказки примерные — адаптируйте под свой процесс. Их цель — сформулировать чёткие задачи для инструментов рефакторинга.
+
