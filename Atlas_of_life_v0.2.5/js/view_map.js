@@ -11,6 +11,7 @@ import {
 } from "./state.js";
 import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
+import { logEvent } from "./utils/analytics.js";
 
 let canvas,
   tooltip,
@@ -33,6 +34,13 @@ const viewState = {
 let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
 
 // wheel/zoom handler
+let pendingFrame = false;
+function requestDraw(){
+  if (pendingFrame) return;
+  pendingFrame = true;
+  requestAnimationFrame(() => { pendingFrame = false; drawMap(); });
+}
+
 function onWheel(e) {
   // handle pinch/scroll zoom centered on cursor
   try {
@@ -52,7 +60,8 @@ function onWheel(e) {
   viewState.scale = next;
   viewState.tx = cx - wx * next;
   viewState.ty = cy - wy * next;
-  drawMap();
+  try { logEvent('map_zoom', { scale: Math.round(next*100)/100 }); } catch(_){}
+  requestDraw();
 }
 // DnD state
 let draggedNode = null;
@@ -654,10 +663,20 @@ export function drawMap() {
   }
   ctx.globalAlpha = 1;
 
+  // compute viewport in world coords for culling
+  const inv = 1 / Math.max(0.0001, viewState.scale);
+  const pad = 120 * inv;
+  const vx0 = (-viewState.tx) * inv - pad;
+  const vy0 = (-viewState.ty) * inv - pad;
+  const vx1 = (W - viewState.tx) * inv + pad;
+  const vy1 = (H - viewState.ty) * inv + pad;
+  const inView = (x, y, r = 0) => (x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1);
+
   // edges
   if (state.showLinks) {
     ctx.lineCap = "round";
     edges.forEach((e) => {
+      if (!inView(e.a.x, e.a.y, e.a.r) && !inView(e.b.x, e.b.y, e.b.r)) return;
       ctx.beginPath();
       const a = e.a,
         b = e.b;
@@ -723,6 +742,7 @@ export function drawMap() {
   nodes
     .filter((n) => n._type === "domain")
     .forEach((n) => {
+      if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
       const grad = ctx.createRadialGradient(n.x, n.y, n.r * 0.3, n.x, n.y, n.r);
       grad.addColorStop(0, n.color + "33");
       grad.addColorStop(1, "#0000");
@@ -755,6 +775,7 @@ export function drawMap() {
   nodes
     .filter((n) => n._type === "project")
     .forEach((n) => {
+      if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
       // highlight if drop target (pulsing)
       if (dropTargetProjectId === n.id) {
         const t = (performance.now() / 300) % (Math.PI * 2);
@@ -814,6 +835,7 @@ export function drawMap() {
   nodes
     .filter((n) => n._type === "task")
     .forEach((n) => {
+      if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
       const t = state.tasks.find((x) => x.id === n.id);
       const baseColor =
         n.status === "done"
@@ -1041,7 +1063,7 @@ function onMouseMove(e) {
     viewState.ty += (dy * dpr) / viewState.scale;
     viewState.lastX = e.clientX;
     viewState.lastY = e.clientY;
-    drawMap();
+    requestDraw();
     return;
   }
   // promote pending drag after threshold (4-6px)
@@ -1082,7 +1104,7 @@ function onMouseMove(e) {
         dropTargetDomainId = hitNode.id;
       }
     }
-    drawMap();
+    requestDraw();
     return;
   }
   const pt = screenToWorld(e.offsetX, e.offsetY);
@@ -1093,7 +1115,7 @@ function onMouseMove(e) {
     // clear drop targets when not dragging
     dropTargetProjectId = null;
     dropTargetDomainId = null;
-    drawMap();
+    requestDraw();
     return;
   }
   tooltip.style.left = e.clientX + "px";
@@ -1119,7 +1141,7 @@ function onMouseMove(e) {
     const d = state.domains.find((x) => x.id === n.id);
     tooltip.innerHTML = `🌌 Домен: <b>${d.title}</b>`;
   }
-  drawMap();
+  requestDraw();
 }
 
 function onMouseLeave() {
@@ -1653,7 +1675,20 @@ function openMoveTaskModal(task, targetDomainId) {
 function onDblClick(e) {
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
-  if (n && n._type === "domain") {
+  try { logEvent('map_dblclick', { node: n?._type||'none' }); } catch(_){}
+  if (!n) return;
+  if (n._type === "project") {
+    // compute bbox around project + its tasks and fit
+    const pId = n.id;
+    const members = nodes.filter(x => (x._type==='project' && x.id===pId) || (x._type==='task' && (state.tasks.find(t=>t.id===x.id)?.projectId===pId)));
+    if (members.length) {
+      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      members.forEach(m=>{ minX=Math.min(minX,m.x-m.r); minY=Math.min(minY,m.y-m.r); maxX=Math.max(maxX,m.x+m.r); maxY=Math.max(maxY,m.y+m.r); });
+      fitToBBox({minX,minY,maxX,maxY});
+      return;
+    }
+  }
+  if (n._type === "domain") {
     state.activeDomain = n.id;
     layoutMap();
     drawMap();

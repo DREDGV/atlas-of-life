@@ -1,13 +1,38 @@
 // js/storage.js
 import { state } from './state.js';
+import adapter from './storageAdapter.js';
+import { logEvent } from './utils/analytics.js';
 
-const KEY = 'atlas_v2_data';
+// Schema versioning + migrations
+const SCHEMA_VERSION = 1;
+const MIGRATIONS = [
+  // 0 -> 1
+  (data) => {
+    // ensure settings.layoutMode and domain archived flag
+    const out = { ...data };
+    out.settings = out.settings && typeof out.settings.layoutMode==='string'
+      ? { layoutMode: out.settings.layoutMode==='manual'?'manual':'auto' }
+      : { layoutMode:'auto' };
+    if (Array.isArray(out.domains)) {
+      out.domains = out.domains.map(d => ({ archived:false, ...d }));
+    }
+    return out;
+  },
+];
 
 export function loadState(){
   try{
-    const raw = localStorage.getItem(KEY);
+    const raw = adapter.load();
     if(!raw) return false;
-    const data = JSON.parse(raw);
+    let data = JSON.parse(raw);
+    // migrate
+    const ver = typeof data.schema==='number' ? data.schema : 0;
+    let cur = ver;
+    while (cur < SCHEMA_VERSION) {
+      const mig = MIGRATIONS[cur];
+      if (typeof mig === 'function') data = mig(data);
+      cur++;
+    }
     if(!data || !data.domains || !data.projects || !data.tasks) return false;
     state.domains = data.domains;
     state.projects = data.projects;
@@ -52,7 +77,8 @@ export function saveState(){
       view: state.view,
       settings: state.settings || { layoutMode:'auto' }
     };
-    localStorage.setItem(KEY, JSON.stringify(data));
+    const text = JSON.stringify(data);
+    adapter.save(text);
   }catch(e){
     console.warn('saveState error', e);
   }
@@ -60,7 +86,7 @@ export function saveState(){
 
 export function exportJson(){
   const data = {
-    schema:1,
+    schema: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     domains: state.domains,
     projects: state.projects,
@@ -83,6 +109,7 @@ export function exportJson(){
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, 0);
+  try { logEvent('export_json', { tasks: state.tasks.length, projects: state.projects.length, domains: state.domains.length }); } catch(_){}
 }
 
 export function importJson(file){
@@ -106,6 +133,7 @@ export function importJson(file){
         if(typeof data.showGlow==='boolean') state.showGlow = data.showGlow; else state.showGlow = true;
         if(typeof data.view==='string') state.view = data.view; else state.view = 'map';
         saveState();
+        try { logEvent('import_json', { kind:'strict', tasks: state.tasks.length }); } catch(_){}
         resolve(true);
       }catch(e){ reject(e); }
     };
@@ -147,6 +175,7 @@ export function importJsonV26(file){
           }
         });
         saveState();
+        try { logEvent('import_json', { kind:'tolerant', tasks: state.tasks.length }); } catch(_){}
         resolve(true);
       }catch(e){ reject(e); }
     };

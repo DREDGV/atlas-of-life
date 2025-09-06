@@ -14,6 +14,7 @@ import {
 } from "./view_map.js";
 import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
+import { logEvent } from "./utils/analytics.js";
 
 // I18N
 const I18N = {
@@ -906,6 +907,24 @@ function setupHeader() {
       });
     };
   }
+  // theme toggle using data-theme attribute (persist in localStorage)
+  try{
+    const THEME_KEY = 'atlas_theme';
+    const cur = localStorage.getItem(THEME_KEY) || 'dark';
+    document.documentElement.setAttribute('data-theme', cur);
+    const lab = document.createElement('label');
+    lab.style.marginLeft = '8px';
+    lab.innerHTML = `<input type="checkbox" id="tgTheme" ${cur==='light'?'checked':''}/> Тема`;
+    document.querySelector('header .toggle')?.appendChild(lab);
+    const tgl = document.getElementById('tgTheme');
+    if(tgl){
+      tgl.onchange = (e)=>{
+        const next = e.target.checked ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem(THEME_KEY, next);
+      };
+    }
+  }catch(_){}
 }
 
 function setupQuickAdd() {

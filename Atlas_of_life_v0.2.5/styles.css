@@ -10,6 +10,11 @@
   --accent:#56ccf2; --warn:#f2c94c; --danger:#ff6b6b; --ok:#19c37d; --link:#7f9cf5;
   --home:#2dd4bf; --dacha:#f59e0b;
 }
+/* Light theme overrides */
+[data-theme="light"]{
+  --bg:#f7fafc; --panel:#ffffff; --panel-2:#f2f6fb; --text:#0b1220; --muted:#6b7a90;
+  --accent:#2563eb; --warn:#b7791f; --danger:#d14343; --ok:#059669; --link:#3b82f6;
+}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial}
 .app{display:grid;grid-template-rows:56px 1fr 56px; height:100%}
