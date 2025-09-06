@@ -1,0 +1,5 @@
+#!/bin/sh
+# Append last commit subject to CHANGELOG.md under [Unreleased]
+
+pwsh -NoLogo -NoProfile -File "$(git rev-parse --show-toplevel)/tools/append-changelog.ps1" || exit 0
+

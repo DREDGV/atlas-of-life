@@ -2,7 +2,8 @@ param(
   [string]$Version,
   [ValidateSet('major','minor','patch')][string]$Part = 'patch',
   [string]$Date,
-  [string]$Time
+  [string]$Time,
+  [switch]$Tag
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,40 +43,68 @@ if([string]::IsNullOrWhiteSpace($Time)){
 }
 
 $token = "Atlas_of_life_v$Version"
-
-# Insert a new version section at the top (before the first version heading), preserving history
 $newHeading = "## $token - $Date $Time"
+
 $lines = [System.Collections.Generic.List[string]]::new()
 $lines.AddRange([string[]](Get-Content -LiteralPath $chPath -Encoding utf8))
+
+# Extract [Unreleased] block if present
+$uIdx = -1
+for($i=0; $i -lt $lines.Count; $i++){
+  if($lines[$i] -match '^\s*##\s+\[Unreleased\]'){ $uIdx = $i; break }
+}
+$uBlock = @()
+if($uIdx -ge 0){
+  $uEnd = $lines.Count
+  for($j = $uIdx + 1; $j -lt $lines.Count; $j++){
+    if($lines[$j] -match '^\s*##\s+') { $uEnd = $j; break }
+  }
+  $count = $uEnd - ($uIdx + 1)
+  if($count -gt 0){ $uBlock = $lines.GetRange($uIdx + 1, $count) }
+  # Trim leading/trailing empty lines
+  while($uBlock.Count -gt 0 -and $uBlock[0] -match '^\s*$'){ $uBlock.RemoveAt(0) }
+  while($uBlock.Count -gt 0 -and $uBlock[$uBlock.Count-1] -match '^\s*$'){ $uBlock.RemoveAt($uBlock.Count-1) }
+  # Remove original block; keep the heading and one empty line under it
+  if($count -gt 0){ $lines.RemoveRange($uIdx + 1, $count) }
+  if(($uIdx + 1) -ge $lines.Count -or -not ($lines[$uIdx + 1] -match '^\s*$')){ $lines.Insert($uIdx + 1, '') }
+}
+
+# Find the first version heading position
 $firstIdx = -1
 for($i=0; $i -lt $lines.Count; $i++){
   if($lines[$i] -match '^(##\s+Atlas_of_life_v\d+\.\d+\.\d+)') { $firstIdx = $i; break }
 }
-if($firstIdx -ge 0){
-  # rebuild file with inserted section (heading + template body)
-  $before = $lines.GetRange(0, $firstIdx)
-  $after  = $lines.GetRange($firstIdx, $lines.Count - $firstIdx)
-  $template = @(
+
+# Compose new section
+if($uBlock.Count -eq 0){
+  $section = @(
     $newHeading,
     '',
-    'Добавлено',
+    '### Добавлено',
     '- ',
     '',
-    'Изменено',
+    '### Изменено',
     '- ',
     '',
-    'Исправлено',
+    '### Исправлено',
     '- ',
     ''
   )
+} else {
+  $section = @($newHeading, '') + @($uBlock) + @('')
+}
+
+if($firstIdx -ge 0){
+  $before = $lines.GetRange(0, $firstIdx)
+  $after  = $lines.GetRange($firstIdx, $lines.Count - $firstIdx)
   $combined = @()
   $combined += $before
-  $combined += $template
+  $combined += $section
   $combined += $after
   Set-Content -LiteralPath $chPath -Value ($combined -join [Environment]::NewLine) -Encoding utf8
 } else {
-  # no previous versions found — prepend near the top
-  $prepend = ($newHeading + [Environment]::NewLine + [Environment]::NewLine + 'Добавлено' + [Environment]::NewLine + '- ' + [Environment]::NewLine + [Environment]::NewLine + 'Изменено' + [Environment]::NewLine + '- ' + [Environment]::NewLine + [Environment]::NewLine + 'Исправлено' + [Environment]::NewLine + '- ' + [Environment]::NewLine + [Environment]::NewLine)
+  # No previous version headings; put near the top
+  $prepend = ($section -join [Environment]::NewLine) + [Environment]::NewLine
   Set-Content -LiteralPath $chPath -Value ($prepend + $ch) -Encoding utf8
 }
 
@@ -85,6 +114,12 @@ $rxJs = [regex]"let APP_VERSION = 'Atlas_of_life_v[^']+';"
 $jsNew = $rxJs.Replace($js, "let APP_VERSION = '$token';")
 if($jsNew -ne $js){ Set-Content -LiteralPath $appPath -Value $jsNew -Encoding utf8 }
 
+# Optional git tag
+if ($Tag) {
+  try { git tag "v$Version" } catch { Write-Warning "Git tagging failed. Ensure this is a git repository and git is installed." }
+}
+
 Write-Host "Bumped version to" $Version
 Write-Host "Updated:" (Resolve-Path $chPath).Path
 Write-Host "Updated:" (Resolve-Path $appPath).Path
+
