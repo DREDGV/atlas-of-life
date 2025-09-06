@@ -89,3 +89,21 @@ I18N/UX
 Первый релиз (MVP)
 
 - Карта, экран «Сегодня», экспорт/импорт JSON, демо‑данные.
+
+## [Unreleased]
+
+### Added
+- Storage migrations and adapter layer.
+- Light/dark theme via CSS variables and toggle.
+- Local analytics (ring buffer in localStorage).
+- Map: dbl-click project to fit bbox.
+- Map: viewport culling of tasks/links.
+- Inbox autocomplete (#/@), Today sorting + due badge, .ics export.
+
+### Changed
+- Throttled redraws on wheel/drag.
+- Minor CSS variable refinements.
+
+### Fixed
+- Removed dead branches in map code.
+- Reduced potential lag spikes on interactions.
