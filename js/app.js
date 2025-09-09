@@ -38,7 +38,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.7.7";
+let APP_VERSION = "Atlas_of_life_v0.2.7.8";
 
 // ephemeral UI state
 const ui = {
@@ -143,17 +143,17 @@ function renderSidebar() {
   </div>`;
   
   // Statistics section
-  const stats = calculateStats();
+  const sidebarStats = calculateStats();
   html += `<div class="stats-section" style="padding:8px 12px;border-bottom:1px solid var(--panel-2)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <span style="font-size:11px;color:var(--muted);font-weight:600">СТАТИСТИКА</span>
-      <span style="font-size:10px;color:var(--muted)">${stats.totalTasks} задач</span>
+      <span style="font-size:10px;color:var(--muted)">${sidebarStats.totalTasks} задач</span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <div class="stat-pill" style="background:rgba(157,177,201,0.1);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:10px">план: ${stats.backlog}</div>
-      <div class="stat-pill" style="background:rgba(242,201,76,0.15);color:var(--warn);padding:2px 6px;border-radius:4px;font-size:10px">сегодня: ${stats.today}</div>
-      <div class="stat-pill" style="background:rgba(86,204,242,0.15);color:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px">в работе: ${stats.doing}</div>
-      <div class="stat-pill" style="background:rgba(25,195,125,0.15);color:var(--ok);padding:2px 6px;border-radius:4px;font-size:10px">готово: ${stats.done}</div>
+      <div class="stat-pill" style="background:rgba(157,177,201,0.1);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:10px">план: ${sidebarStats.backlog}</div>
+      <div class="stat-pill" style="background:rgba(242,201,76,0.15);color:var(--warn);padding:2px 6px;border-radius:4px;font-size:10px">сегодня: ${sidebarStats.today}</div>
+      <div class="stat-pill" style="background:rgba(86,204,242,0.15);color:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px">в работе: ${sidebarStats.doing}</div>
+      <div class="stat-pill" style="background:rgba(25,195,125,0.15);color:var(--ok);padding:2px 6px;border-radius:4px;font-size:10px">готово: ${sidebarStats.done}</div>
     </div>
   </div>`;
   
@@ -279,8 +279,8 @@ function renderSidebar() {
       ui.newDomDraft = "";
       saveState();
       renderSidebar();
-      layoutMap();
-      drawMap();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
       fitActiveDomain();
     }
     $("#newDomSave").onclick = () => createDomain();
@@ -368,8 +368,8 @@ function renderSidebar() {
       state.activeDomain = id;
       try { state.activeDomains = []; } catch(_){}
       renderSidebar();
-      layoutMap();
-      drawMap();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
       fitActiveDomain();
     };
     el.ondblclick = () => {
@@ -390,13 +390,13 @@ function renderSidebar() {
   });
 
   // Status filters
-  const stats = calculateStats();
+  const filterStats = calculateStats();
   const statusFilters = [
-    { key: 'all', label: 'Все', count: stats.totalTasks, color: 'var(--muted)' },
-    { key: 'backlog', label: 'План', count: stats.backlog, color: 'var(--muted)' },
-    { key: 'today', label: 'Сегодня', count: stats.today, color: 'var(--warn)' },
-    { key: 'doing', label: 'В работе', count: stats.doing, color: 'var(--accent)' },
-    { key: 'done', label: 'Готово', count: stats.done, color: 'var(--ok)' }
+    { key: 'all', label: 'Все', count: filterStats.totalTasks, color: 'var(--muted)' },
+    { key: 'backlog', label: 'План', count: filterStats.backlog, color: 'var(--muted)' },
+    { key: 'today', label: 'Сегодня', count: filterStats.today, color: 'var(--warn)' },
+    { key: 'doing', label: 'В работе', count: filterStats.doing, color: 'var(--accent)' },
+    { key: 'done', label: 'Готово', count: filterStats.done, color: 'var(--ok)' }
   ];
   
   const statusWrap = document.getElementById("tagsList");
@@ -414,8 +414,8 @@ function renderSidebar() {
       const val = el.dataset.status === 'all' ? null : el.dataset.status;
       state.filterStatus = val;
       renderSidebar();
-      layoutMap();
-      drawMap();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
     };
   });
   
@@ -441,15 +441,17 @@ function renderSidebar() {
   }
   
   // Tag handlers
-  statusWrap.querySelectorAll(".tag[data-tag]").forEach((el) => {
-    el.onclick = () => {
-      const val = el.dataset.tag || null;
-      state.filterTag = val;
-      renderSidebar();
-      layoutMap();
-      drawMap();
-    };
-  });
+  if (allTags.length > 0) {
+    statusWrap.querySelectorAll(".tag[data-tag]").forEach((el) => {
+      el.onclick = () => {
+        const val = el.dataset.tag || null;
+        state.filterTag = val;
+        renderSidebar();
+        layoutMap();
+        drawMap();
+      };
+    });
+  }
   
   // Search functionality
   const searchInput = document.getElementById("sidebarSearch");
@@ -483,8 +485,8 @@ function renderSidebar() {
       // Update filter to show only matching items
       state.searchQuery = query;
       renderSidebar();
-      layoutMap();
-      drawMap();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
     });
     
     // Clear search on Escape
@@ -1052,8 +1054,8 @@ function setupHeader() {
     try {
       await importJson(e.target.files[0]);
       renderSidebar();
-      layoutMap();
-      drawMap();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
       renderToday();
     } catch (err) {
       alert(I18N.errors.import + err.message);

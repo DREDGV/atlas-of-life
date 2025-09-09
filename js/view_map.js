@@ -737,7 +737,7 @@ export function drawMap() {
       drawPlanet(ctx, n.x, n.y, n.r, n.color, 'nebula');
       
       // Search highlight
-      if (state.searchResults && state.searchResults.domains.includes(n.id)) {
+      if (state.searchResults && state.searchResults.domains && state.searchResults.domains.includes(n.id)) {
         ctx.beginPath();
         ctx.strokeStyle = "#ffd700";
         ctx.lineWidth = 2 * DPR;
@@ -780,7 +780,7 @@ export function drawMap() {
       drawPlanet(ctx, n.x, n.y, n.r, "#7b68ee", 'planet');
       
       // Search highlight
-      if (state.searchResults && state.searchResults.projects.includes(n.id)) {
+      if (state.searchResults && state.searchResults.projects && state.searchResults.projects.includes(n.id)) {
         ctx.beginPath();
         ctx.strokeStyle = "#ffd700";
         ctx.lineWidth = 2 * DPR;
@@ -863,7 +863,7 @@ export function drawMap() {
       drawTaskStar(ctx, n.x, n.y, n.r, baseColor, n.status);
       
       // Search highlight
-      if (state.searchResults && state.searchResults.tasks.includes(n.id)) {
+      if (state.searchResults && state.searchResults.tasks && state.searchResults.tasks.includes(n.id)) {
         ctx.beginPath();
         ctx.strokeStyle = "#ffd700";
         ctx.lineWidth = 2 * DPR;
