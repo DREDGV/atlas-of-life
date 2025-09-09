@@ -82,6 +82,15 @@ export function saveState(){
       throw new Error('Failed to serialize state data');
     }
     adapter.save(text);
+    // Immediate UI refresh hooks
+    try {
+      if (window.mapApi && typeof window.mapApi.layoutMap==='function') window.mapApi.layoutMap();
+      if (window.mapApi && typeof window.mapApi.drawMap==='function') window.mapApi.drawMap();
+    } catch(_){}
+    try {
+      if (typeof window.renderSidebar==='function') window.renderSidebar();
+      if (typeof window.renderToday==='function') window.renderToday();
+    } catch(_){}
   }catch(e){
     console.warn('saveState error', e);
     // Notify user about save error

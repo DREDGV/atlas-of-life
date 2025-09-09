@@ -1,18 +1,22 @@
-# scripts/enable_addons.ps1
+# Добавляет строки подключений аддонов в index.html, если их ещё нет
 $index = "index.html"
 $block = @'
-<link rel="stylesheet" href="addons/addons.css">
-<script src="addons/ics-export.js"></script>
-<script src="addons/autocomplete.js"></script>
-<script src="addons/today-plus.js"></script>
-<script src="addons/inspector-plus.js"></script>
+<link rel="stylesheet" href="addons/fix-ui.css">
+<script src="addons/fixes-v0.2.6.js"></script>
 '@
-$content = Get-Content $index -Raw -Encoding UTF8
-if ($content -notmatch 'addons/autocomplete.js') {
-    $content = $content -replace '</body>', ($block + "`r`n</body>")
-    Set-Content $index $content -NoNewline -Encoding UTF8
-    Write-Host "✅ Addons подключены."
+
+if (-not (Test-Path $index)) {
+  Write-Host "❌ Не найден $index"
+  exit 1
 }
-else {
-    Write-Host "ℹ️ Уже подключено — ничего не меняю."
+
+$content = Get-Content $index -Raw -Encoding UTF8
+
+if ($content -notmatch 'addons/fixes-v0\.2\.6\.js') {
+  # Вставим перед закрывающим </body>
+  $content = $content -replace '</body>', ($block + "`r`n</body>")
+  Set-Content $index $content -NoNewline -Encoding UTF8
+  Write-Host "✅ Подключены addons/fix-ui.css и addons/fixes-v0.2.6.js"
+} else {
+  Write-Host "ℹ️ Уже подключено — ничего не меняю."
 }

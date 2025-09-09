@@ -38,7 +38,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.5";
+let APP_VERSION = "Atlas_of_life_v0.2.7.5";
 
 // ephemeral UI state
 const ui = {
@@ -896,6 +896,17 @@ function setupHeader() {
     } catch (_) {}
   };
 
+  // Handle fullscreen change events to fix display glitches
+  document.addEventListener('fullscreenchange', () => {
+    setTimeout(() => {
+      try {
+        if (typeof window.onResize === 'function') window.onResize();
+        if (typeof layoutMap === 'function') layoutMap();
+        if (typeof drawMap === 'function') drawMap();
+      } catch (_) {}
+    }, 100);
+  });
+
   // export/import
   $("#btnExport").onclick = () => exportJson();
   const fileInput = $("#fileImport");
@@ -1045,16 +1056,7 @@ async function init() {
   if (!ok) initDemoData();
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
-  try {
-    const res = await fetch("CHANGELOG.md");
-    if (res.ok) {
-      const text = await res.text();
-      const m = text.match(/^##\s+([^\s]+)\b/m); // first version token after ##
-      if (m && m[1]) APP_VERSION = m[1];
-    }
-  } catch (e) {
-    /* ignore */
-  }
+  // Don't override APP_VERSION from CHANGELOG - use the hardcoded version
   if (brandEl) brandEl.textContent = APP_VERSION;
   document.title = APP_VERSION + " (modular)";
   renderSidebar();
@@ -1113,3 +1115,7 @@ async function init() {
   updateWip();
 }
 init();
+
+// expose renderers for external refresh (storage, addons)
+try { window.renderSidebar = renderSidebar; } catch(_) {}
+try { window.renderToday = renderToday; } catch(_) {}

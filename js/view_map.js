@@ -107,6 +107,10 @@ export function initMap(canvasEl, tooltipEl) {
   canvas.addEventListener("dblclick", onDblClick);
   layoutMap();
   drawMap();
+  // Автоматически подгоняем вид под все объекты при инициализации
+  setTimeout(() => {
+    try { fitAll(); } catch(_) {}
+  }, 100);
 }
 
 export function setShowFps() {
@@ -116,8 +120,28 @@ export function setShowFps() {
 
 // Camera helpers and fit animations
 export function centerView() {
-  viewState.tx = W * 0.5;
-  viewState.ty = H * 0.5;
+  // Center all visible content on screen
+  if (nodes && nodes.length > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach((n) => {
+      if (!n) return;
+      const r = n.r || 0;
+      minX = Math.min(minX, n.x - r);
+      minY = Math.min(minY, n.y - r);
+      maxX = Math.max(maxX, n.x + r);
+      maxY = Math.max(maxY, n.y + r);
+    });
+    
+    if (isFinite(minX)) {
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      viewState.tx = W * 0.5 - centerX;
+      viewState.ty = H * 0.5 - centerY;
+    }
+  } else {
+    viewState.tx = 0;
+    viewState.ty = 0;
+  }
   drawMap();
 }
 export function resetView() {
@@ -164,6 +188,21 @@ function fitToBBox(bx) {
   animateTo(target, 230);
 }
 
+export function fitAll() {
+  if (!nodes || nodes.length === 0) {
+    drawMap();
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach((n) => {
+    minX = Math.min(minX, n.x - n.r);
+    minY = Math.min(minY, n.y - n.r);
+    maxX = Math.max(maxX, n.x + n.r);
+    maxY = Math.max(maxY, n.y + n.r);
+  });
+  fitToBBox({ minX, minY, maxX, maxY });
+}
+
 export function fitActiveDomain() {
   const domId = state.activeDomain;
   const dn = nodes.find(
@@ -173,32 +212,21 @@ export function fitActiveDomain() {
     drawMap();
     return;
   }
-  const members = nodes
-    .filter(
+  // Включаем домен, все его проекты и все задачи (как привязанные к проектам, так и независимые в домене)
+  const members = [dn].concat(
+    nodes.filter(
       (n) =>
         n._type === "project" &&
         state.projects.find((p) => p.id === n.id)?.domainId === dn.id
     )
-    .concat(
-      nodes.filter(
-        (n) =>
-          n._type === "task" &&
-          state.projects.find(
-            (p) => p.id === state.tasks.find((t) => t.id === n.id)?.projectId
-          )?.domainId === dn.id
-      )
-    );
-  if (members.length === 0) {
-    // fallback to domain aura
-    const r = dn.r + 60 * DPR;
-    fitToBBox({
-      minX: dn.x - r,
-      minY: dn.y - r,
-      maxX: dn.x + r,
-      maxY: dn.y + r,
-    });
-    return;
-  }
+  ).concat(
+    nodes.filter(
+      (n) =>
+        n._type === "task" &&
+        (state.tasks.find((t) => t.id === n.id)?.domainId === dn.id)
+    )
+  );
+  
   let minX = Infinity,
     minY = Infinity,
     maxX = -Infinity,
@@ -213,7 +241,7 @@ export function fitActiveDomain() {
 }
 
 export function fitActiveProject() {
-  // choose the first project node under active domain if present
+  // Находим активный проект (первый проект в активном домене или любой проект если домен не выбран)
   const pn = nodes.find(
     (n) =>
       n._type === "project" &&
@@ -225,15 +253,15 @@ export function fitActiveProject() {
     drawMap();
     return;
   }
-  const members = nodes.filter(
-    (x) =>
-      (x._type === "project" && x.id === pn.id) ||
-      (x._type === "task" && state.tasks.find((t) => t.id === x.id)?.projectId === pn.id)
+  // Включаем проект и все его задачи
+  const members = [pn].concat(
+    nodes.filter(
+      (x) =>
+        x._type === "task" && 
+        state.tasks.find((t) => t.id === x.id)?.projectId === pn.id
+    )
   );
-  if (!members.length) {
-    drawMap();
-    return;
-  }
+  
   let minX = Infinity,
     minY = Infinity,
     maxX = -Infinity,
@@ -1611,6 +1639,7 @@ window.mapApi.cancelAttach = cancelAttach;
 window.mapApi.confirmDetach = confirmDetach;
 window.mapApi.drawMap = drawMap;
 window.mapApi.initMap = initMap;
+window.mapApi.fitAll = fitAll;
 // expose scale helpers: percent-like values (100 -> scale 1)
 function getScale() {
   return Math.round(viewState.scale * 100);
