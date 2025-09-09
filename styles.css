@@ -41,6 +41,56 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .tag{font-size:12px;border:1px solid var(--panel-2);padding:3px 8px;border-radius:999px;color:var(--muted)}
 .tag.active{border-color:var(--accent);color:var(--text)}
 #canvasWrap{position:relative;background:radial-gradient(1200px 600px at 60% -100px, #0a0e1a, #0c1322 40%, #0b0f17 80%, #000000 100%);height:100%}
+
+/* Autocomplete dropdown */
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--panel-2);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid var(--panel-2);
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover {
+  background: var(--panel-2);
+}
+
+.autocomplete-icon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.autocomplete-text {
+  flex: 1;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.autocomplete-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 8px;
+}
 canvas{display:block;width:100%;height:100%}
 .tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--panel-2);padding:6px 8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);color:var(--text);font-size:12px;opacity:0;transform:translate(-50%,-130%);white-space:nowrap}
 .inspector{padding:12px;overflow:auto;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word}
@@ -70,7 +120,7 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .pill-doing{border-color:var(--accent);color:var(--accent);background:rgba(86,204,242,0.15);box-shadow:0 0 8px rgba(86,204,242,0.3)}
 .pill-done{border-color:var(--ok);color:var(--ok);background:rgba(25,195,125,0.15);box-shadow:0 0 8px rgba(25,195,125,0.3)}
 footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-top:1px solid var(--panel-2);min-height:56px;flex-shrink:0;position:relative;z-index:10}
-.input{flex:1;display:flex;align-items:center;gap:8px;background:var(--panel-2);border:2px solid var(--accent);border-radius:12px;padding:10px 12px;transition:all 0.3s ease;box-shadow:0 2px 8px rgba(86,204,242,0.1)}
+.input{flex:1;display:flex;align-items:center;gap:8px;background:var(--panel-2);border:2px solid var(--accent);border-radius:12px;padding:10px 12px;transition:all 0.3s ease;box-shadow:0 2px 8px rgba(86,204,242,0.1);position:relative}
 .input:focus-within{border-color:var(--ok);box-shadow:0 0 12px rgba(25,195,125,0.3);transform:translateY(-1px)}
 .input input{flex:1;background:transparent;border:0;outline:none;color:var(--text);font-size:14px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
@@ -130,4 +180,105 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
   header .chip{font-size:11px;padding:4px 8px;}
   .inspector{padding:8px;}
   .kv{font-size:11px;}
+}
+
+/* Simple input buttons */
+.input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel-1);
+  border: 1px solid var(--panel-2);
+  border-radius: 8px;
+}
+
+.input input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.input input::placeholder {
+  color: var(--muted);
+}
+
+.add-btn, .add-to-domain-btn, .clear-btn {
+  background: var(--accent);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-btn:hover {
+  background: var(--ok);
+  transform: scale(1.05);
+}
+
+.add-to-domain-btn {
+  background: var(--accent);
+  font-size: 14px;
+}
+
+.add-to-domain-btn:hover {
+  background: #3b82f6;
+  transform: scale(1.05);
+}
+
+.add-to-domain-btn:disabled {
+  background: var(--muted);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.clear-btn {
+  background: var(--muted);
+  font-size: 14px;
+}
+
+.clear-btn:hover {
+  background: var(--warn);
+  transform: scale(1.05);
+}
+
+.add-btn:active, .add-to-domain-btn:active, .clear-btn:active {
+  transform: scale(0.95);
+}
+
+/* Task inspector styles */
+.status-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.status-buttons .btn {
+  flex: 1;
+  min-width: 60px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.status-buttons .btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.kv label {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
 }

@@ -1679,8 +1679,11 @@ window.mapApi.confirmAttach = confirmAttach;
 window.mapApi.cancelAttach = cancelAttach;
 window.mapApi.confirmDetach = confirmDetach;
 window.mapApi.drawMap = drawMap;
+window.mapApi.layoutMap = layoutMap;
 window.mapApi.initMap = initMap;
 window.mapApi.fitAll = fitAll;
+window.mapApi.fitActiveDomain = fitActiveDomain;
+window.mapApi.fitActiveProject = fitActiveProject;
 // expose scale helpers: percent-like values (100 -> scale 1)
 function getScale() {
   return Math.round(viewState.scale * 100);

@@ -15,7 +15,7 @@ function Get-CurrentVersion([string]$changelogText){
   return [PSCustomObject]@{ prefix=$m.Groups[1].Value; major=[int]$m.Groups[2].Value; minor=[int]$m.Groups[3].Value; patch=[int]$m.Groups[4].Value }
 }
 
-function Bump-Version([int]$major,[int]$minor,[int]$patch,[string]$part){
+function Update-Version([int]$major,[int]$minor,[int]$patch,[string]$part){
   switch($part){
     'major' { $major++; $minor=0; $patch=0 }
     'minor' { $minor++; $patch=0 }
@@ -32,7 +32,7 @@ $ch = Get-Content -Raw -Encoding utf8 -LiteralPath $chPath
 $cur = Get-CurrentVersion $ch
 
 if([string]::IsNullOrWhiteSpace($Version)){
-  $Version = Bump-Version $cur.major $cur.minor $cur.patch $Part
+  $Version = Update-Version $cur.major $cur.minor $cur.patch $Part
 }
 
 if([string]::IsNullOrWhiteSpace($Date)){

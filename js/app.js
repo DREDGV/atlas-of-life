@@ -38,7 +38,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.7.8";
+let APP_VERSION = "Atlas_of_life_v0.2.8";
 
 // ephemeral UI state
 const ui = {
@@ -112,12 +112,45 @@ try { window.showToast = showToast; } catch (_) {}
 // Calculate statistics for sidebar
 function calculateStats() {
   const tasks = state.tasks || [];
+  
+  
+  // Start with all tasks
+  let filteredTasks = tasks;
+  
+  // Apply active domain filter if active
+  if (state.activeDomain) {
+    filteredTasks = filteredTasks.filter(t => {
+      // Task belongs to active domain if:
+      // 1. Task has domainId matching active domain
+      // 2. Task belongs to a project in the active domain
+      if (t.domainId === state.activeDomain) return true;
+      if (t.projectId) {
+        const project = state.projects.find(p => p.id === t.projectId);
+        return project && project.domainId === state.activeDomain;
+      }
+      return false;
+    });
+  }
+  
+  // Apply status filter if active
+  if (state.filterStatus && state.filterStatus !== 'all') {
+    filteredTasks = filteredTasks.filter(t => t.status === state.filterStatus);
+  }
+  
+  // Apply search filter if active
+  if (state.searchQuery) {
+    filteredTasks = filteredTasks.filter(t => 
+      t.title.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
+      (t.tags || []).some(tag => tag.toLowerCase().includes(state.searchQuery.toLowerCase()))
+    );
+  }
+  
   return {
-    totalTasks: tasks.length,
-    backlog: tasks.filter(t => t.status === 'backlog').length,
-    today: tasks.filter(t => t.status === 'today').length,
-    doing: tasks.filter(t => t.status === 'doing').length,
-    done: tasks.filter(t => t.status === 'done').length
+    totalTasks: filteredTasks.length,
+    backlog: filteredTasks.filter(t => t.status === 'backlog').length,
+    today: filteredTasks.filter(t => t.status === 'today').length,
+    doing: filteredTasks.filter(t => t.status === 'doing').length,
+    done: filteredTasks.filter(t => t.status === 'done').length
   };
 }
 
@@ -132,49 +165,166 @@ function highlightSearchResults(query, domains, projects, tasks) {
   };
 }
 
-function renderSidebar() {
-  const dWrap = document.getElementById("domainsList");
-  let html = "";
+// Attach event handlers to domain rows
+function attachDomainHandlers() {
+  // Handle domain row clicks
+  const domainRows = document.querySelectorAll('[data-domain]');
+  domainRows.forEach(row => {
+    const domainId = row.getAttribute('data-domain');
+    
+    // Single click
+    row.addEventListener('click', (e) => {
+      if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+        // toggle multiselect list
+        let ds = state.activeDomains;
+        if (!ds) ds = state.activeDomains = [];
+        const arr = Array.isArray(ds) ? ds : Array.from(ds);
+        const set = new Set(arr);
+        if (set.has(domainId)) set.delete(domainId);
+        else set.add(domainId);
+        state.activeDomains = Array.from(set);
+        state.activeDomain = null;
+        updateDomainsList();
+        updateStatistics();
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
+        try { window.mapApi && window.mapApi.fitAll && window.mapApi.fitAll(); } catch(_){}
+        return;
+      }
+      state.activeDomain = domainId;
+      try { state.activeDomains = []; } catch(_){}
+      updateDomainsList();
+      updateStatistics();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
+      if (window.mapApi && window.mapApi.fitActiveDomain) window.mapApi.fitActiveDomain();
+      if (window.updateDomainButton) window.updateDomainButton();
+    });
+    
+    // Double click
+    row.addEventListener('dblclick', () => {
+      state.activeDomain = domainId;
+      updateStatistics();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
+      if (window.mapApi && window.mapApi.fitActiveDomain) window.mapApi.fitActiveDomain();
+      if (window.updateDomainButton) window.updateDomainButton();
+    });
+    
+    // Context menu
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (window.openDomainMenuX) window.openDomainMenuX(domainId, row);
+    });
+    
+    // Prevent text selection and cursor appearance
+    row.style.userSelect = 'none';
+    row.style.cursor = 'pointer';
+  });
   
-  // Search bar
-  html += `<div class="search-section" style="padding:8px 12px;border-bottom:1px solid var(--panel-2)">
-    <input id="sidebarSearch" placeholder="🔍 Поиск доменов, проектов, задач..." 
-           style="width:100%;padding:6px 8px;background:var(--panel-2);border:1px solid var(--panel-2);border-radius:6px;color:var(--text);font-size:12px;outline:none"/>
-  </div>`;
-  
-  // Statistics section
-  const sidebarStats = calculateStats();
-  html += `<div class="stats-section" style="padding:8px 12px;border-bottom:1px solid var(--panel-2)">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <span style="font-size:11px;color:var(--muted);font-weight:600">СТАТИСТИКА</span>
-      <span style="font-size:10px;color:var(--muted)">${sidebarStats.totalTasks} задач</span>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <div class="stat-pill" style="background:rgba(157,177,201,0.1);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:10px">план: ${sidebarStats.backlog}</div>
-      <div class="stat-pill" style="background:rgba(242,201,76,0.15);color:var(--warn);padding:2px 6px;border-radius:4px;font-size:10px">сегодня: ${sidebarStats.today}</div>
-      <div class="stat-pill" style="background:rgba(86,204,242,0.15);color:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px">в работе: ${sidebarStats.doing}</div>
-      <div class="stat-pill" style="background:rgba(25,195,125,0.15);color:var(--ok);padding:2px 6px;border-radius:4px;font-size:10px">готово: ${sidebarStats.done}</div>
-    </div>
-  </div>`;
-  
-  if (ui.newDomain) {
-    html += `<div class="row" id="newDomRow" style="gap:6px;flex-wrap:wrap">
-      <input id="newDomName" placeholder="Название домена" style="flex:1;min-width:140px;background:#0e172a;border:1px solid #1a2947;border-radius:8px;color:#e8f0fb;padding:6px 8px"/>
-      <div id="newDomColors" style="display:flex;gap:6px;align-items:center">${palette
-        .map(
-          (c) =>
-            `<div class="dot" data-col="${c}" style="width:14px;height:14px;border:1px solid #1e2a44;background:${c};border-radius:999px;cursor:pointer${
-              c === ui.newDomColor ? ";outline:2px solid #fff5" : ""
-            }"></div>`
-        )
-        .join("")}</div>
-      <button class="btn" id="newDomSave">Создать</button>
-      <button class="btn" id="newDomCancel">Отмена</button>
-    </div>`;
-  } else {
-    html += `<div class="row"><button class="btn" id="btnAddDomain">+ Домен</button></div>`;
+  // Handle domain actions (⋯ button)
+  const actionButtons = document.querySelectorAll('[data-dom]');
+  actionButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const domainId = btn.getAttribute('data-dom');
+      const row = btn.closest('[data-domain]');
+      if (domainId && window.openDomainMenuX) {
+        window.openDomainMenuX(domainId, row);
+      }
+    });
+  });
+}
+
+// Update only statistics section without re-rendering entire sidebar
+function updateStatistics() {
+  const stats = calculateStats();
+  const statsSection = document.querySelector('.stats-section');
+  if (statsSection) {
+    // Update total tasks count and clear domain filter button
+    const totalSpan = statsSection.querySelector('span[style*="font-size:10px"]');
+    if (totalSpan) {
+      totalSpan.textContent = `${stats.totalTasks} задач`;
+    }
+    
+    // Update clear domain filter button
+    const clearBtn = statsSection.querySelector('#clearDomainFilter');
+    if (state.activeDomain && !clearBtn) {
+      // Add button if domain is active but button doesn't exist
+      const container = statsSection.querySelector('div[style*="display:flex;align-items:center"]');
+      if (container) {
+        const button = document.createElement('button');
+        button.id = 'clearDomainFilter';
+        button.style.cssText = 'background:none;border:1px solid var(--muted);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:9px;cursor:pointer';
+        button.textContent = 'Все домены';
+                      button.addEventListener('click', () => {
+                        state.activeDomain = null;
+                        updateDomainsList();
+                        updateStatistics();
+                        if (window.layoutMap) window.layoutMap();
+                        if (window.drawMap) window.drawMap();
+                        if (window.updateDomainButton) window.updateDomainButton();
+                      });
+        container.insertBefore(button, totalSpan);
+      }
+    } else if (!state.activeDomain && clearBtn) {
+      // Remove button if no domain is active
+      clearBtn.remove();
+    }
+    
+    // Update stat pills
+    const pills = statsSection.querySelectorAll('.stat-pill');
+    if (pills.length >= 4) {
+      pills[0].textContent = `план: ${stats.backlog}`;
+      pills[1].textContent = `сегодня: ${stats.today}`;
+      pills[2].textContent = `в работе: ${stats.doing}`;
+      pills[3].textContent = `готово: ${stats.done}`;
+    }
   }
-  html += state.domains
+  
+  // Update status filters
+  const statusWrap = document.getElementById("tagsList");
+  if (statusWrap) {
+    const statusFilters = [
+      { key: 'all', label: 'Все', count: stats.totalTasks, color: 'var(--muted)' },
+      { key: 'backlog', label: 'План', count: stats.backlog, color: 'var(--muted)' },
+      { key: 'today', label: 'Сегодня', count: stats.today, color: 'var(--warn)' },
+      { key: 'doing', label: 'В работе', count: stats.doing, color: 'var(--accent)' },
+      { key: 'done', label: 'Готово', count: stats.done, color: 'var(--ok)' }
+    ];
+    
+    statusWrap.innerHTML = statusFilters.map(status => 
+      `<div class="tag ${state.filterStatus === status.key ? "active" : ""}" 
+            data-status="${status.key}" 
+            style="border-color:${status.color};color:${status.color}">
+        ${status.label} (${status.count})
+      </div>`
+    ).join("");
+    
+    // Re-attach status filter handlers
+    statusWrap.querySelectorAll(".tag[data-status]").forEach((el) => {
+      el.onclick = () => {
+        const val = el.dataset.status === 'all' ? null : el.dataset.status;
+        state.filterStatus = val;
+        renderSidebar(); // Full re-render when filter changes
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
+      };
+    });
+  }
+}
+
+// Update only domains list without re-rendering entire sidebar
+function updateDomainsList() {
+  const dWrap = document.getElementById("domainsList");
+  if (!dWrap) return;
+  
+  // Filter domains based on search query
+  const domainsToShow = state.searchQuery 
+    ? state.domains.filter(d => d.title.toLowerCase().includes(state.searchQuery.toLowerCase()))
+    : state.domains;
+    
+  let html = domainsToShow
     .map((d) => {
       const projects = state.projects.filter((p) => p.domainId === d.id);
       const projectCount = projects.length;
@@ -212,7 +362,87 @@ function renderSidebar() {
     </div>`;
     })
     .join("");
+    
+  // Find the domains container
+  const domainsContainer = dWrap.querySelector('.domains-container');
+  if (domainsContainer) {
+    domainsContainer.innerHTML = html;
+    
+    // Add click handler to container for clearing domain selection
+    domainsContainer.addEventListener('click', (e) => {
+      // Only clear if clicking on empty space (not on domain rows)
+      if (e.target === domainsContainer) {
+        state.activeDomain = null;
+        updateDomainsList();
+        updateStatistics();
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
+        if (window.updateDomainButton) window.updateDomainButton();
+      }
+    });
+    
+    // Re-attach event handlers for domain rows
+    attachDomainHandlers();
+  }
+}
+
+function renderSidebar() {
+  const dWrap = document.getElementById("domainsList");
+  let html = "";
+  
+  // Search bar
+  html += `<div class="search-section" style="padding:8px 12px;border-bottom:1px solid var(--panel-2)">
+    <input id="sidebarSearch" placeholder="🔍 Поиск доменов, проектов, задач..." 
+           value="${state.searchQuery || ''}"
+           style="width:100%;padding:6px 8px;background:var(--panel-2);border:1px solid var(--panel-2);border-radius:6px;color:var(--text);font-size:12px;outline:none"/>
+  </div>`;
+  
+  // Statistics section - calculate filtered stats
+  const stats = calculateStats();
+  
+  html += `<div class="stats-section" style="padding:8px 12px;border-bottom:1px solid var(--panel-2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:11px;color:var(--muted);font-weight:600">СТАТИСТИКА</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${state.activeDomain ? `<button id="clearDomainFilter" style="background:none;border:1px solid var(--muted);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:9px;cursor:pointer">Все домены</button>` : ''}
+        <span style="font-size:10px;color:var(--muted)">${stats.totalTasks} задач</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="stat-pill" style="background:rgba(157,177,201,0.1);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:10px">план: ${stats.backlog}</div>
+      <div class="stat-pill" style="background:rgba(242,201,76,0.15);color:var(--warn);padding:2px 6px;border-radius:4px;font-size:10px">сегодня: ${stats.today}</div>
+      <div class="stat-pill" style="background:rgba(86,204,242,0.15);color:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px">в работе: ${stats.doing}</div>
+      <div class="stat-pill" style="background:rgba(25,195,125,0.15);color:var(--ok);padding:2px 6px;border-radius:4px;font-size:10px">готово: ${stats.done}</div>
+    </div>
+  </div>`;
+  
+  if (ui.newDomain) {
+    html += `<div class="row" id="newDomRow" style="gap:6px;flex-wrap:wrap">
+      <input id="newDomName" placeholder="Название домена" style="flex:1;min-width:140px;background:#0e172a;border:1px solid #1a2947;border-radius:8px;color:#e8f0fb;padding:6px 8px"/>
+      <div id="newDomColors" style="display:flex;gap:6px;align-items:center">${palette
+        .map(
+          (c) =>
+            `<div class="dot" data-col="${c}" style="width:14px;height:14px;border:1px solid #1e2a44;background:${c};border-radius:999px;cursor:pointer${
+              c === ui.newDomColor ? ";outline:2px solid #fff5" : ""
+            }"></div>`
+        )
+        .join("")}</div>
+      <button class="btn" id="newDomSave">Создать</button>
+      <button class="btn" id="newDomCancel">Отмена</button>
+    </div>`;
+  } else {
+    html += `<div class="row"><button class="btn" id="btnAddDomain">+ Домен</button></div>`;
+  }
+  // Add domains container
+  html += `<div class="domains-container"></div>`;
+  
   dWrap.innerHTML = html;
+  
+  // Populate domains container
+  updateDomainsList();
+  
+  // Attach event handlers
+  attachDomainHandlers();
 
   // handlers
   const addBtn = document.getElementById("btnAddDomain");
@@ -346,57 +576,15 @@ function renderSidebar() {
       }
     });
   }
-  dWrap.querySelectorAll(".row[data-domain]").forEach((el) => {
-    const id = el.dataset.domain;
-    el.onclick = (ev) => {
-      if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
-        // toggle multiselect list
-        let ds = state.activeDomains;
-        if (!ds) ds = state.activeDomains = [];
-        const arr = Array.isArray(ds) ? ds : Array.from(ds);
-        const set = new Set(arr);
-        if (set.has(id)) set.delete(id);
-        else set.add(id);
-        state.activeDomains = Array.from(set);
-        state.activeDomain = null;
-        renderSidebar();
-        layoutMap();
-        drawMap();
-        try { window.mapApi && window.mapApi.fitAll && window.mapApi.fitAll(); } catch(_){}
-        return;
-      }
-      state.activeDomain = id;
-      try { state.activeDomains = []; } catch(_){}
-      renderSidebar();
-      if (window.layoutMap) window.layoutMap();
-      if (window.drawMap) window.drawMap();
-      fitActiveDomain();
-    };
-    el.ondblclick = () => {
-      state.activeDomain = id;
-      layoutMap();
-      drawMap();
-      fitActiveDomain();
-    };
-    const actions = el.querySelector(".actions");
-    actions.onclick = (e) => {
-      e.stopPropagation();
-      openDomainMenuX(id, el);
-    };
-    el.oncontextmenu = (e) => {
-      e.preventDefault();
-      openDomainMenuX(id, el);
-    };
-  });
+  // Event handlers are now attached by attachDomainHandlers()
 
-  // Status filters
-  const filterStats = calculateStats();
+  // Status filters - use current stats
   const statusFilters = [
-    { key: 'all', label: 'Все', count: filterStats.totalTasks, color: 'var(--muted)' },
-    { key: 'backlog', label: 'План', count: filterStats.backlog, color: 'var(--muted)' },
-    { key: 'today', label: 'Сегодня', count: filterStats.today, color: 'var(--warn)' },
-    { key: 'doing', label: 'В работе', count: filterStats.doing, color: 'var(--accent)' },
-    { key: 'done', label: 'Готово', count: filterStats.done, color: 'var(--ok)' }
+    { key: 'all', label: 'Все', count: stats.totalTasks, color: 'var(--muted)' },
+    { key: 'backlog', label: 'План', count: stats.backlog, color: 'var(--muted)' },
+    { key: 'today', label: 'Сегодня', count: stats.today, color: 'var(--warn)' },
+    { key: 'doing', label: 'В работе', count: stats.doing, color: 'var(--accent)' },
+    { key: 'done', label: 'Готово', count: stats.done, color: 'var(--ok)' }
   ];
   
   const statusWrap = document.getElementById("tagsList");
@@ -456,14 +644,19 @@ function renderSidebar() {
   // Search functionality
   const searchInput = document.getElementById("sidebarSearch");
   if (searchInput) {
+    // Store current value to prevent it from being cleared
+    const currentValue = searchInput.value;
+    
     searchInput.addEventListener("input", (e) => {
       const query = e.target.value.toLowerCase().trim();
+      
       if (query.length === 0) {
         // Clear search - show all
         state.searchQuery = null;
-        renderSidebar();
-        layoutMap();
-        drawMap();
+        state.searchResults = null;
+        // Don't re-render sidebar to preserve input value
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
         return;
       }
       
@@ -484,7 +677,9 @@ function renderSidebar() {
       
       // Update filter to show only matching items
       state.searchQuery = query;
-      renderSidebar();
+      // Update only domains list and statistics, not entire sidebar
+      updateDomainsList();
+      updateStatistics();
       if (window.layoutMap) window.layoutMap();
       if (window.drawMap) window.drawMap();
     });
@@ -494,10 +689,24 @@ function renderSidebar() {
       if (e.key === "Escape") {
         e.target.value = "";
         state.searchQuery = null;
-        renderSidebar();
-        layoutMap();
-        drawMap();
+        state.searchResults = null;
+        updateDomainsList();
+        updateStatistics();
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
       }
+    });
+  }
+  
+  // Clear domain filter button
+  const clearDomainFilterBtn = document.getElementById("clearDomainFilter");
+  if (clearDomainFilterBtn) {
+    clearDomainFilterBtn.addEventListener("click", () => {
+      state.activeDomain = null;
+      updateDomainsList();
+      updateStatistics();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
     });
   }
 }
@@ -852,6 +1061,9 @@ function openDomainMenuX(id, rowEl) {
   };
 }
 
+// Export to window for external access
+window.openDomainMenuX = openDomainMenuX;
+
 /* legacy, unused */ function domainActions_old(id) {
   const d = state.domains.find((x) => x.id === id);
   const choice = prompt(
@@ -1089,7 +1301,8 @@ function setupHeader() {
         bodyHTML:
           '<div style="display:flex;flex-direction:column;gap:8px">' +
           `<div><strong>Версия:</strong> ${APP_VERSION}</div>` +
-          `<div><a href="CHANGELOG.md" target="_blank" rel="noopener">Открыть CHANGELOG</a></div>` +
+          `<div><a href="CHANGELOG.md" target="_blank" rel="noopener">📝 Открыть CHANGELOG</a></div>` +
+          `<div><a href="IDEAS.md" target="_blank" rel="noopener">🚀 Открыть IDEAS</a></div>` +
           "</div>",
         confirmText: "Ок",
       });
@@ -1116,9 +1329,49 @@ function setupHeader() {
 }
 
 function setupQuickAdd() {
-  const qa = $("#quickAdd");
-  const chips = $("#qaChips");
-  qa.addEventListener("input", () => {
+  const qa = document.getElementById("quickAdd");
+  const chips = document.getElementById("qaChips");
+  
+  if (!qa || !chips) {
+    console.log("QuickAdd elements not found");
+    return;
+  }
+  
+  // Autocomplete suggestions
+  let autocompleteVisible = false;
+  let currentSuggestions = [];
+  
+  function showAutocomplete(suggestions) {
+    if (suggestions.length === 0) {
+      hideAutocomplete();
+      return;
+    }
+    
+    const autocompleteHTML = suggestions.map(s => 
+      `<div class="autocomplete-item" data-value="${s.value}">
+        <span class="autocomplete-icon">${s.icon}</span>
+        <span class="autocomplete-text">${s.text}</span>
+        <span class="autocomplete-hint">${s.hint}</span>
+      </div>`
+    ).join('');
+    
+    chips.innerHTML = `<div class="autocomplete-dropdown">${autocompleteHTML}</div>`;
+    autocompleteVisible = true;
+    currentSuggestions = suggestions;
+    
+    // Add click handlers
+    chips.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const value = item.dataset.value;
+        insertAutocomplete(value);
+      });
+    });
+  }
+  
+  function hideAutocomplete() {
+    autocompleteVisible = false;
+    currentSuggestions = [];
+    // Show parsed chips instead
     const parsed = parseQuick(qa.value);
     chips.innerHTML = "";
     if (parsed.tag)
@@ -1131,6 +1384,119 @@ function setupQuickAdd() {
       chips.innerHTML += `<div class="chip-mini">~${parsed.estimate}м</div>`;
     if (parsed.priority)
       chips.innerHTML += `<div class="chip-mini">p${parsed.priority}</div>`;
+  }
+  
+  function insertAutocomplete(value) {
+    const cursorPos = qa.selectionStart;
+    const text = qa.value;
+    const beforeCursor = text.substring(0, cursorPos);
+    const afterCursor = text.substring(cursorPos);
+    
+    // Find the last incomplete token
+    const lastSpace = beforeCursor.lastIndexOf(' ');
+    const currentToken = beforeCursor.substring(lastSpace + 1);
+    
+    // Replace the current token with the selected value
+    const newText = beforeCursor.substring(0, lastSpace + 1) + value + ' ' + afterCursor;
+    qa.value = newText;
+    
+    // Set cursor position after the inserted value
+    const newCursorPos = lastSpace + 1 + value.length + 1;
+    qa.setSelectionRange(newCursorPos, newCursorPos);
+    
+    hideAutocomplete();
+    qa.focus();
+  }
+  
+  function getAutocompleteSuggestions(text, cursorPos) {
+    const beforeCursor = text.substring(0, cursorPos);
+    const lastSpace = beforeCursor.lastIndexOf(' ');
+    const currentToken = beforeCursor.substring(lastSpace + 1).toLowerCase();
+    
+    if (currentToken.startsWith('#')) {
+      // Tag suggestions
+      const allTags = [...new Set(state.tasks.flatMap(t => t.tags || []))];
+      const commonTags = ['дом', 'работа', 'покупки', 'здоровье', 'спорт', 'учеба', 'хобби'];
+      const allSuggestions = [...new Set([...allTags, ...commonTags])];
+      const matchingTags = allSuggestions.filter(tag => 
+        tag.toLowerCase().includes(currentToken.substring(1))
+      ).slice(0, 5);
+      
+      return matchingTags.map(tag => ({
+        value: `#${tag}`,
+        icon: '🏷️',
+        text: tag,
+        hint: 'тег'
+      }));
+    }
+    
+    if (currentToken.startsWith('@')) {
+      // Project suggestions
+      const matchingProjects = state.projects.filter(p => 
+        p.title.toLowerCase().includes(currentToken.substring(1))
+      ).slice(0, 5);
+      
+      return matchingProjects.map(p => ({
+        value: `@${p.title}`,
+        icon: '🪐',
+        text: p.title,
+        hint: 'проект'
+      }));
+    }
+    
+    if (currentToken.startsWith('!')) {
+      // Time suggestions
+      const timeSuggestions = [
+        { value: '!сегодня', text: 'сегодня', hint: 'сегодня', icon: '📅' },
+        { value: '!завтра', text: 'завтра', hint: 'завтра', icon: '📅' },
+        { value: '!послезавтра', text: 'послезавтра', hint: 'послезавтра', icon: '📅' },
+        { value: '!понедельник', text: 'понедельник', hint: 'понедельник', icon: '📅' },
+        { value: '!вторник', text: 'вторник', hint: 'вторник', icon: '📅' },
+        { value: '!среда', text: 'среда', hint: 'среда', icon: '📅' },
+        { value: '!четверг', text: 'четверг', hint: 'четверг', icon: '📅' },
+        { value: '!пятница', text: 'пятница', hint: 'пятница', icon: '📅' },
+        { value: '!10:00', text: '10:00', hint: 'время', icon: '🕙' },
+        { value: '!14:30', text: '14:30', hint: 'время', icon: '🕙' }
+      ];
+      
+      return timeSuggestions.filter(s => 
+        s.text.includes(currentToken.substring(1))
+      );
+    }
+    
+    if (currentToken.startsWith('p') && /^p[1-4]?$/.test(currentToken)) {
+      // Priority suggestions
+      return [
+        { value: 'p1', text: 'p1', hint: 'высокий приоритет', icon: '🔴' },
+        { value: 'p2', text: 'p2', hint: 'средний приоритет', icon: '🟡' },
+        { value: 'p3', text: 'p3', hint: 'низкий приоритет', icon: '🟢' },
+        { value: 'p4', text: 'p4', hint: 'очень низкий', icon: '⚪' }
+      ].filter(s => s.text.startsWith(currentToken));
+    }
+    
+    if (currentToken.startsWith('~')) {
+      // Estimate suggestions
+      return [
+        { value: '~15м', text: '15м', hint: '15 минут', icon: '⏱️' },
+        { value: '~30м', text: '30м', hint: '30 минут', icon: '⏱️' },
+        { value: '~1ч', text: '1ч', hint: '1 час', icon: '⏱️' },
+        { value: '~2ч', text: '2ч', hint: '2 часа', icon: '⏱️' }
+      ].filter(s => s.text.includes(currentToken.substring(1)));
+    }
+    
+    return [];
+  }
+  
+  qa.addEventListener("input", (e) => {
+    const text = qa.value;
+    const cursorPos = qa.selectionStart;
+    const suggestions = getAutocompleteSuggestions(text, cursorPos);
+    
+    if (suggestions.length > 0) {
+      showAutocomplete(suggestions);
+    } else {
+      hideAutocomplete();
+    }
   });
   qa.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -1140,6 +1506,59 @@ function setupQuickAdd() {
       chips.innerHTML = "";
     }
   });
+  
+  // Simple button handlers
+  const addBtn = document.getElementById('addBtn');
+  const addToDomainBtn = document.getElementById('addToDomainBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      const text = qa.value.trim();
+      if (text) {
+        submitQuick(text);
+        qa.value = "";
+        chips.innerHTML = "";
+      }
+    });
+  }
+  
+  if (addToDomainBtn) {
+    addToDomainBtn.addEventListener('click', () => {
+      const text = qa.value.trim();
+      if (text) {
+        submitQuickToDomain(text);
+        qa.value = "";
+        chips.innerHTML = "";
+      }
+    });
+  }
+  
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      qa.value = "";
+      chips.innerHTML = "";
+      qa.focus();
+    });
+  }
+  
+  // Update domain button state
+  function updateDomainButton() {
+    if (addToDomainBtn) {
+      const hasActiveDomain = state.activeDomain && state.domains.find(d => d.id === state.activeDomain);
+      addToDomainBtn.disabled = !hasActiveDomain;
+      if (hasActiveDomain) {
+        const domainName = state.domains.find(d => d.id === state.activeDomain)?.title || "домен";
+        addToDomainBtn.title = `Добавить в домен "${domainName}"`;
+      } else {
+        addToDomainBtn.title = "Сначала выберите домен";
+      }
+    }
+  }
+  
+  // Update button state when active domain changes
+  updateDomainButton();
+  window.updateDomainButton = updateDomainButton;
   // zoom slider hookup (view_map exposes setZoom)
   const zs = $("#zoomSlider");
   try{
@@ -1155,39 +1574,109 @@ function setupQuickAdd() {
 
 function submitQuick(text) {
   if (!text) return;
-  const parsed = parseQuick(text);
-  const title = parsed.title || I18N.defaults.taskTitle;
-  let pid = null;
-  let domainId = null;
-  if (parsed.project) {
-    const found = state.projects.find((p) => p.title.toLowerCase() === parsed.project.toLowerCase());
-    if (found) pid = found.id;
+  
+  // Simple logic: if text starts with @, create project; otherwise create task
+  if (text.startsWith('@')) {
+    const projectName = text.substring(1).trim();
+    if (projectName) {
+      const domainId = state.activeDomain || state.domains[0]?.id || null;
+      if (!domainId) {
+        showToast("Сначала выберите домен", "warn");
+        return;
+      }
+      
+      const newProject = {
+        id: "p" + Math.random().toString(36).slice(2, 8),
+        domainId: domainId,
+        title: projectName,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      
+      state.projects.push(newProject);
+      saveState();
+      layoutMap();
+      drawMap();
+      showToast(`Проект "${projectName}" создан`, "ok");
+    }
+  } else {
+    // Check if user wants to assign to a specific domain
+    let domainId = null;
+    
+    // If there's an active domain, ask user if they want to assign to it
+    if (state.activeDomain) {
+      const domainName = state.domains.find(d => d.id === state.activeDomain)?.title || "домен";
+      const assignToDomain = confirm(`Привязать задачу "${text}" к домену "${domainName}"?\n\nНажмите "ОК" - привязать к домену\nНажмите "Отмена" - создать независимую задачу`);
+      if (assignToDomain) {
+        domainId = state.activeDomain;
+      }
+    }
+    
+    // Create task
+    const newTask = {
+      id: "t" + Math.random().toString(36).slice(2, 8),
+      projectId: null,
+      domainId: domainId, // null = fully independent, or specific domain
+      title: text,
+      tags: [],
+      status: "today",
+      estimateMin: null,
+      priority: 2,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    
+    // Debug: show where task will be placed
+    console.log("Creating task:", newTask);
+    console.log("Domain assignment:", domainId ? `assigned to domain ${domainId}` : "fully independent");
+    
+    state.tasks.push(newTask);
+    saveState();
+    layoutMap();
+    drawMap();
+    
+    const location = domainId ? `в домене "${state.domains.find(d => d.id === domainId)?.title}"` : "как независимая";
+    showToast(`Задача "${text}" добавлена ${location}`, "ok");
   }
-  if (!pid) {
-    domainId = state.activeDomain || state.domains[0]?.id || null;
+  
+  renderSidebar();
+  updateWip();
+}
+
+function submitQuickToDomain(text) {
+  if (!text) return;
+  
+  // Always create task in active domain (no confirmation needed)
+  if (!state.activeDomain) {
+    showToast("Сначала выберите домен", "warn");
+    return;
   }
-  const tags = [];
-  if (parsed.tag) tags.push(parsed.tag);
-  state.tasks.push({
+  
+  const newTask = {
     id: "t" + Math.random().toString(36).slice(2, 8),
-    projectId: pid,
-    domainId: pid ? undefined : domainId,
-    title,
-    tags,
+    projectId: null,
+    domainId: state.activeDomain, // Always assign to active domain
+    title: text,
+    tags: [],
     status: "today",
-    estimateMin: parsed.estimate || null,
-    priority: parsed.priority || 2,
+    estimateMin: null,
+    priority: 2,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-  });
+  };
+  
+  console.log("Creating task in domain:", newTask);
+  
+  state.tasks.push(newTask);
   saveState();
   layoutMap();
   drawMap();
-  renderToday();
-  updateWip();
   
-  //_emit state change event
-  if (window.bus) window.bus.emit('state:changed', { reason: 'quick-add' });
+  const domainName = state.domains.find(d => d.id === state.activeDomain)?.title || "домен";
+  showToast(`Задача "${text}" добавлена в домен "${domainName}"`, "ok");
+  
+  renderSidebar();
+  updateWip();
 }
 
 async function init() {
