@@ -78,9 +78,16 @@ export function saveState(){
       settings: state.settings || { layoutMode:'auto' }
     };
     const text = JSON.stringify(data);
+    if (!text) {
+      throw new Error('Failed to serialize state data');
+    }
     adapter.save(text);
   }catch(e){
     console.warn('saveState error', e);
+    // Notify user about save error
+    if (typeof window !== 'undefined' && window.showToast) {
+      window.showToast('Ошибка сохранения данных: ' + e.message, 'warn');
+    }
   }
 }
 
