@@ -1056,16 +1056,7 @@ async function init() {
   if (!ok) initDemoData();
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
-  try {
-    const res = await fetch("CHANGELOG.md");
-    if (res.ok) {
-      const text = await res.text();
-      const m = text.match(/^##\s+([^\s]+)\b/m); // first version token after ##
-      if (m && m[1]) APP_VERSION = m[1];
-    }
-  } catch (e) {
-    /* ignore */
-  }
+  // Don't override APP_VERSION from CHANGELOG - use the hardcoded version
   if (brandEl) brandEl.textContent = APP_VERSION;
   document.title = APP_VERSION + " (modular)";
   renderSidebar();
