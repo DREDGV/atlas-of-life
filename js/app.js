@@ -38,7 +38,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.7.5";
+let APP_VERSION = "Atlas_of_life_v0.2.7.7";
 
 // ephemeral UI state
 const ui = {
@@ -109,9 +109,54 @@ function showToast(text, cls = "ok", ms = 2500) {
 // expose globally for addons/other modules
 try { window.showToast = showToast; } catch (_) {}
 
+// Calculate statistics for sidebar
+function calculateStats() {
+  const tasks = state.tasks || [];
+  return {
+    totalTasks: tasks.length,
+    backlog: tasks.filter(t => t.status === 'backlog').length,
+    today: tasks.filter(t => t.status === 'today').length,
+    doing: tasks.filter(t => t.status === 'doing').length,
+    done: tasks.filter(t => t.status === 'done').length
+  };
+}
+
+// Highlight search results on the map
+function highlightSearchResults(query, domains, projects, tasks) {
+  // This will be used to highlight matching nodes on the map
+  // For now, we'll store the search results in state for map rendering
+  state.searchResults = {
+    domains: domains.map(d => d.id),
+    projects: projects.map(p => p.id),
+    tasks: tasks.map(t => t.id)
+  };
+}
+
 function renderSidebar() {
   const dWrap = document.getElementById("domainsList");
   let html = "";
+  
+  // Search bar
+  html += `<div class="search-section" style="padding:8px 12px;border-bottom:1px solid var(--panel-2)">
+    <input id="sidebarSearch" placeholder="🔍 Поиск доменов, проектов, задач..." 
+           style="width:100%;padding:6px 8px;background:var(--panel-2);border:1px solid var(--panel-2);border-radius:6px;color:var(--text);font-size:12px;outline:none"/>
+  </div>`;
+  
+  // Statistics section
+  const stats = calculateStats();
+  html += `<div class="stats-section" style="padding:8px 12px;border-bottom:1px solid var(--panel-2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:11px;color:var(--muted);font-weight:600">СТАТИСТИКА</span>
+      <span style="font-size:10px;color:var(--muted)">${stats.totalTasks} задач</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="stat-pill" style="background:rgba(157,177,201,0.1);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:10px">план: ${stats.backlog}</div>
+      <div class="stat-pill" style="background:rgba(242,201,76,0.15);color:var(--warn);padding:2px 6px;border-radius:4px;font-size:10px">сегодня: ${stats.today}</div>
+      <div class="stat-pill" style="background:rgba(86,204,242,0.15);color:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px">в работе: ${stats.doing}</div>
+      <div class="stat-pill" style="background:rgba(25,195,125,0.15);color:var(--ok);padding:2px 6px;border-radius:4px;font-size:10px">готово: ${stats.done}</div>
+    </div>
+  </div>`;
+  
   if (ui.newDomain) {
     html += `<div class="row" id="newDomRow" style="gap:6px;flex-wrap:wrap">
       <input id="newDomName" placeholder="Название домена" style="flex:1;min-width:140px;background:#0e172a;border:1px solid #1a2947;border-radius:8px;color:#e8f0fb;padding:6px 8px"/>
@@ -131,7 +176,15 @@ function renderSidebar() {
   }
   html += state.domains
     .map((d) => {
-      const count = state.projects.filter((p) => p.domainId === d.id).length;
+      const projects = state.projects.filter((p) => p.domainId === d.id);
+      const projectCount = projects.length;
+      const taskCount = state.tasks.filter(t => {
+        if (t.projectId) {
+          return projects.some(p => p.id === t.projectId);
+        }
+        return t.domainId === d.id;
+      }).length;
+      
       let __active = false;
       try {
         const ds = state.activeDomains;
@@ -148,9 +201,14 @@ function renderSidebar() {
       const color = d.color || "#2dd4bf";
       return `<div class="row" data-domain="${d.id}" ${act}>
       <div class="dot" style="background:${color}"></div>
-      <div class="title" style="flex:1">${d.title}</div>
-      <div class="hint">${count}</div>
-      <div class="hint actions" data-dom="${d.id}" style="cursor:pointer">⋯</div>
+      <div style="flex:1;min-width:0">
+        <div class="title" style="font-weight:500;margin-bottom:2px">${d.title}</div>
+        <div style="display:flex;gap:8px;font-size:10px;color:var(--muted)">
+          <span>${projectCount} проектов</span>
+          <span>${taskCount} задач</span>
+        </div>
+      </div>
+      <div class="hint actions" data-dom="${d.id}" style="cursor:pointer;padding:4px">⋯</div>
     </div>`;
     })
     .join("");
@@ -331,7 +389,37 @@ function renderSidebar() {
     };
   });
 
-  // tags
+  // Status filters
+  const stats = calculateStats();
+  const statusFilters = [
+    { key: 'all', label: 'Все', count: stats.totalTasks, color: 'var(--muted)' },
+    { key: 'backlog', label: 'План', count: stats.backlog, color: 'var(--muted)' },
+    { key: 'today', label: 'Сегодня', count: stats.today, color: 'var(--warn)' },
+    { key: 'doing', label: 'В работе', count: stats.doing, color: 'var(--accent)' },
+    { key: 'done', label: 'Готово', count: stats.done, color: 'var(--ok)' }
+  ];
+  
+  const statusWrap = document.getElementById("tagsList");
+  statusWrap.innerHTML = statusFilters.map(status => 
+    `<div class="tag ${state.filterStatus === status.key ? "active" : ""}" 
+          data-status="${status.key}" 
+          style="border-color:${status.color};color:${status.color}">
+      ${status.label} (${status.count})
+    </div>`
+  ).join("");
+  
+  // Status filter handlers
+  statusWrap.querySelectorAll(".tag[data-status]").forEach((el) => {
+    el.onclick = () => {
+      const val = el.dataset.status === 'all' ? null : el.dataset.status;
+      state.filterStatus = val;
+      renderSidebar();
+      layoutMap();
+      drawMap();
+    };
+  });
+  
+  // Tags section
   const allTags = [
     ...new Set(
       state.tasks
@@ -339,12 +427,10 @@ function renderSidebar() {
         .concat(state.projects.flatMap((p) => p.tags))
     ),
   ].sort();
-  const tWrap = document.getElementById("tagsList");
-  tWrap.innerHTML =
-    `<div class="tag ${
-      state.filterTag === null ? "active" : ""
-    }" data-tag="">Все</div>` +
-    allTags
+  
+  if (allTags.length > 0) {
+    statusWrap.innerHTML += `<div style="margin-top:8px;font-size:11px;color:var(--muted);font-weight:600">ТЕГИ</div>`;
+    statusWrap.innerHTML += allTags
       .map(
         (t) =>
           `<div class="tag ${
@@ -352,7 +438,10 @@ function renderSidebar() {
           }" data-tag="${t}">#${t}</div>`
       )
       .join("");
-  tWrap.querySelectorAll(".tag").forEach((el) => {
+  }
+  
+  // Tag handlers
+  statusWrap.querySelectorAll(".tag[data-tag]").forEach((el) => {
     el.onclick = () => {
       const val = el.dataset.tag || null;
       state.filterTag = val;
@@ -361,6 +450,54 @@ function renderSidebar() {
       drawMap();
     };
   });
+  
+  // Search functionality
+  const searchInput = document.getElementById("sidebarSearch");
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      if (query.length === 0) {
+        // Clear search - show all
+        state.searchQuery = null;
+        renderSidebar();
+        layoutMap();
+        drawMap();
+        return;
+      }
+      
+      // Filter domains, projects, and tasks
+      const filteredDomains = state.domains.filter(d => 
+        d.title.toLowerCase().includes(query)
+      );
+      const filteredProjects = state.projects.filter(p => 
+        p.title.toLowerCase().includes(query)
+      );
+      const filteredTasks = state.tasks.filter(t => 
+        t.title.toLowerCase().includes(query) ||
+        (t.tags || []).some(tag => tag.toLowerCase().includes(query))
+      );
+      
+      // Highlight search results
+      highlightSearchResults(query, filteredDomains, filteredProjects, filteredTasks);
+      
+      // Update filter to show only matching items
+      state.searchQuery = query;
+      renderSidebar();
+      layoutMap();
+      drawMap();
+    });
+    
+    // Clear search on Escape
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.target.value = "";
+        state.searchQuery = null;
+        renderSidebar();
+        layoutMap();
+        drawMap();
+      }
+    });
+  }
 }
 
 let currentMenu = null;

@@ -90,12 +90,18 @@ let lowFrames = 0,
   highFrames = 0;
 let showFps = false;
 
+// Cosmic effects
+let starField = [];
+let lastStarUpdate = 0;
+
 export function initMap(canvasEl, tooltipEl) {
   canvas = canvasEl;
   tooltip = tooltipEl;
   resize();
+  initStarField();
   window.addEventListener("resize", () => {
     resize();
+    initStarField();
     try { fitAll(); } catch(_) {}
   });
   canvas.addEventListener("mousemove", onMouseMove);
@@ -220,9 +226,9 @@ export function fitActiveDomain() {
         state.projects.find((p) => p.id === n.id)?.domainId === dn.id
     )
   ).concat(
-    nodes.filter(
-      (n) =>
-        n._type === "task" &&
+      nodes.filter(
+        (n) =>
+          n._type === "task" &&
         (state.tasks.find((t) => t.id === n.id)?.domainId === dn.id)
     )
   );
@@ -344,6 +350,14 @@ export function layoutMap() {
     )
     .filter(
       (t) => !state.filterTag || (t.tags || []).includes(state.filterTag)
+    )
+    .filter(
+      (t) => !state.filterStatus || t.status === state.filterStatus
+    )
+    .filter(
+      (t) => !state.searchQuery || 
+        t.title.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
+        (t.tags || []).some(tag => tag.toLowerCase().includes(state.searchQuery.toLowerCase()))
     );
 
   domains.forEach((d, i) => {
@@ -490,6 +504,14 @@ export function layoutMap() {
       .filter((t) => !t.projectId)
       .filter(
         (t) => !state.filterTag || (t.tags || []).includes(state.filterTag)
+      )
+      .filter(
+        (t) => !state.filterStatus || t.status === state.filterStatus
+      )
+      .filter(
+        (t) => !state.searchQuery || 
+          t.title.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
+          (t.tags || []).some(tag => tag.toLowerCase().includes(state.searchQuery.toLowerCase()))
       );
     
     // Разделяем на задачи с доменом и полностью независимые
@@ -626,18 +648,8 @@ export function drawMap() {
     viewState.ty
   );
 
-  // subtle stars
-  ctx.globalAlpha = 0.3;
-  for (let i = 0; i < 40; i++) {
-    const x = (i * 97) % W,
-      y = (i * 57) % H,
-      r = (i % 3) + 0.6;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = "#0f1627";
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+  // Cosmic starfield with twinkling stars
+  drawStarfield(ctx, W, H, viewState);
 
   // compute viewport in world coords for culling
   const inv = 1 / Math.max(0.0001, viewState.scale);
@@ -715,18 +727,24 @@ export function drawMap() {
     });
   }
 
-  // domains
+  // domains as nebulae
   nodes
     .filter((n) => n._type === "domain")
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
-      const grad = ctx.createRadialGradient(n.x, n.y, n.r * 0.3, n.x, n.y, n.r);
-      grad.addColorStop(0, n.color + "33");
-      grad.addColorStop(1, "#0000");
-      ctx.beginPath();
-      ctx.fillStyle = grad;
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fill();
+      
+      // Draw nebula
+      drawPlanet(ctx, n.x, n.y, n.r, n.color, 'nebula');
+      
+      // Search highlight
+      if (state.searchResults && state.searchResults.domains.includes(n.id)) {
+        ctx.beginPath();
+        ctx.strokeStyle = "#ffd700";
+        ctx.lineWidth = 2 * DPR;
+        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
       // domain highlight when target for project drop or hover
       if (dropTargetDomainId === n.id || hoverNodeId === n.id) {
         ctx.beginPath();
@@ -735,6 +753,8 @@ export function drawMap() {
         ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
+      
+      // Domain border
       ctx.beginPath();
       ctx.strokeStyle = n.color;
       ctx.lineWidth = 1.2 * DPR;
@@ -742,17 +762,32 @@ export function drawMap() {
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+      
+      // Domain title
       ctx.fillStyle = "#cfe8ff";
       ctx.font = `${14 * DPR}px system-ui`;
       ctx.textAlign = "center";
       ctx.fillText(n.title, n.x, n.y - n.r - 8 * DPR);
     });
 
-  // projects
+  // projects as planets
   nodes
     .filter((n) => n._type === "project")
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
+      
+      // Draw planet
+      drawPlanet(ctx, n.x, n.y, n.r, "#7b68ee", 'planet');
+      
+      // Search highlight
+      if (state.searchResults && state.searchResults.projects.includes(n.id)) {
+        ctx.beginPath();
+        ctx.strokeStyle = "#ffd700";
+        ctx.lineWidth = 2 * DPR;
+        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
       // highlight if drop target (pulsing)
       if (dropTargetProjectId === n.id) {
         const t = (performance.now() / 300) % (Math.PI * 2);
@@ -774,15 +809,15 @@ export function drawMap() {
         ctx.arc(n.x, n.y, n.r + 22 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
+      
+      // Project orbit ring
       ctx.beginPath();
       ctx.strokeStyle = "#1d2b4a";
       ctx.lineWidth = 1 * DPR;
       ctx.arc(n.x, n.y, n.r + 18 * DPR, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.beginPath();
-      ctx.fillStyle = "#8ab4ff";
-      ctx.arc(n.x, n.y, 6 * DPR, 0, Math.PI * 2);
-      ctx.fill();
+      
+      // Project title
       ctx.fillStyle = "#cde1ff";
       ctx.font = `${12 * DPR}px system-ui`;
       ctx.textAlign = "center";
@@ -808,20 +843,35 @@ export function drawMap() {
     } catch (e) {}
   }
 
-  // tasks
+  // tasks as stars/asteroids
   nodes
     .filter((n) => n._type === "task")
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
       const t = state.tasks.find((x) => x.id === n.id);
-      const baseColor =
-        n.status === "done"
-          ? "#6b7280"
-          : n.status === "today"
-          ? "#ffd166"
-          : n.status === "doing"
-          ? "#60a5fa"
-          : "#9ca3af";
+      
+      // Task colors based on status
+      const taskColors = {
+        "done": "#6b7280",
+        "today": "#ffd166", 
+        "doing": "#60a5fa",
+        "backlog": "#9ca3af"
+      };
+      const baseColor = taskColors[n.status] || taskColors["backlog"];
+      
+      // Draw task as a star/asteroid
+      drawTaskStar(ctx, n.x, n.y, n.r, baseColor, n.status);
+      
+      // Search highlight
+      if (state.searchResults && state.searchResults.tasks.includes(n.id)) {
+        ctx.beginPath();
+        ctx.strokeStyle = "#ffd700";
+        ctx.lineWidth = 2 * DPR;
+        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      // Aging ring
       if (state.showAging) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
@@ -829,17 +879,8 @@ export function drawMap() {
         ctx.lineWidth = 2 * DPR;
         ctx.stroke();
       }
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      if (state.showGlow && allowGlow) {
-        ctx.shadowColor = baseColor;
-        ctx.shadowBlur = 12 * DPR;
-      } else {
-        ctx.shadowBlur = 0;
-      }
-      ctx.fillStyle = baseColor;
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      
+      // Today highlight
       if (n.status === "today") {
         ctx.beginPath();
         ctx.strokeStyle = "#f59e0b";
@@ -1243,11 +1284,11 @@ window.addEventListener("mouseup", (e) => {
           const cancel = document.getElementById("attachCancel");
           if (ok)
             ok.onclick = () => {
-              confirmAttach();
+                confirmAttach();
             };
           if (cancel)
             cancel.onclick = () => {
-              cancelAttach();
+                cancelAttach();
             };
         }, 20);
       }
@@ -1296,7 +1337,7 @@ window.addEventListener("mouseup", (e) => {
         drawMap();
       } else {
         // Для остальных случаев показываем модалку выбора
-        openMoveTaskModal(t, dropTargetDomainId);
+      openMoveTaskModal(t, dropTargetDomainId);
       }
     }
   }
@@ -1329,7 +1370,7 @@ window.addEventListener("mouseup", (e) => {
               const ok = document.getElementById("detachOk");
               if (ok) {
                 ok.onclick = () => {
-                  try {
+                  try { 
                     confirmDetach();
                   } catch (e) {
                     console.error("Error in detach confirm:", e);
@@ -1339,8 +1380,8 @@ window.addEventListener("mouseup", (e) => {
               const cancel = document.getElementById("detachCancel");
               if (cancel) {
                 cancel.onclick = () => {
-                  pendingDetach = null;
-                  toast.style.display = "none";
+                    pendingDetach = null;
+                    toast.style.display = "none";
                 };
               }
             }, 10);
@@ -1815,4 +1856,251 @@ function onClick(e) {
     obj._type = "domain";
     openInspectorFor(obj);
   }
+}
+
+// ===== COSMIC EFFECTS =====
+
+function initStarField() {
+  starField = [];
+  const starCount = Math.floor((W * H) / 8000); // Density based on canvas size
+  
+  for (let i = 0; i < starCount; i++) {
+    starField.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      size: Math.random() * 2 + 0.5,
+      brightness: Math.random() * 0.8 + 0.2,
+      twinkleSpeed: Math.random() * 0.02 + 0.01,
+      twinklePhase: Math.random() * Math.PI * 2,
+      color: Math.random() > 0.8 ? '#b3d9ff' : '#ffffff' // Some blue stars
+    });
+  }
+}
+
+function drawStarfield(ctx, width, height, viewState) {
+  const now = performance.now();
+  const time = now * 0.001;
+  
+  // Update star twinkling
+  starField.forEach(star => {
+    star.twinklePhase += star.twinkleSpeed;
+    star.currentBrightness = star.brightness + Math.sin(star.twinklePhase) * 0.3;
+  });
+  
+  // Draw stars with parallax effect
+  const parallaxFactor = 1 / Math.max(0.1, viewState.scale);
+  const offsetX = viewState.tx * 0.1;
+  const offsetY = viewState.ty * 0.1;
+  
+  starField.forEach(star => {
+    const x = (star.x + offsetX) * parallaxFactor;
+    const y = (star.y + offsetY) * parallaxFactor;
+    
+    // Only draw stars in viewport
+    if (x > -50 && x < width + 50 && y > -50 && y < height + 50) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, star.currentBrightness));
+      
+      // Draw star with glow effect
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, star.size * 3);
+      gradient.addColorStop(0, star.color);
+      gradient.addColorStop(0.5, star.color + '80');
+      gradient.addColorStop(1, 'transparent');
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, star.size * 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw bright core
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = star.color;
+      ctx.beginPath();
+      ctx.arc(x, y, star.size, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+  });
+}
+
+function drawPlanet(ctx, x, y, radius, color, type = 'planet') {
+  ctx.save();
+  
+  if (type === 'planet') {
+    // Create planet with gradient and texture
+    const gradient = ctx.createRadialGradient(
+      x - radius * 0.3, y - radius * 0.3, 0,
+      x, y, radius
+    );
+    
+    // Planet colors based on type
+    const planetColors = {
+      'task': ['#4a90e2', '#2c5aa0', '#1e3a5f'],
+      'project': ['#7b68ee', '#5a4fcf', '#3d2f8f'],
+      'domain': [color, color + 'cc', color + '66']
+    };
+    
+    const colors = planetColors[type] || planetColors['task'];
+    gradient.addColorStop(0, colors[0]);
+    gradient.addColorStop(0.6, colors[1]);
+    gradient.addColorStop(1, colors[2]);
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add planet atmosphere/glow
+    const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 1.5);
+    glowGradient.addColorStop(0, colors[0] + '40');
+    glowGradient.addColorStop(0.7, colors[0] + '20');
+    glowGradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = glowGradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add surface details
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = colors[2];
+    for (let i = 0; i < 3; i++) {
+      const detailX = x + (Math.random() - 0.5) * radius * 0.8;
+      const detailY = y + (Math.random() - 0.5) * radius * 0.8;
+      const detailR = radius * (0.1 + Math.random() * 0.2);
+      
+      ctx.beginPath();
+      ctx.arc(detailX, detailY, detailR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+  } else if (type === 'nebula') {
+    // Draw nebula (for domains)
+    const nebulaGradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    nebulaGradient.addColorStop(0, color + '40');
+    nebulaGradient.addColorStop(0.5, color + '20');
+    nebulaGradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = nebulaGradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add nebula swirls
+    ctx.globalAlpha = 0.2;
+    for (let i = 0; i < 5; i++) {
+      const swirlX = x + (Math.random() - 0.5) * radius * 0.8;
+      const swirlY = y + (Math.random() - 0.5) * radius * 0.8;
+      const swirlR = radius * (0.3 + Math.random() * 0.4);
+      
+      const swirlGradient = ctx.createRadialGradient(swirlX, swirlY, 0, swirlX, swirlY, swirlR);
+      swirlGradient.addColorStop(0, color + '30');
+      swirlGradient.addColorStop(1, 'transparent');
+      
+      ctx.fillStyle = swirlGradient;
+      ctx.beginPath();
+      ctx.arc(swirlX, swirlY, swirlR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  
+  ctx.restore();
+}
+
+function drawTaskStar(ctx, x, y, radius, color, status) {
+  ctx.save();
+  
+  // Different shapes based on status
+  if (status === 'done') {
+    // Done tasks as dim stars
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.7, color + '80');
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (status === 'today') {
+    // Today tasks as bright stars with rays
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 2);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.3, color + 'cc');
+    gradient.addColorStop(0.7, color + '66');
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add star rays
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const startX = x + Math.cos(angle) * radius * 0.5;
+      const startY = y + Math.sin(angle) * radius * 0.5;
+      const endX = x + Math.cos(angle) * radius * 1.5;
+      const endY = y + Math.sin(angle) * radius * 1.5;
+      
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+    
+  } else if (status === 'doing') {
+    // Doing tasks as pulsing stars
+    const time = performance.now() * 0.003;
+    const pulse = 1 + Math.sin(time) * 0.2;
+    const pulseRadius = radius * pulse;
+    
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, pulseRadius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.5, color + 'aa');
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else {
+    // Backlog tasks as simple asteroids
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.8, color + 'cc');
+    gradient.addColorStop(1, color + '66');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add some surface details
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = color + '80';
+    for (let i = 0; i < 2; i++) {
+      const detailX = x + (Math.random() - 0.5) * radius * 0.6;
+      const detailY = y + (Math.random() - 0.5) * radius * 0.6;
+      const detailR = radius * 0.2;
+      
+      ctx.beginPath();
+      ctx.arc(detailX, detailY, detailR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  
+  // Core
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.restore();
 }
