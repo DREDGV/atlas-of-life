@@ -1113,3 +1113,7 @@ async function init() {
   updateWip();
 }
 init();
+
+// expose renderers for external refresh (storage, addons)
+try { window.renderSidebar = renderSidebar; } catch(_) {}
+try { window.renderToday = renderToday; } catch(_) {}
