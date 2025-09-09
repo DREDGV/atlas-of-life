@@ -22,17 +22,25 @@
         state.tasks.forEach(
           (t) =>
             Array.isArray(t.tags) &&
-            t.tags.forEach((x) => tags.push(String(x).trim()))
+            t.tags.forEach((x) => {
+              const tag = String(x).trim();
+              if (tag) tags.push(tag);
+            })
         );
       }
       if (window.state && Array.isArray(state.projects)) {
         state.projects.forEach(
           (p) =>
             Array.isArray(p.tags) &&
-            p.tags.forEach((x) => tags.push(String(x).trim()))
+            p.tags.forEach((x) => {
+              const tag = String(x).trim();
+              if (tag) tags.push(tag);
+            })
         );
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Error gathering tags:', e);
+    }
     return uniq(tags).sort((a, b) => a.localeCompare(b));
   }
   function gatherProjects() {
@@ -40,9 +48,11 @@
       if (window.state && Array.isArray(state.projects)) {
         return state.projects
           .map((p) => ({ id: p.id, title: String(p.title || "").trim() }))
-          .filter((p) => p.title);
+          .filter((p) => p.title && p.id);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Error gathering projects:', e);
+    }
     return [];
   }
 

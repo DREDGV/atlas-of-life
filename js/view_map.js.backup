@@ -35,13 +35,10 @@ let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
 
 // wheel/zoom handler
 let pendingFrame = false;
-function requestDraw() {
+function requestDraw(){
   if (pendingFrame) return;
   pendingFrame = true;
-  requestAnimationFrame(() => {
-    pendingFrame = false;
-    drawMap();
-  });
+  requestAnimationFrame(() => { pendingFrame = false; drawMap(); });
 }
 
 function onWheel(e) {
@@ -63,9 +60,7 @@ function onWheel(e) {
   viewState.scale = next;
   viewState.tx = cx - wx * next;
   viewState.ty = cy - wy * next;
-  try {
-    logEvent("map_zoom", { scale: Math.round(next * 100) / 100 });
-  } catch (_) {}
+  try { logEvent('map_zoom', { scale: Math.round(next*100)/100 }); } catch(_){}
   requestDraw();
 }
 // DnD state
@@ -94,10 +89,7 @@ export function initMap(canvasEl, tooltipEl) {
   canvas = canvasEl;
   tooltip = tooltipEl;
   resize();
-  window.addEventListener("resize", () => {
-    resize();
-    try { fitAll(); } catch(_) {}
-  });
+  window.addEventListener("resize", resize);
   canvas.addEventListener("mousemove", onMouseMove);
   canvas.addEventListener("mousedown", onMouseDown);
   window.addEventListener("mouseup", () => (viewState.dragging = false));
@@ -164,6 +156,22 @@ function fitToBBox(bx) {
   animateTo(target, 230);
 }
 
+// Fit everything currently visible on the map
+function fitAll() {
+  if (!nodes || nodes.length === 0) {
+    drawMap();
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach((n) => {
+    minX = Math.min(minX, n.x - n.r);
+    minY = Math.min(minY, n.y - n.r);
+    maxX = Math.max(maxX, n.x + n.r);
+    maxY = Math.max(maxY, n.y + n.r);
+  });
+  fitToBBox({ minX, minY, maxX, maxY });
+}
+
 export function fitActiveDomain() {
   const domId = state.activeDomain;
   const dn = nodes.find(
@@ -213,13 +221,12 @@ export function fitActiveDomain() {
 }
 
 export function fitActiveProject() {
-  // choose the first project node under active domain if present
+  // choose the first visible project node (respecting activeDomain if set)
   const pn = nodes.find(
     (n) =>
       n._type === "project" &&
       (!state.activeDomain ||
-        state.projects.find((p) => p.id === n.id)?.domainId ===
-          state.activeDomain)
+        state.projects.find((p) => p.id === n.id)?.domainId === state.activeDomain)
   );
   if (!pn) {
     drawMap();
@@ -284,7 +291,18 @@ function calculateProjectRadius(tasks) {
 export function layoutMap() {
   nodes = [];
   edges = [];
-  const domains = state.activeDomain
+  // Multi-select support: state.activeDomains (Array|Set) has priority
+  let selected = [];
+  try {
+    const ds = state.activeDomains;
+    if (ds && (Array.isArray(ds) ? ds.length : ds.size)) {
+      const ids = new Set(Array.isArray(ds) ? ds : Array.from(ds));
+      selected = state.domains.filter((d) => ids.has(d.id));
+    }
+  } catch (_) {}
+  const domains = selected.length
+    ? selected
+    : state.activeDomain
     ? state.domains.filter((d) => d.id === state.activeDomain)
     : state.domains.slice();
   const domainCount = domains.length;
@@ -404,21 +422,17 @@ export function layoutMap() {
         placed += tasksInRing;
         currentRadius += minDist;
       }
-      // Если задач больше, чем поместилось на кольцах, докладываем в «последнее кольцо»
+      // Если задач больше, чем помещается на кольцах, добавляем на последний кольцо
       if (placed < siblings.length) {
-        // ГАРД: могло не создаться ни одного кольца (узкий maxR и т.п.)
-        if (rings.length === 0) {
-          rings.push({ radius: currentRadius, tasks: [] });
-        }
-        const last = rings[rings.length - 1];
-        last.tasks = (last.tasks || []).concat(siblings.slice(placed));
+        rings[rings.length - 1].tasks = rings[rings.length - 1].tasks.concat(
+          siblings.slice(placed)
+        );
       }
-
       // 5. Для каждой задачи определяем её позицию
       let found = false;
       for (let r = 0; r < rings.length; r++) {
-        const ring = rings[r] || { radius: minDist, tasks: [] };
-        const tasks = (ring && ring.tasks) || [];
+        const ring = rings[r];
+        const tasks = ring.tasks;
         const radius = ring.radius;
         for (let k = 0; k < tasks.length; k++) {
           if (tasks[k].id === t.id) {
@@ -441,18 +455,6 @@ export function layoutMap() {
         }
         if (found) break;
       }
-    } else {
-      // Свободное размещение вне проектов
-      nodes.push({
-        _type: "task",
-        id: t.id,
-        title: t.title,
-        x: savedT && typeof savedT.x === "number" ? savedT.x : 100,
-        y: savedT && typeof savedT.y === "number" ? savedT.y : 100,
-        r: sizeByImportance(t) * DPR,
-        status: t.status,
-        aging: t.updatedAt,
-      });
     }
   });
 
@@ -463,21 +465,20 @@ export function layoutMap() {
       .filter(
         (t) => !state.filterTag || (t.tags || []).includes(state.filterTag)
       );
-    
-    // Разделяем на задачи с доменом и полностью независимые
-    const tasksWithDomain = indepAll.filter(t => t.domainId);
-    const fullyIndependent = indepAll.filter(t => !t.domainId);
-    
-    // Задачи с доменом размещаем по доменам
     domains.forEach((d) => {
       const dNode = nodes.find((n) => n._type === "domain" && n.id === d.id);
       if (!dNode) return;
-      const list = tasksWithDomain.filter((t) => t.domainId === d.id);
+      const list = indepAll.filter((t) => (t.domainId || d.id) === d.id);
       const total = list.length;
       list.forEach((t, idx) => {
         const savedT = t.pos || t._pos;
-        if (savedT && typeof savedT.x === "number" && typeof savedT.y === "number") {
-          // Используем сохраненную позицию (куда перетащил пользователь)
+        if (
+          state.settings &&
+          state.settings.layoutMode === "manual" &&
+          savedT &&
+          typeof savedT.x === "number" &&
+          typeof savedT.y === "number"
+        ) {
           nodes.push({
             _type: "task",
             id: t.id,
@@ -489,7 +490,6 @@ export function layoutMap() {
             aging: t.updatedAt,
           });
         } else {
-          // Автоматическое размещение по орбите домена
           const orbit = Math.max(48 * DPR, dNode.r - 22 * DPR);
           const angle =
             (idx / Math.max(1, total)) * 2 * Math.PI + golden * 0.37;
@@ -507,44 +507,6 @@ export function layoutMap() {
           });
         }
       });
-    });
-    
-    // Полностью независимые задачи размещаем там, куда их перетащили
-    fullyIndependent.forEach((t, idx) => {
-      const savedT = t.pos || t._pos;
-      if (savedT && typeof savedT.x === "number" && typeof savedT.y === "number") {
-        // Используем сохраненную позицию (куда перетащил пользователь)
-        nodes.push({
-          _type: "task",
-          id: t.id,
-          title: t.title,
-          x: savedT.x,
-          y: savedT.y,
-          r: sizeByImportance(t) * DPR,
-          status: t.status,
-          aging: t.updatedAt,
-        });
-      } else {
-        // Только если нет сохраненной позиции - размещаем справа от всех доменов
-        const maxDomainX = Math.max(...domains.map(d => {
-          const dNode = nodes.find(n => n._type === 'domain' && n.id === d.id);
-          return dNode ? dNode.x + dNode.r : 0;
-        }));
-        const startX = maxDomainX + 100 * DPR;
-        const spacing = 80 * DPR;
-        const x = startX + (idx % 3) * spacing;
-        const y = H * 0.3 + Math.floor(idx / 3) * spacing;
-        nodes.push({
-          _type: "task",
-          id: t.id,
-          title: t.title,
-          x,
-          y,
-          r: sizeByImportance(t) * DPR,
-          status: t.status,
-          aging: t.updatedAt,
-        });
-      }
     });
   } catch (_) {
     /* ignore */
@@ -614,12 +576,11 @@ export function drawMap() {
   // compute viewport in world coords for culling
   const inv = 1 / Math.max(0.0001, viewState.scale);
   const pad = 120 * inv;
-  const vx0 = -viewState.tx * inv - pad;
-  const vy0 = -viewState.ty * inv - pad;
+  const vx0 = (-viewState.tx) * inv - pad;
+  const vy0 = (-viewState.ty) * inv - pad;
   const vx1 = (W - viewState.tx) * inv + pad;
   const vy1 = (H - viewState.ty) * inv + pad;
-  const inView = (x, y, r = 0) =>
-    x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
+  const inView = (x, y, r = 0) => (x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1);
 
   // edges
   if (state.showLinks) {
@@ -1213,15 +1174,58 @@ window.addEventListener("mouseup", (e) => {
         setTimeout(() => {
           const ok = document.getElementById("attachOk");
           const cancel = document.getElementById("attachCancel");
-          if (ok)
+          if (ok) {
             ok.onclick = () => {
-              confirmAttach();
+              try {
+                confirmAttach();
+              } catch (_) {
+                console.error("Error confirming attach");
+              }
+              try {
+                layoutMap();
+              } catch (_) {
+                console.error("Error layoutMap after attach");
+              }
+              try {
+                const result = confirmAttach();
+                if (!result) {
+                  console.warn("confirmAttach returned false");
+                }
+              } catch (e) {
+                console.error("Error in confirmAttach:", e);
+              }
             };
-          if (cancel)
+          }
+          if (cancel) {
             cancel.onclick = () => {
-              cancelAttach();
+              try {
+                cancelAttach();
+              } catch (e) {
+                console.error("Error in cancelAttach:", e);
+              }
             };
+          }
         }, 20);
+      }
+    }
+  }
+
+  if (dropTargetDomainId) {
+    if (draggedNode._type === "project") {
+      const project = state.projects.find((p) => p.id === draggedNode.id);
+      if (project && project.domainId !== dropTargetDomainId) {
+        project.domainId = dropTargetDomainId;
+        project.updatedAt = Date.now();
+        moved = true;
+      }
+    }
+    
+    if (draggedNode._type === "task") {
+      const task = state.tasks.find((t) => t.id === draggedNode.id);
+      if (task && task.domainId !== dropTargetDomainId) {
+        task.domainId = dropTargetDomainId;
+        task.updatedAt = Date.now();
+        moved = true;
       }
     }
   }
@@ -1253,23 +1257,7 @@ window.addEventListener("mouseup", (e) => {
       ? state.projects.find((p) => p.id === t.projectId)?.domainId
       : t?.domainId;
     if (t && dropTargetDomainId && dropTargetDomainId !== curDomain) {
-      // Если задача была полностью независимой (без domainId), сразу прикрепляем к домену
-      if (!t.domainId && !t.projectId) {
-        t.domainId = dropTargetDomainId;
-        t.updatedAt = Date.now();
-        saveState();
-        const toast = document.getElementById("toast");
-        if (toast) {
-          toast.className = "toast ok";
-          toast.textContent = "Задача прикреплена к домену";
-          setTimeout(() => { toast.style.display = "none"; }, 1400);
-        }
-        layoutMap();
-        drawMap();
-      } else {
-        // Для остальных случаев показываем модалку выбора
-        openMoveTaskModal(t, dropTargetDomainId);
-      }
+      openMoveTaskModal(t, dropTargetDomainId);
     }
   }
 
@@ -1297,25 +1285,33 @@ window.addEventListener("mouseup", (e) => {
             toast.innerHTML = `Отвязать задачу от проекта? <button id="detachOk">Отвязать</button> <button id="detachCancel">Отмена</button>`;
             toast.style.display = "block";
             toast.style.opacity = "1";
+            // Use setTimeout to ensure DOM is updated before attaching event listeners
             setTimeout(() => {
               const ok = document.getElementById("detachOk");
               if (ok) {
                 ok.onclick = () => {
-                  try {
-                    confirmDetach();
-                  } catch (e) {
-                    console.error("Error in detach confirm:", e);
+                  try { 
+                    const result = confirmDetach(); 
+                    if (!result) {
+                      console.warn("confirmDetach returned false");
+                    }
+                  } catch(e) {
+                    console.error("Error confirming detach", e);
                   }
                 };
               }
               const cancel = document.getElementById("detachCancel");
               if (cancel) {
                 cancel.onclick = () => {
-                  pendingDetach = null;
-                  toast.style.display = "none";
+                  try {
+                    pendingDetach = null;
+                    toast.style.display = "none";
+                  } catch (e) {
+                    console.error("Error cancelling detach", e);
+                  }
                 };
               }
-            }, 10);
+            }, 0);
           }
         }
       }
@@ -1475,11 +1471,6 @@ export function confirmAttach() {
     return false;
   }
   t.projectId = item.toProjectId;
-  // Устанавливаем domainId из проекта
-  try {
-    const project = state.projects.find(p => p.id === item.toProjectId);
-    if (project) t.domainId = project.domainId;
-  } catch (_) {}
   if (state.settings && state.settings.layoutMode === "auto") {
     try {
       delete t.pos;
@@ -1514,20 +1505,6 @@ export function confirmAttach() {
   return true;
 }
 
-export function cancelAttach() {
-  pendingAttach = null;
-  const toast = document.getElementById("toast");
-  if (toast) {
-    toast.style.opacity = "0";
-    setTimeout(() => {
-      toast.style.display = "none";
-      toast.innerHTML = "";
-    }, 300);
-  }
-  layoutMap();
-  drawMap();
-}
-
 // Confirm detach task from its current project (uses pendingDetach)
 function confirmDetach() {
   try {
@@ -1538,49 +1515,23 @@ function confirmDetach() {
       pendingDetach = null;
       return false;
     }
-    
-    // Определяем, находится ли задача внутри какого-либо домена
-    const taskPos = item.pos || { x: 100, y: 100 };
-    let insideDomain = null;
-    
-    // Проверяем все домены на пересечение с позицией задачи
-    for (const domain of state.domains) {
-      const dNode = nodes.find(n => n._type === 'domain' && n.id === domain.id);
-      if (dNode) {
-        const dx = taskPos.x - dNode.x;
-        const dy = taskPos.y - dNode.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist <= dNode.r) {
-          insideDomain = domain.id;
-          break;
-        }
-      }
-    }
-    
-    // Отвязываем от проекта
     t.projectId = null;
-    
-    if (insideDomain) {
-      // Задача внутри домена — остается в домене
-      t.domainId = insideDomain;
-    } else {
-      // Задача вне всех доменов — становится полностью независимой
-      t.domainId = null;
-    }
-    
     if (state.settings && state.settings.layoutMode === "auto") {
       try { delete t.pos; } catch (_) {}
     } else {
-      t.pos = { x: taskPos.x, y: taskPos.y };
+      t.pos = { x: item.pos.x, y: item.pos.y };
     }
-    
+    try {
+      const from = state.projects.find((p) => p.id === item.fromProjectId);
+      if (from) t.domainId = from.domainId;
+    } catch (_) {}
     t.updatedAt = Date.now();
     saveState();
     pendingDetach = null;
     const toast = document.getElementById("toast");
     if (toast) {
       toast.className = "toast ok";
-      toast.textContent = insideDomain ? "Отвязано от проекта" : "Задача стала независимой";
+      toast.textContent = "Отвязано";
       setTimeout(() => { toast.style.display = "none"; }, 1400);
     }
     layoutMap();
@@ -1599,6 +1550,20 @@ function confirmDetach() {
   }
 }
 
+export function cancelAttach() {
+  pendingAttach = null;
+  const toast = document.getElementById("toast");
+  if (toast) {
+    toast.style.opacity = "0";
+    setTimeout(() => {
+      toast.style.display = "none";
+      toast.innerHTML = "";
+    }, 300);
+  }
+  layoutMap();
+  drawMap();
+}
+
 export function getPendingAttach() {
   return pendingAttach;
 }
@@ -1608,9 +1573,11 @@ window.mapApi = window.mapApi || {};
 window.mapApi.getPendingAttach = getPendingAttach;
 window.mapApi.confirmAttach = confirmAttach;
 window.mapApi.cancelAttach = cancelAttach;
-window.mapApi.confirmDetach = confirmDetach;
 window.mapApi.drawMap = drawMap;
 window.mapApi.initMap = initMap;
+// expose layout and helpers
+window.mapApi.layoutMap = layoutMap;
+window.mapApi.fitAll = fitAll;
 // expose scale helpers: percent-like values (100 -> scale 1)
 function getScale() {
   return Math.round(viewState.scale * 100);
@@ -1630,6 +1597,15 @@ function setZoom(percent) {
 }
 window.mapApi.getScale = getScale;
 window.mapApi.setZoom = setZoom;
+
+// refresh helper for external modules
+function refresh(opts = {}) {
+  if (opts && opts.layout) {
+    try { layoutMap(); } catch (_) {}
+  }
+  drawMap();
+}
+window.mapApi.refresh = refresh;
 
 // small modal helper (reuse existing modal structure in index.html)
 function openModalLocal({
@@ -1690,11 +1666,6 @@ function openMoveTaskModal(task, targetDomainId) {
         // keep manual pos if manual; else recompute on next layout
       } else {
         task.projectId = val;
-        // Устанавливаем domainId из проекта
-        try {
-          const project = state.projects.find(p => p.id === val);
-          if (project) task.domainId = project.domainId;
-        } catch (_) {}
         if (state.settings && state.settings.layoutMode === "auto") {
           try {
             delete task.pos;
@@ -1726,31 +1697,16 @@ function openMoveTaskModal(task, targetDomainId) {
 function onDblClick(e) {
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
-  try {
-    logEvent("map_dblclick", { node: n?._type || "none" });
-  } catch (_) {}
+  try { logEvent('map_dblclick', { node: n?._type||'none' }); } catch(_){}
   if (!n) return;
   if (n._type === "project") {
     // compute bbox around project + its tasks and fit
     const pId = n.id;
-    const members = nodes.filter(
-      (x) =>
-        (x._type === "project" && x.id === pId) ||
-        (x._type === "task" &&
-          state.tasks.find((t) => t.id === x.id)?.projectId === pId)
-    );
+    const members = nodes.filter(x => (x._type==='project' && x.id===pId) || (x._type==='task' && (state.tasks.find(t=>t.id===x.id)?.projectId===pId)));
     if (members.length) {
-      let minX = Infinity,
-        minY = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity;
-      members.forEach((m) => {
-        minX = Math.min(minX, m.x - m.r);
-        minY = Math.min(minY, m.y - m.r);
-        maxX = Math.max(maxX, m.x + m.r);
-        maxY = Math.max(maxY, m.y + m.r);
-      });
-      fitToBBox({ minX, minY, maxX, maxY });
+      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      members.forEach(m=>{ minX=Math.min(minX,m.x-m.r); minY=Math.min(minY,m.y-m.r); maxX=Math.max(maxX,m.x+m.r); maxY=Math.max(maxY,m.y+m.r); });
+      fitToBBox({minX,minY,maxX,maxY});
       return;
     }
   }
@@ -1770,6 +1726,7 @@ function onClick(e) {
     state.activeDomain = null;
     layoutMap();
     drawMap();
+    try { fitAll(); } catch(_){}
     return;
   }
   hoverNodeId = n.id;

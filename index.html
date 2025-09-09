@@ -1,15 +1,15 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Атлас жизни v2 (modular)</title>
+  <title>Атлас жизни v0.2.7</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="brand">Атлас жизни v2</div>
+    <div class="brand">Атлас жизни v0.2.7</div>
     <div class="chip active" data-view="map">Карта</div>
     <div class="chip" data-view="today">Сегодня</div>
     <div class="chip" id="btnCenter" title="Центр (C)">Центр</div>
@@ -17,6 +17,7 @@
     <div class="chip" id="btnFitProject" title="Подогнать проект (P)">Подогнать проект</div>
     <div class="chip" id="btnReset" title="Сброс вида (R)">Сброс</div>
     <div class="spacer"></div>
+    <div class="chip" id="btnFullscreen" title="Полный экран">Экран</div>
     <div class="toggle">
       <div class="legend">
         <span class="pill pill-backlog">план</span>
@@ -24,7 +25,7 @@
         <span class="pill pill-doing">в работе</span>
         <span class="pill pill-done">готово</span>
       </div>
-  <label>Зум:<input id="zoomSlider" class="zoom-slider" type="range" min="0.2" max="2" step="0.01" value="1">
+  <label>Зум:<input id="zoomSlider" class="zoom-slider" type="range" min="50" max="220" step="1" value="100">
 
       <button class="chip" id="btnExport" title="Экспорт JSON">Экспорт</button>
       <label class="chip" for="fileImport" title="Импорт JSON">Импорт</label>
@@ -88,11 +89,18 @@
 <div id="toast" class="toast"></div>
 
 <script type="module" src="./js/app.js"></script>
+<!-- Experiments system -->
+<script src="addons/_experiments.js"></script>
+<script src="addons/experiments/exp-2025-09-07-pulse-active-domain.js"></script>
+
+<!-- Existing addons -->
 <link rel="stylesheet" href="addons/addons.css">
 <script src="addons/ics-export.js"></script>
 <script src="addons/autocomplete.js"></script>
 <script src="addons/today-plus.js"></script>
 <script src="addons/inspector-plus.js"></script>
 
+<link rel="stylesheet" href="addons/fix-ui.css">
+<script src="addons/fixes-v0.2.6.js"></script>
 </body>
 </html>

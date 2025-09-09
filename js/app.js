@@ -1,4 +1,4 @@
-﻿// js/app.js
+// js/app.js
 import { state, $, $$, initDemoData } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
@@ -106,6 +106,8 @@ function showToast(text, cls = "ok", ms = 2500) {
     }, 320);
   }, ms);
 }
+// expose globally for addons/other modules
+try { window.showToast = showToast; } catch (_) {}
 
 function renderSidebar() {
   const dWrap = document.getElementById("domainsList");
@@ -130,10 +132,19 @@ function renderSidebar() {
   html += state.domains
     .map((d) => {
       const count = state.projects.filter((p) => p.domainId === d.id).length;
-      const act =
-        state.activeDomain === d.id
-          ? 'style="background:#111a23;border:1px solid #1e2a44"'
-          : "";
+      let __active = false;
+      try {
+        const ds = state.activeDomains;
+        if (ds && (Array.isArray(ds) ? ds.length : ds.size)) {
+          const ids = new Set(Array.isArray(ds) ? ds : Array.from(ds));
+          __active = ids.has(d.id);
+        } else {
+          __active = state.activeDomain === d.id;
+        }
+      } catch (_) {}
+      const act = __active
+        ? 'style="background:#111a23;border:1px solid #1e2a44"'
+        : "";
       const color = d.color || "#2dd4bf";
       return `<div class="row" data-domain="${d.id}" ${act}>
       <div class="dot" style="background:${color}"></div>
@@ -279,8 +290,25 @@ function renderSidebar() {
   }
   dWrap.querySelectorAll(".row[data-domain]").forEach((el) => {
     const id = el.dataset.domain;
-    el.onclick = () => {
+    el.onclick = (ev) => {
+      if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
+        // toggle multiselect list
+        let ds = state.activeDomains;
+        if (!ds) ds = state.activeDomains = [];
+        const arr = Array.isArray(ds) ? ds : Array.from(ds);
+        const set = new Set(arr);
+        if (set.has(id)) set.delete(id);
+        else set.add(id);
+        state.activeDomains = Array.from(set);
+        state.activeDomain = null;
+        renderSidebar();
+        layoutMap();
+        drawMap();
+        try { window.mapApi && window.mapApi.fitAll && window.mapApi.fitAll(); } catch(_){}
+        return;
+      }
       state.activeDomain = id;
+      try { state.activeDomains = []; } catch(_){}
       renderSidebar();
       layoutMap();
       drawMap();
@@ -853,10 +881,20 @@ function setupHeader() {
   const btnFitDomain = $("#btnFitDomain");
   const btnFitProject = $("#btnFitProject");
   const btnReset = $("#btnReset");
+  const btnFullscreen = $("#btnFullscreen");
   if (btnCenter) btnCenter.onclick = () => centerView();
   if (btnFitDomain) btnFitDomain.onclick = () => fitActiveDomain();
   if (btnFitProject) btnFitProject.onclick = () => fitActiveProject();
   if (btnReset) btnReset.onclick = () => resetView();
+  if (btnFullscreen) btnFullscreen.onclick = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch (_) {}
+  };
 
   // export/import
   $("#btnExport").onclick = () => exportJson();
@@ -997,6 +1035,9 @@ function submitQuick(text) {
   drawMap();
   renderToday();
   updateWip();
+  
+  //_emit state change event
+  if (window.bus) window.bus.emit('state:changed', { reason: 'quick-add' });
 }
 
 async function init() {

@@ -12,6 +12,9 @@ import {
 function drawMap() {
   return window.mapApi && window.mapApi.drawMap && window.mapApi.drawMap();
 }
+function refreshMap(opts){
+  return window.mapApi && window.mapApi.refresh && window.mapApi.refresh(opts||{});
+}
 function getPendingAttach() {
   return (
     window.mapApi &&
@@ -78,7 +81,7 @@ export function openInspectorFor(obj) {
         updatedAt: Date.now(),
       });
       saveState();
-      drawMap();
+      refreshMap({ layout: true });
       openInspectorFor(obj);
     };
   }
@@ -119,7 +122,7 @@ export function openInspectorFor(obj) {
         updatedAt: Date.now(),
       });
       saveState();
-      drawMap();
+      refreshMap({ layout: true });
       openInspectorFor(obj);
     };
     // add button to create independent task in this project's domain
@@ -137,7 +140,7 @@ export function openInspectorFor(obj) {
           const id = 't'+Math.random().toString(36).slice(2,8);
           state.tasks.push({ id, projectId:null, domainId: obj.domainId, title, tags:[], status:'backlog', createdAt:Date.now(), updatedAt:Date.now() });
           saveState();
-          drawMap();
+          refreshMap({ layout: true });
           openInspectorFor(obj);
         };
       }
@@ -161,7 +164,8 @@ export function openInspectorFor(obj) {
     ins.innerHTML = `
       <h2>Задача</h2>
       <div class="kv"><strong>${obj.title}</strong></div>
-      <div class="kv">Проект: ${project(obj.projectId).title}</div>
+      <div class="kv">Проект: ${project(obj.projectId)?.title || 'Без проекта'}</div>
+      <div class="kv">Домен: ${obj.domainId ? byId(state.domains, obj.domainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
       <div class="kv">Теги: #${obj.tags.join(" #") || "-"}</div>
       <div class="kv">Статус: ${statusPill(obj.status)} · обновл.: ${daysSince(
       obj.updatedAt
@@ -232,7 +236,7 @@ export function openInspectorFor(obj) {
           try{ if(state.settings && state.settings.layoutMode==='auto'){ delete obj.pos; } }catch(_){}
           obj.updatedAt = Date.now();
           saveState();
-          drawMap();
+          refreshMap({ layout: true });
           openInspectorFor(state.projects.find(p=>p.id===pid));
         };
       }
