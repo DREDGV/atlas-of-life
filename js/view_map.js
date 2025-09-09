@@ -120,8 +120,28 @@ export function setShowFps() {
 
 // Camera helpers and fit animations
 export function centerView() {
-  viewState.tx = 0;
-  viewState.ty = 0;
+  // Center all visible content on screen
+  if (nodes && nodes.length > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach((n) => {
+      if (!n) return;
+      const r = n.r || 0;
+      minX = Math.min(minX, n.x - r);
+      minY = Math.min(minY, n.y - r);
+      maxX = Math.max(maxX, n.x + r);
+      maxY = Math.max(maxY, n.y + r);
+    });
+    
+    if (isFinite(minX)) {
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      viewState.tx = W * 0.5 - centerX;
+      viewState.ty = H * 0.5 - centerY;
+    }
+  } else {
+    viewState.tx = 0;
+    viewState.ty = 0;
+  }
   drawMap();
 }
 export function resetView() {

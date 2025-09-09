@@ -896,6 +896,17 @@ function setupHeader() {
     } catch (_) {}
   };
 
+  // Handle fullscreen change events to fix display glitches
+  document.addEventListener('fullscreenchange', () => {
+    setTimeout(() => {
+      try {
+        if (typeof window.onResize === 'function') window.onResize();
+        if (typeof layoutMap === 'function') layoutMap();
+        if (typeof drawMap === 'function') drawMap();
+      } catch (_) {}
+    }, 100);
+  });
+
   // export/import
   $("#btnExport").onclick = () => exportJson();
   const fileInput = $("#fileImport");
