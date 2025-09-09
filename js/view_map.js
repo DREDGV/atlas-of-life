@@ -120,8 +120,8 @@ export function setShowFps() {
 
 // Camera helpers and fit animations
 export function centerView() {
-  viewState.tx = W * 0.5;
-  viewState.ty = H * 0.5;
+  viewState.tx = 0;
+  viewState.ty = 0;
   drawMap();
 }
 export function resetView() {
