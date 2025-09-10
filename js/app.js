@@ -15,6 +15,7 @@ import {
 import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
+import { initializeHotkeys } from "./hotkeys.js";
 
 // I18N
 const I18N = {
@@ -38,7 +39,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.8";
+let APP_VERSION = "Atlas_of_life_v0.2.9";
 
 // ephemeral UI state
 const ui = {
@@ -106,8 +107,290 @@ function showToast(text, cls = "ok", ms = 2500) {
     }, 320);
   }, ms);
 }
+
+function openHotkeysModal() {
+  const hotkeys = state.settings.hotkeys;
+  const hotkeyDescriptions = {
+    newTask: 'Создать новую задачу',
+    newProject: 'Создать новый проект', 
+    newDomain: 'Создать новый домен',
+    search: 'Открыть поиск',
+    closeInspector: 'Закрыть инспектор',
+    statusPlan: 'Установить статус "План"',
+    statusToday: 'Установить статус "Сегодня"', 
+    statusDoing: 'Установить статус "В работе"',
+    statusDone: 'Установить статус "Готово"',
+    fitAll: 'Показать все объекты',
+    fitDomain: 'Подогнать активный домен',
+    fitProject: 'Подогнать активный проект'
+  };
+  
+  let bodyHTML = '<div style="display:flex;flex-direction:column;gap:12px;max-height:400px;overflow-y:auto;">';
+  
+  // Add help text
+  bodyHTML += '<div style="background:var(--panel-2);padding:8px;border-radius:4px;margin-bottom:8px;">';
+  bodyHTML += '<strong>💡 Подсказка:</strong> Нажмите на поле ввода и нажмите нужную комбинацию клавиш для изменения горячей клавиши.';
+  bodyHTML += '</div>';
+  
+  // Add current hotkeys reference
+  bodyHTML += '<div style="background:var(--panel-2);padding:8px;border-radius:4px;margin-bottom:8px;">';
+  bodyHTML += '<strong>⌨️ Текущие горячие клавиши:</strong><br/>';
+  bodyHTML += '• <kbd>Ctrl+N</kbd> - новая задача<br/>';
+  bodyHTML += '• <kbd>Ctrl+Shift+N</kbd> - новый проект<br/>';
+  bodyHTML += '• <kbd>Ctrl+Shift+D</kbd> - новый домен<br/>';
+  bodyHTML += '• <kbd>Ctrl+F</kbd> - поиск<br/>';
+  bodyHTML += '• <kbd>1,2,3,4</kbd> - смена статуса<br/>';
+  bodyHTML += '• <kbd>Escape</kbd> - закрыть инспектор<br/>';
+  bodyHTML += '• <kbd>Ctrl+0</kbd> - показать все<br/>';
+  bodyHTML += '</div>';
+  
+  // Add hotkey settings
+  for (const [action, combo] of Object.entries(hotkeys)) {
+    const description = hotkeyDescriptions[action] || action;
+    bodyHTML += `
+      <div style="display:flex;align-items:center;gap:8px;padding:4px;">
+        <label style="flex:1;font-size:14px;">${description}:</label>
+        <input type="text" 
+               id="hotkey-${action}" 
+               value="${combo}" 
+               style="width:120px;padding:4px 8px;border:1px solid var(--panel-2);border-radius:4px;background:var(--panel-1);color:var(--text);"
+               readonly />
+        <button onclick="clearHotkey('${action}')" 
+                style="padding:4px 8px;background:var(--muted);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">
+          Очистить
+        </button>
+      </div>
+    `;
+  }
+  
+  bodyHTML += '</div>';
+  
+  openModal({
+    title: "⌨️ Настройки горячих клавиш",
+    bodyHTML: bodyHTML,
+    onConfirm: () => {
+      // Save hotkey changes
+      for (const [action] of Object.entries(hotkeys)) {
+        const input = document.getElementById(`hotkey-${action}`);
+        if (input && input.value !== state.settings.hotkeys[action]) {
+          window.hotkeys.update(action, input.value);
+        }
+      }
+      showToast("Горячие клавиши обновлены", "ok");
+    },
+    confirmText: "Сохранить",
+    cancelText: "Отмена"
+  });
+  
+  // Add event listeners for hotkey input
+  setTimeout(() => {
+    for (const [action] of Object.entries(hotkeys)) {
+      const input = document.getElementById(`hotkey-${action}`);
+      if (input) {
+        input.addEventListener('keydown', (e) => {
+          e.preventDefault();
+          const combo = getKeyComboString(e);
+          if (combo) {
+            input.value = combo;
+          }
+        });
+      }
+    }
+  }, 100);
+}
+
+function getKeyComboString(event) {
+  const parts = [];
+  if (event.ctrlKey) parts.push('ctrl');
+  if (event.shiftKey) parts.push('shift');
+  if (event.altKey) parts.push('alt');
+  if (event.metaKey) parts.push('meta');
+  
+  let key = event.key.toLowerCase();
+  if (key === ' ') key = 'space';
+  if (key === 'control' || key === 'shift' || key === 'alt' || key === 'meta') return null;
+  
+  parts.push(key);
+  return parts.join('+');
+}
+
+function clearHotkey(action) {
+  const input = document.getElementById(`hotkey-${action}`);
+  if (input) {
+    input.value = '';
+  }
+}
+
+function openThemeModal() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+  
+  let bodyHTML = '<div style="display:flex;flex-direction:column;gap:12px;">';
+  bodyHTML += '<div style="background:var(--panel-2);padding:8px;border-radius:4px;">';
+  bodyHTML += '<strong>🎨 Выберите тему оформления:</strong>';
+  bodyHTML += '</div>';
+  
+  bodyHTML += `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;cursor:pointer;">
+        <input type="radio" name="theme" value="dark" ${currentTheme === 'dark' ? 'checked' : ''} style="margin:0;">
+        <span>🌙 Темная тема</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;cursor:pointer;">
+        <input type="radio" name="theme" value="light" ${currentTheme === 'light' ? 'checked' : ''} style="margin:0;">
+        <span>☀️ Светлая тема</span>
+      </label>
+    </div>
+  `;
+  
+  bodyHTML += '</div>';
+  
+  openModal({
+    title: "🎨 Настройки темы",
+    bodyHTML: bodyHTML,
+    onConfirm: () => {
+      const selectedTheme = document.querySelector('input[name="theme"]:checked')?.value;
+      if (selectedTheme && selectedTheme !== currentTheme) {
+        document.documentElement.setAttribute('data-theme', selectedTheme);
+        localStorage.setItem('atlas_theme', selectedTheme);
+        showToast(`Тема изменена на ${selectedTheme === 'dark' ? 'темную' : 'светлую'}`, "ok");
+      }
+    },
+    confirmText: "Применить",
+    cancelText: "Отмена"
+  });
+}
+
+function openDisplayModal() {
+  let bodyHTML = '<div style="display:flex;flex-direction:column;gap:12px;">';
+  bodyHTML += '<div style="background:var(--panel-2);padding:8px;border-radius:4px;">';
+  bodyHTML += '<strong>📱 Настройки отображения:</strong>';
+  bodyHTML += '</div>';
+  
+  bodyHTML += `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
+        <input type="checkbox" id="displayLinks" ${state.showLinks ? 'checked' : ''} style="margin:0;">
+        <span>🔗 Показывать связи между элементами</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
+        <input type="checkbox" id="displayAging" ${state.showAging ? 'checked' : ''} style="margin:0;">
+        <span>⏰ Показывать давность элементов</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
+        <input type="checkbox" id="displayGlow" ${state.showGlow ? 'checked' : ''} style="margin:0;">
+        <span>✨ Показывать свечение элементов</span>
+      </label>
+    </div>
+  `;
+  
+  bodyHTML += '</div>';
+  
+  openModal({
+    title: "📱 Настройки отображения",
+    bodyHTML: bodyHTML,
+    onConfirm: () => {
+      const links = document.getElementById('displayLinks').checked;
+      const aging = document.getElementById('displayAging').checked;
+      const glow = document.getElementById('displayGlow').checked;
+      
+      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow) {
+        state.showLinks = links;
+        state.showAging = aging;
+        state.showGlow = glow;
+        saveState();
+        drawMap();
+        showToast("Настройки отображения обновлены", "ok");
+      }
+    },
+    confirmText: "Применить",
+    cancelText: "Отмена"
+  });
+}
+
+function openExportModal() {
+  let bodyHTML = '<div style="display:flex;flex-direction:column;gap:12px;">';
+  bodyHTML += '<div style="background:var(--panel-2);padding:8px;border-radius:4px;">';
+  bodyHTML += '<strong>💾 Экспорт и импорт данных:</strong>';
+  bodyHTML += '</div>';
+  
+  bodyHTML += `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button id="exportBtn" style="padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;">
+        📤 Экспортировать все данные
+      </button>
+      <label for="importData" style="padding:8px 12px;background:var(--ok);color:white;border-radius:4px;cursor:pointer;text-align:center;">
+        📥 Импортировать данные
+      </label>
+      <input type="file" id="importData" accept=".json" style="display:none;">
+      <button id="clearBtn" style="padding:8px 12px;background:var(--warn);color:white;border:none;border-radius:4px;cursor:pointer;">
+        🗑️ Очистить все данные
+      </button>
+    </div>
+  `;
+  
+  bodyHTML += '</div>';
+  
+  openModal({
+    title: "💾 Экспорт/Импорт",
+    bodyHTML: bodyHTML,
+    onConfirm: () => {
+      // Setup event handlers after modal is shown
+      setTimeout(() => {
+        const exportBtn = document.getElementById('exportBtn');
+        const importInput = document.getElementById('importData');
+        const clearBtn = document.getElementById('clearBtn');
+        
+        if (exportBtn) {
+          exportBtn.onclick = () => {
+            try {
+              exportJson();
+              showToast("Данные экспортированы", "ok");
+            } catch (error) {
+              showToast("Ошибка экспорта: " + error.message, "error");
+            }
+          };
+        }
+        
+        if (importInput) {
+          importInput.onchange = async (e) => {
+            if (!e.target.files || !e.target.files[0]) return;
+            try {
+              await importJson(e.target.files[0]);
+              renderSidebar();
+              if (window.layoutMap) window.layoutMap();
+              if (window.drawMap) window.drawMap();
+              renderToday();
+              showToast("Данные импортированы", "ok");
+            } catch (err) {
+              showToast("Ошибка импорта: " + err.message, "error");
+            } finally {
+              e.target.value = "";
+            }
+          };
+        }
+        
+        if (clearBtn) {
+          clearBtn.onclick = () => {
+            if (confirm("Вы уверены, что хотите очистить все данные? Это действие нельзя отменить.")) {
+              try {
+                localStorage.clear();
+                location.reload();
+              } catch (error) {
+                showToast("Ошибка очистки: " + error.message, "error");
+              }
+            }
+          };
+        }
+      }, 100);
+    },
+    confirmText: "Закрыть",
+    cancelText: "Отмена"
+  });
+}
+
 // expose globally for addons/other modules
 try { window.showToast = showToast; } catch (_) {}
+try { window.clearHotkey = clearHotkey; } catch (_) {}
 
 // Calculate statistics for sidebar
 function calculateStats() {
@@ -601,12 +884,12 @@ function renderSidebar() {
     el.onclick = () => {
       const val = el.dataset.status === 'all' ? null : el.dataset.status;
       state.filterStatus = val;
-      renderSidebar();
+        renderSidebar();
       if (window.layoutMap) window.layoutMap();
       if (window.drawMap) window.drawMap();
     };
   });
-  
+
   // Tags section
   const allTags = [
     ...new Set(
@@ -631,14 +914,14 @@ function renderSidebar() {
   // Tag handlers
   if (allTags.length > 0) {
     statusWrap.querySelectorAll(".tag[data-tag]").forEach((el) => {
-      el.onclick = () => {
-        const val = el.dataset.tag || null;
-        state.filterTag = val;
-        renderSidebar();
-        layoutMap();
-        drawMap();
-      };
-    });
+    el.onclick = () => {
+      const val = el.dataset.tag || null;
+      state.filterTag = val;
+      renderSidebar();
+      layoutMap();
+      drawMap();
+    };
+  });
   }
   
   // Search functionality
@@ -1177,10 +1460,36 @@ window.openDomainMenuX = openDomainMenuX;
 }
 
 function updateWip() {
-  const wip = state.tasks.filter((t) => t.status === "doing").length;
+  // New WIP logic: count tasks with status=today OR due=today
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTimestamp = today.getTime();
+  
+  const wip = state.tasks.filter((t) => {
+    // Status is today
+    if (t.status === "today") return true;
+    
+    // Has deadline today
+    if (t.scheduledFor) {
+      const taskDate = new Date(t.scheduledFor);
+      taskDate.setHours(0, 0, 0, 0);
+      return taskDate.getTime() === todayTimestamp;
+    }
+    
+    return false;
+  }).length;
+  
+  // Get WIP limit from settings, default to 5
+  const wipLimit = state.settings?.wipTodayLimit || 5;
+  
   const el = document.getElementById("wipInfo");
-  el.textContent = I18N.wip(wip, state.wipLimit);
-  el.className = "wip" + (wip > state.wipLimit ? " over" : "");
+  el.textContent = I18N.wip(wip, wipLimit);
+  el.className = "wip" + (wip > wipLimit ? " over" : "");
+  
+  // Show warning if over limit
+  if (wip > wipLimit) {
+    showToast(`Превышен лимит WIP: ${wip}/${wipLimit}`, "warn");
+  }
 }
 
 function setupHeader() {
@@ -1198,34 +1507,7 @@ function setupHeader() {
       }
     };
   });
-  const tgLinks = $("#tgLinks");
-  const tgAging = $("#tgAging");
-  const tgGlow = $("#tgGlow");
-  if (tgLinks) {
-    tgLinks.checked = !!state.showLinks;
-    tgLinks.onchange = (e) => {
-      state.showLinks = e.target.checked;
-      saveState();
-      layoutMap();
-      drawMap();
-    };
-  }
-  if (tgAging) {
-    tgAging.checked = !!state.showAging;
-    tgAging.onchange = (e) => {
-      state.showAging = e.target.checked;
-      saveState();
-      drawMap();
-    };
-  }
-  if (tgGlow) {
-    tgGlow.checked = !!state.showGlow;
-    tgGlow.onchange = (e) => {
-      state.showGlow = e.target.checked;
-      saveState();
-      drawMap();
-    };
-  }
+  // Display settings moved to settings menu
 
   // fit/center buttons
   const btnCenter = $("#btnCenter");
@@ -1258,23 +1540,7 @@ function setupHeader() {
     }, 100);
   });
 
-  // export/import
-  $("#btnExport").onclick = () => exportJson();
-  const fileInput = $("#fileImport");
-  fileInput.onchange = async (e) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    try {
-      await importJson(e.target.files[0]);
-      renderSidebar();
-      if (window.layoutMap) window.layoutMap();
-      if (window.drawMap) window.drawMap();
-      renderToday();
-    } catch (err) {
-      alert(I18N.errors.import + err.message);
-    } finally {
-      e.target.value = "";
-    }
-  };
+  // Export/import moved to settings menu
   // edge cap slider
   // zoom slider (top control)
   const zoomSlider = $("#zoomSlider");
@@ -1303,9 +1569,21 @@ function setupHeader() {
           `<div><strong>Версия:</strong> ${APP_VERSION}</div>` +
           `<div><a href="CHANGELOG.md" target="_blank" rel="noopener">📝 Открыть CHANGELOG</a></div>` +
           `<div><a href="IDEAS.md" target="_blank" rel="noopener">🚀 Открыть IDEAS</a></div>` +
+          '<div style="margin-top:12px;padding:8px;background:var(--panel-2);border-radius:4px;">' +
+          '<strong>⚙️ Настройки:</strong><br/>' +
+          'Все настройки приложения доступны через кнопку ⚙️ в верхней панели' +
+          '</div>' +
           "</div>",
         confirmText: "Ок",
       });
+    };
+  }
+  
+  // hotkeys settings modal
+  const btnHotkeys = document.getElementById("btnHotkeys");
+  if (btnHotkeys) {
+    btnHotkeys.onclick = () => {
+      openHotkeysModal();
     };
   }
   // theme toggle using data-theme attribute (persist in localStorage)
@@ -1326,6 +1604,62 @@ function setupHeader() {
       };
     }
   }catch(_){}
+  
+  // Setup settings dropdown
+  const btnSettings = document.getElementById("btnSettings");
+  const settingsMenu = document.getElementById("settingsMenu");
+  
+  console.log('Settings button:', btnSettings);
+  console.log('Settings menu:', settingsMenu);
+  
+  if (btnSettings && settingsMenu) {
+    console.log('Setting up settings dropdown...');
+    
+    // Toggle settings menu
+    btnSettings.onclick = (e) => {
+      console.log('Settings button clicked');
+      e.stopPropagation();
+      settingsMenu.classList.toggle('show');
+      console.log('Menu classes:', settingsMenu.className);
+    };
+    
+    // Handle settings menu items
+    const settingsItems = document.querySelectorAll('.settings-item');
+    console.log('Settings items found:', settingsItems.length);
+    
+    settingsItems.forEach(item => {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        const action = item.dataset.action;
+        console.log('Settings item clicked:', action);
+        settingsMenu.classList.remove('show');
+        
+        switch (action) {
+          case 'hotkeys':
+            openHotkeysModal();
+            break;
+          case 'theme':
+            openThemeModal();
+            break;
+          case 'display':
+            openDisplayModal();
+            break;
+          case 'export':
+            openExportModal();
+            break;
+        }
+      };
+    });
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!btnSettings.contains(e.target) && !settingsMenu.contains(e.target)) {
+        settingsMenu.classList.remove('show');
+      }
+    });
+  } else {
+    console.error('Settings elements not found!');
+  }
 }
 
 function setupQuickAdd() {
@@ -1600,43 +1934,71 @@ function submitQuick(text) {
       showToast(`Проект "${projectName}" создан`, "ok");
     }
   } else {
+    // Parse the text to extract time, tags, etc.
+  const parsed = parseQuick(text);
+    const title = parsed.title || text;
+    
     // Check if user wants to assign to a specific domain
-    let domainId = null;
+  let domainId = null;
     
     // If there's an active domain, ask user if they want to assign to it
     if (state.activeDomain) {
       const domainName = state.domains.find(d => d.id === state.activeDomain)?.title || "домен";
-      const assignToDomain = confirm(`Привязать задачу "${text}" к домену "${domainName}"?\n\nНажмите "ОК" - привязать к домену\nНажмите "Отмена" - создать независимую задачу`);
+      const assignToDomain = confirm(`Привязать задачу "${title}" к домену "${domainName}"?\n\nНажмите "ОК" - привязать к домену\nНажмите "Отмена" - создать независимую задачу`);
       if (assignToDomain) {
         domainId = state.activeDomain;
       }
     }
     
+    // Determine status based on parsed time
+    let status = "today"; // default
+    if (parsed.when) {
+      const now = Date.now();
+      const taskTime = parsed.when.date;
+      const diffHours = (taskTime - now) / (1000 * 60 * 60);
+      
+      if (diffHours < 0) {
+        status = "backlog"; // past
+      } else if (diffHours < 24) {
+        status = "today"; // today
+      } else {
+        status = "backlog"; // future
+      }
+    }
+    
     // Create task
     const newTask = {
-      id: "t" + Math.random().toString(36).slice(2, 8),
+    id: "t" + Math.random().toString(36).slice(2, 8),
       projectId: null,
       domainId: domainId, // null = fully independent, or specific domain
-      title: text,
-      tags: [],
-      status: "today",
-      estimateMin: null,
-      priority: 2,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      title: title,
+      tags: parsed.tag ? [parsed.tag] : [],
+      status: status,
+    estimateMin: parsed.estimate || null,
+    priority: parsed.priority || 2,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
     };
+    
+    // Add scheduled time if parsed
+    if (parsed.when) {
+      newTask.scheduledFor = parsed.when.date;
+    }
     
     // Debug: show where task will be placed
     console.log("Creating task:", newTask);
     console.log("Domain assignment:", domainId ? `assigned to domain ${domainId}` : "fully independent");
+    console.log("Time parsing:", parsed.when ? `scheduled for ${new Date(parsed.when.date).toLocaleString()}` : "no time");
     
     state.tasks.push(newTask);
-    saveState();
-    layoutMap();
-    drawMap();
+  saveState();
+  layoutMap();
+  drawMap();
+    updateWip(); // Update WIP count
     
     const location = domainId ? `в домене "${state.domains.find(d => d.id === domainId)?.title}"` : "как независимая";
-    showToast(`Задача "${text}" добавлена ${location}`, "ok");
+    const timeInfo = parsed.when ? ` на ${parsed.when.label}` : "";
+    showToast(`Задача "${title}" добавлена ${location}${timeInfo}`, "ok");
   }
   
   renderSidebar();
@@ -1652,18 +2014,43 @@ function submitQuickToDomain(text) {
     return;
   }
   
+  // Parse the text to extract time, tags, etc.
+  const parsed = parseQuick(text);
+  const title = parsed.title || text;
+  
+  // Determine status based on parsed time
+  let status = "today"; // default
+  if (parsed.when) {
+    const now = Date.now();
+    const taskTime = parsed.when.date;
+    const diffHours = (taskTime - now) / (1000 * 60 * 60);
+    
+    if (diffHours < 0) {
+      status = "backlog"; // past
+    } else if (diffHours < 24) {
+      status = "today"; // today
+    } else {
+      status = "backlog"; // future
+    }
+  }
+  
   const newTask = {
     id: "t" + Math.random().toString(36).slice(2, 8),
     projectId: null,
     domainId: state.activeDomain, // Always assign to active domain
-    title: text,
-    tags: [],
-    status: "today",
-    estimateMin: null,
-    priority: 2,
+    title: title,
+    tags: parsed.tag ? [parsed.tag] : [],
+    status: status,
+    estimateMin: parsed.estimate || null,
+    priority: parsed.priority || 2,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
+  
+  // Add scheduled time if parsed
+  if (parsed.when) {
+    newTask.scheduledFor = parsed.when.date;
+  }
   
   console.log("Creating task in domain:", newTask);
   
@@ -1671,9 +2058,11 @@ function submitQuickToDomain(text) {
   saveState();
   layoutMap();
   drawMap();
+  updateWip(); // Update WIP count
   
   const domainName = state.domains.find(d => d.id === state.activeDomain)?.title || "домен";
-  showToast(`Задача "${text}" добавлена в домен "${domainName}"`, "ok");
+  const timeInfo = parsed.when ? ` на ${parsed.when.label}` : "";
+  showToast(`Задача "${title}" добавлена в домен "${domainName}"${timeInfo}`, "ok");
   
   renderSidebar();
   updateWip();
@@ -1682,6 +2071,10 @@ function submitQuickToDomain(text) {
 async function init() {
   const ok = loadState();
   if (!ok) initDemoData();
+  
+  // Initialize hotkeys
+  initializeHotkeys();
+  
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
   // Don't override APP_VERSION from CHANGELOG - use the hardcoded version

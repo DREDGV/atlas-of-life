@@ -2014,13 +2014,27 @@ function drawPlanet(ctx, x, y, radius, color, type = 'planet') {
 function drawTaskStar(ctx, x, y, radius, color, status) {
   ctx.save();
   
+  // Add dark border/outline for better visibility against stars
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 1, 0, Math.PI * 2);
+  ctx.stroke();
+  
+  // Add white inner border for extra contrast
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  
   // Different shapes based on status
   if (status === 'done') {
-    // Done tasks as dim stars
+    // Done tasks as solid circles with subtle glow
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
     gradient.addColorStop(0, color);
-    gradient.addColorStop(0.7, color + '80');
-    gradient.addColorStop(1, 'transparent');
+    gradient.addColorStop(0.7, color + 'cc');
+    gradient.addColorStop(1, color + '88');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
@@ -2029,26 +2043,26 @@ function drawTaskStar(ctx, x, y, radius, color, status) {
     
   } else if (status === 'today') {
     // Today tasks as bright stars with rays
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 2);
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 1.5);
     gradient.addColorStop(0, color);
-    gradient.addColorStop(0.3, color + 'cc');
-    gradient.addColorStop(0.7, color + '66');
-    gradient.addColorStop(1, 'transparent');
+    gradient.addColorStop(0.4, color + 'ee');
+    gradient.addColorStop(0.8, color + 'aa');
+    gradient.addColorStop(1, color + '66');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
+    ctx.arc(x, y, radius * 1.5, 0, Math.PI * 2);
     ctx.fill();
     
-    // Add star rays
+    // Add star rays with better visibility
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     for (let i = 0; i < 8; i++) {
       const angle = (i / 8) * Math.PI * 2;
-      const startX = x + Math.cos(angle) * radius * 0.5;
-      const startY = y + Math.sin(angle) * radius * 0.5;
-      const endX = x + Math.cos(angle) * radius * 1.5;
-      const endY = y + Math.sin(angle) * radius * 1.5;
+      const startX = x + Math.cos(angle) * radius * 0.6;
+      const startY = y + Math.sin(angle) * radius * 0.6;
+      const endX = x + Math.cos(angle) * radius * 1.8;
+      const endY = y + Math.sin(angle) * radius * 1.8;
       
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -2057,15 +2071,15 @@ function drawTaskStar(ctx, x, y, radius, color, status) {
     }
     
   } else if (status === 'doing') {
-    // Doing tasks as pulsing stars
+    // Doing tasks as pulsing stars with solid core
     const time = performance.now() * 0.003;
-    const pulse = 1 + Math.sin(time) * 0.2;
+    const pulse = 1 + Math.sin(time) * 0.15;
     const pulseRadius = radius * pulse;
     
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, pulseRadius);
     gradient.addColorStop(0, color);
-    gradient.addColorStop(0.5, color + 'aa');
-    gradient.addColorStop(1, 'transparent');
+    gradient.addColorStop(0.6, color + 'dd');
+    gradient.addColorStop(1, color + '99');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
@@ -2073,20 +2087,20 @@ function drawTaskStar(ctx, x, y, radius, color, status) {
     ctx.fill();
     
   } else {
-    // Backlog tasks as simple asteroids
+    // Backlog tasks as solid asteroids
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
     gradient.addColorStop(0, color);
-    gradient.addColorStop(0.8, color + 'cc');
-    gradient.addColorStop(1, color + '66');
+    gradient.addColorStop(0.8, color + 'ee');
+    gradient.addColorStop(1, color + 'aa');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
     
-    // Add some surface details
-    ctx.globalAlpha = 0.4;
-    ctx.fillStyle = color + '80';
+    // Add some surface details with better contrast
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = color + 'cc';
     for (let i = 0; i < 2; i++) {
       const detailX = x + (Math.random() - 0.5) * radius * 0.6;
       const detailY = y + (Math.random() - 0.5) * radius * 0.6;
@@ -2098,11 +2112,18 @@ function drawTaskStar(ctx, x, y, radius, color, status) {
     }
   }
   
-  // Core
+  // Solid core for all tasks
   ctx.globalAlpha = 1;
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
+  ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Add small white highlight
+  ctx.fillStyle = '#ffffff';
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  ctx.arc(x - radius * 0.2, y - radius * 0.2, radius * 0.15, 0, Math.PI * 2);
   ctx.fill();
   
   ctx.restore();

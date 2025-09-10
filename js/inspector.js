@@ -169,7 +169,12 @@ export function openInspectorFor(obj) {
       <!-- Title editing -->
       <div class="kv">
         <label>Название:</label>
-        <input type="text" id="taskTitle" value="${obj.title}" style="width: 100%; margin-top: 4px; padding: 4px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel-1); color: var(--text);">
+        <div class="title-edit-container" style="display: flex; gap: 4px; margin-top: 4px; align-items: center;">
+          <input type="text" id="taskTitle" value="${obj.title}" style="flex: 1; padding: 4px 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel-1); color: var(--text);">
+          <button id="editTitle" class="btn-small" title="Редактировать" style="padding: 4px 8px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✏️</button>
+          <button id="saveTitle" class="btn-small" title="Сохранить" style="padding: 4px 8px; background: var(--ok); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; display: none;">💾</button>
+          <button id="cancelTitle" class="btn-small" title="Отменить" style="padding: 4px 8px; background: var(--muted); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; display: none;">❌</button>
+        </div>
       </div>
       
       <!-- Status -->
@@ -299,28 +304,72 @@ export function openInspectorFor(obj) {
         openInspectorFor(null);
       }
     };
-    // Add "Make project" button
-    try{
-      const btns = document.querySelector('#inspector .btns');
-      if(btns){
-        const b = document.createElement('button');
-        b.className = 'btn';
-        b.id = 'mkProject';
-        b.textContent = 'Сделать проектом';
-        btns.appendChild(b);
-        b.onclick = ()=>{
-          const domId = obj.projectId ? (state.projects.find(p=>p.id===obj.projectId)?.domainId) : (obj.domainId||state.activeDomain||state.domains[0]?.id);
-          if(!domId) return;
-          const pid = 'p'+Math.random().toString(36).slice(2,8);
-          state.projects.push({ id:pid, domainId:domId, title: obj.title, tags:[...(obj.tags||[])], priority: obj.priority||2, createdAt:Date.now(), updatedAt:Date.now() });
-          obj.projectId = pid;
-          try{ if(state.settings && state.settings.layoutMode==='auto'){ delete obj.pos; } }catch(_){}
-          obj.updatedAt = Date.now();
-          saveState();
-          refreshMap({ layout: true });
-          openInspectorFor(state.projects.find(p=>p.id===pid));
-        };
+    // Handle "Make project" button (already in HTML)
+    document.getElementById("mkProject").onclick = () => {
+      const domId = obj.projectId ? (state.projects.find(p=>p.id===obj.projectId)?.domainId) : (obj.domainId||state.activeDomain||state.domains[0]?.id);
+      if(!domId) return;
+      const pid = 'p'+Math.random().toString(36).slice(2,8);
+      state.projects.push({ id:pid, domainId:domId, title: obj.title, tags:[...(obj.tags||[])], priority: obj.priority||2, createdAt:Date.now(), updatedAt:Date.now() });
+      obj.projectId = pid;
+      try{ if(state.settings && state.settings.layoutMode==='auto'){ delete obj.pos; } }catch(_){}
+      obj.updatedAt = Date.now();
+      saveState();
+      refreshMap({ layout: true });
+      openInspectorFor(state.projects.find(p=>p.id===pid));
+    };
+    
+    // Handle title editing
+    let originalTitle = obj.title;
+    const titleInput = document.getElementById("taskTitle");
+    const editBtn = document.getElementById("editTitle");
+    const saveBtn = document.getElementById("saveTitle");
+    const cancelBtn = document.getElementById("cancelTitle");
+    
+    // Initially disable input
+    titleInput.disabled = true;
+    
+    editBtn.onclick = () => {
+      originalTitle = titleInput.value;
+      titleInput.disabled = false;
+      titleInput.focus();
+      titleInput.select();
+      editBtn.style.display = 'none';
+      saveBtn.style.display = 'inline-block';
+      cancelBtn.style.display = 'inline-block';
+    };
+    
+    saveBtn.onclick = () => {
+      const newTitle = titleInput.value.trim();
+      if (newTitle && newTitle !== obj.title) {
+        obj.title = newTitle;
+        task.title = newTitle;
+        task.updatedAt = Date.now();
+        saveState();
+        drawMap();
+        renderToday();
+        showToast(`Название изменено на "${newTitle}"`, "ok");
       }
-    }catch(_){ }
+      titleInput.disabled = true;
+      editBtn.style.display = 'inline-block';
+      saveBtn.style.display = 'none';
+      cancelBtn.style.display = 'none';
+    };
+    
+    cancelBtn.onclick = () => {
+      titleInput.value = originalTitle;
+      titleInput.disabled = true;
+      editBtn.style.display = 'inline-block';
+      saveBtn.style.display = 'none';
+      cancelBtn.style.display = 'none';
+    };
+    
+    // Save on Enter, cancel on Escape
+    titleInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveBtn.click();
+      } else if (e.key === 'Escape') {
+        cancelBtn.click();
+      }
+    });
   }
 }

@@ -268,12 +268,145 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
   min-width: 60px;
   font-size: 12px;
   padding: 4px 8px;
+  white-space: nowrap; /* Prevent text wrapping */
+  background: transparent !important;
+  border: 1px solid !important;
+  transition: all 0.2s ease;
 }
 
+/* Different colors for each status like in top panel */
+.status-buttons .btn[data-st="backlog"] {
+  color: #9ca3af !important; /* Gray for backlog */
+  border-color: #9ca3af !important;
+}
+
+.status-buttons .btn[data-st="today"] {
+  color: #f59e0b !important; /* Yellow for today */
+  border-color: #f59e0b !important;
+}
+
+.status-buttons .btn[data-st="doing"] {
+  color: #60a5fa !important; /* Blue for doing */
+  border-color: #60a5fa !important;
+}
+
+.status-buttons .btn[data-st="done"] {
+  color: #059669 !important; /* Darker green for done */
+  border-color: #059669 !important;
+}
+
+/* Active state - filled background */
 .status-buttons .btn.active {
+  color: #ffffff !important; /* White text on active */
+}
+
+.status-buttons .btn[data-st="backlog"].active {
+  background: #9ca3af !important; /* Gray background */
+  border-color: #9ca3af !important;
+}
+
+.status-buttons .btn[data-st="today"].active {
+  background: #f59e0b !important; /* Yellow background */
+  border-color: #f59e0b !important;
+}
+
+.status-buttons .btn[data-st="doing"].active {
+  background: #60a5fa !important; /* Blue background */
+  border-color: #60a5fa !important;
+}
+
+.status-buttons .btn[data-st="done"].active {
+  background: #059669 !important; /* Darker green background */
+  border-color: #059669 !important;
+}
+
+/* Hover effects */
+.status-buttons .btn:hover {
+  opacity: 0.8;
+  transform: scale(1.02);
+}
+
+/* Small buttons for title editing */
+.btn-small {
+  transition: all 0.2s ease;
+  font-size: 12px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.btn-small:hover {
+  transform: scale(1.1);
+  opacity: 0.9;
+}
+
+.btn-small:active {
+  transform: scale(0.95);
+}
+
+/* Keyboard key styling */
+kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-3);
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  margin: 0 2px;
+}
+
+/* Settings dropdown */
+.settings-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.settings-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--panel-1);
+  border: 1px solid var(--panel-2);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 180px;
+  z-index: 1000;
+  display: none;
+  overflow: hidden;
+}
+
+.settings-menu.show {
+  display: block;
+}
+
+.settings-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 14px;
+  border-bottom: 1px solid var(--panel-2);
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-item:last-child {
+  border-bottom: none;
+}
+
+.settings-item:hover {
+  background: var(--panel-2);
+}
+
+.settings-item:active {
   background: var(--accent);
   color: white;
-  border-color: var(--accent);
 }
 
 .kv label {
@@ -281,4 +414,87 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
   font-weight: 600;
   color: var(--text);
   margin-bottom: 2px;
+}
+
+/* Inspector input fields - better contrast */
+.inspector input[type="text"],
+.inspector select {
+  background: var(--panel-1) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--panel-2) !important;
+  border-radius: 4px !important;
+  padding: 4px 8px !important;
+  font-size: 14px !important;
+}
+
+.inspector input[type="text"]:focus,
+.inspector select:focus {
+  border-color: var(--accent) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2) !important;
+}
+
+.inspector input[type="text"]::placeholder {
+  color: var(--muted) !important;
+  opacity: 0.7 !important;
+}
+
+/* Dropdown options styling - much better contrast */
+.inspector select option {
+  background: #2a2a2a !important; /* Dark gray background */
+  color: #ffffff !important; /* Pure white text */
+  padding: 8px !important;
+  border: none !important;
+}
+
+/* Ensure dropdown has proper contrast in both themes */
+.inspector select {
+  background-color: #2a2a2a !important; /* Dark gray background */
+  color: #ffffff !important; /* Pure white text */
+  border: 1px solid #444444 !important; /* Darker border */
+}
+
+.inspector select option:checked {
+  background: #1e40af !important; /* Dark blue for selected */
+  color: #ffffff !important; /* White text */
+}
+
+.inspector select option:hover {
+  background: #404040 !important; /* Slightly lighter gray on hover */
+  color: #ffffff !important; /* White text */
+}
+
+/* Force dark theme for dropdown in all cases */
+.inspector select:focus {
+  background-color: #2a2a2a !important;
+  color: #ffffff !important;
+  border-color: var(--accent) !important;
+}
+
+/* Time badges and overdue tasks */
+.time-badge {
+  background: var(--accent);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 8px;
+  display: inline-block;
+}
+
+.time-badge.overdue {
+  background: var(--warn);
+  animation: pulse 2s infinite;
+}
+
+.todo.overdue {
+  border-left: 3px solid var(--warn);
+  background: rgba(242, 201, 76, 0.1);
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
 }

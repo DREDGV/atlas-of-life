@@ -5,7 +5,24 @@ export const state = {
   activeDomain:null,
   filterTag:null,
   wipLimit:3,
-  settings: { layoutMode: 'auto' },
+  settings: {
+    layoutMode: 'auto',
+    wipTodayLimit: 5,
+    hotkeys: {
+      newTask: 'ctrl+n',
+      newProject: 'ctrl+shift+n', 
+      newDomain: 'ctrl+shift+d',
+      search: 'ctrl+f',
+      closeInspector: 'escape',
+      statusPlan: '1',
+      statusToday: '2', 
+      statusDoing: '3',
+      statusDone: '4',
+      fitAll: 'ctrl+0',
+      fitDomain: 'ctrl+1',
+      fitProject: 'ctrl+2'
+    }
+  },
   domains:[],
   projects:[],
   tasks:[],

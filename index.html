@@ -9,13 +9,13 @@
   <meta name="cache-control" content="no-cache, no-store, must-revalidate, max-age=0" />
   <meta name="expires" content="0" />
   <meta name="pragma" content="no-cache" />
-    <title>Атлас жизни v0.2.8</title>
-  <link rel="stylesheet" href="styles.css?v=0.2.8&t=1757446522231" />
+    <title>Атлас жизни v0.2.9</title>
+  <link rel="stylesheet" href="styles.css?v=0.2.9&t=1757477856722" />
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="brand">Атлас жизни v0.2.8</div>
+    <div class="brand">Атлас жизни v0.2.9</div>
     <div class="chip active" data-view="map">Карта</div>
     <div class="chip" data-view="today">Сегодня</div>
     <div class="chip" id="btnCenter" title="Центр (C)">Центр</div>
@@ -33,13 +33,16 @@
       </div>
   <label>Зум:<input id="zoomSlider" class="zoom-slider" type="range" min="50" max="220" step="1" value="100">
 
-      <button class="chip" id="btnExport" title="Экспорт JSON">Экспорт</button>
-      <label class="chip" for="fileImport" title="Импорт JSON">Импорт</label>
-      <input id="fileImport" type="file" accept="application/json" class="hidden" />
-      <label><input type="checkbox" id="tgLinks" checked/> Связи</label>
-      <label><input type="checkbox" id="tgAging" checked/> Давность</label>
-      <label><input type="checkbox" id="tgGlow" checked/> Свечение</label>
       <button class="chip" id="btnAbout" title="О версии">О версии</button>
+      <div class="settings-dropdown">
+        <button class="chip" id="btnSettings" title="Настройки">⚙️</button>
+        <div class="settings-menu" id="settingsMenu">
+          <div class="settings-item" data-action="hotkeys">⌨️ Горячие клавиши</div>
+          <div class="settings-item" data-action="theme">🎨 Тема</div>
+          <div class="settings-item" data-action="display">📱 Отображение</div>
+          <div class="settings-item" data-action="export">💾 Экспорт/Импорт</div>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -96,7 +99,7 @@
 <!-- toast area -->
 <div id="toast" class="toast"></div>
 
-    <script type="module" src="./js/app.js?v=0.2.8&t=1757446522231"></script>
+    <script type="module" src="./js/app.js?v=0.2.9&t=1757477856722"></script>
 <!-- Experiments system -->
 <script src="addons/_experiments.js"></script>
 <script src="addons/experiments/exp-2025-09-07-pulse-active-domain.js"></script>
