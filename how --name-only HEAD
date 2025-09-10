@@ -1,5 +1,0 @@
-[33m3aa1b93[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mrepo-flatten[m[33m, [m[1;31morigin/repo-flatten[m[33m)[m chore(repo): remove stray  file
-[33m03187e6[m chore(repo): flatten structure to repo root
-[33mb4fb3e1[m[33m ([m[1;32mmain[m[33m, [m[1;32mbackup/pre-push-1[m[33m)[m feat(changelog): автодобавление Unreleased через хук
-[33m03465cc[m feat(changelog): автодобавление Unreleased через
-[33m463d38b[m style(ui): replace inline width with .zoom-slider on zoom slider

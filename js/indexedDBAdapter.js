@@ -1,16 +1,16 @@
 // js/indexedDBAdapter.js
-// Placeholder for future IndexedDB storage in v0.2.6+
+// Placeholder for future IndexedDB storage implementation
 
 const indexedDBAdapter = {
   async load(){
-    // TODO: implement IndexedDB read
+    // Future: implement IndexedDB read
     return null;
   },
   async save(_text){
-    // TODO: implement IndexedDB write
+    // Future: implement IndexedDB write
   },
   async clear(){
-    // TODO: implement IndexedDB clear
+    // Future: implement IndexedDB clear
   },
 };
 
