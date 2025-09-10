@@ -16,6 +16,7 @@ import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initializeHotkeys } from "./hotkeys.js";
+import { initAutocomplete } from "./autocomplete.js";
 
 // I18N
 const I18N = {
@@ -39,7 +40,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.9";
+let APP_VERSION = "Atlas_of_life_v0.2.10";
 
 // ephemeral UI state
 const ui = {
@@ -2074,6 +2075,10 @@ async function init() {
   
   // Initialize hotkeys
   initializeHotkeys();
+  
+  // Initialize autocomplete
+  console.log('About to initialize autocomplete...');
+  initAutocomplete();
   
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");

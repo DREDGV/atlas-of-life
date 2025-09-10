@@ -409,6 +409,71 @@ kbd {
   color: white;
 }
 
+/* Autocomplete styles */
+.autocomplete-popup {
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--panel-1) !important;
+  border: 2px solid var(--panel-2) !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.7) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  backdrop-filter: blur(10px);
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--panel-2);
+  transition: background-color 0.2s ease;
+  background: var(--panel-1) !important;
+  color: var(--text) !important;
+  opacity: 1 !important;
+  border-left: 3px solid transparent;
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background: var(--panel-2) !important;
+  color: var(--text) !important;
+  border-left: 3px solid var(--accent) !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+.autocomplete-icon {
+  color: var(--accent) !important;
+  font-weight: bold;
+  margin-right: 8px;
+  min-width: 20px;
+}
+
+.autocomplete-label {
+  flex: 1;
+  color: var(--text) !important;
+  font-weight: 500;
+}
+
+.autocomplete-label mark {
+  background: var(--accent) !important;
+  color: white !important;
+  padding: 1px 2px;
+  border-radius: 2px;
+  font-weight: bold;
+}
+
+.autocomplete-meta {
+  color: var(--muted) !important;
+  font-size: 12px;
+  margin-left: 8px;
+  opacity: 0.8;
+}
+
 .kv label {
   display: block;
   font-weight: 600;
