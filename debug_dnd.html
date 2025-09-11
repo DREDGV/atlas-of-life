@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Debug DnD - Атлас жизни</title>
+  <style>
+    body { font-family: monospace; margin: 20px; }
+    .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+    .error { background: #ffebee; color: #c62828; }
+    .success { background: #e8f5e8; color: #2e7d32; }
+    button { padding: 10px; margin: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Debug DnD - Атлас жизни</h1>
+  
+  <div class="debug">
+    <h3>Проверка DnD</h3>
+    <button onclick="testDnD()">Тест DnD</button>
+    <button onclick="clearLogs()">Очистить логи</button>
+    <div id="dndLog"></div>
+  </div>
+
+  <div class="debug">
+    <h3>Проверка состояния</h3>
+    <button onclick="checkState()">Проверить состояние</button>
+    <div id="stateLog"></div>
+  </div>
+
+  <div class="debug">
+    <h3>Проверка DOM</h3>
+    <button onclick="checkDOM()">Проверить DOM</button>
+    <div id="domLog"></div>
+  </div>
+
+  <script>
+    function log(message, type = 'info') {
+      const logDiv = document.getElementById('dndLog');
+      const div = document.createElement('div');
+      div.className = type;
+      div.textContent = new Date().toLocaleTimeString() + ': ' + message;
+      logDiv.appendChild(div);
+      console.log(message);
+    }
+
+    function clearLogs() {
+      document.getElementById('dndLog').innerHTML = '';
+      document.getElementById('stateLog').innerHTML = '';
+      document.getElementById('domLog').innerHTML = '';
+    }
+
+    function testDnD() {
+      log('Начинаем тест DnD...');
+      
+      // Проверяем наличие основных элементов
+      const canvas = document.getElementById('canvas');
+      if (!canvas) {
+        log('ОШИБКА: Canvas не найден!', 'error');
+        return;
+      }
+      log('Canvas найден ✓');
+
+      // Проверяем обработчики событий
+      const hasMouseMove = canvas.onmousemove !== null || 
+        Array.from(canvas.attributes).some(attr => attr.name.includes('mousemove'));
+      log('MouseMove обработчик: ' + (hasMouseMove ? '✓' : '✗'));
+
+      // Проверяем состояние
+      if (typeof window.state !== 'undefined') {
+        log('State доступен ✓');
+        log('Задач: ' + (window.state.tasks?.length || 0));
+        log('Проектов: ' + (window.state.projects?.length || 0));
+        log('Доменов: ' + (window.state.domains?.length || 0));
+      } else {
+        log('ОШИБКА: State не доступен!', 'error');
+      }
+
+      // Проверяем mapApi
+      if (window.mapApi) {
+        log('MapApi доступен ✓');
+        log('Функции: ' + Object.keys(window.mapApi).join(', '));
+      } else {
+        log('ОШИБКА: MapApi не доступен!', 'error');
+      }
+
+      log('Тест завершен');
+    }
+
+    function checkState() {
+      const stateDiv = document.getElementById('stateLog');
+      stateDiv.innerHTML = '';
+      
+      if (typeof window.state === 'undefined') {
+        stateDiv.innerHTML = '<div class="error">State не доступен!</div>';
+        return;
+      }
+
+      const state = window.state;
+      const html = `
+        <div class="success">State доступен ✓</div>
+        <div>Доменов: ${state.domains?.length || 0}</div>
+        <div>Проектов: ${state.projects?.length || 0}</div>
+        <div>Задач: ${state.tasks?.length || 0}</div>
+        <div>Активный домен: ${state.activeDomain || 'нет'}</div>
+        <div>Вид: ${state.view || 'неизвестно'}</div>
+        <div>Показать связи: ${state.showLinks ? 'да' : 'нет'}</div>
+      `;
+      stateDiv.innerHTML = html;
+    }
+
+    function checkDOM() {
+      const domDiv = document.getElementById('domLog');
+      domDiv.innerHTML = '';
+      
+      const elements = [
+        'canvas',
+        'tooltip', 
+        'toast',
+        'modal',
+        'inspector',
+        'viewToday'
+      ];
+      
+      let html = '';
+      elements.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          html += `<div class="success">${id} ✓</div>`;
+        } else {
+          html += `<div class="error">${id} ✗</div>`;
+        }
+      });
+      
+      domDiv.innerHTML = html;
+    }
+
+    // Автоматически запускаем проверку при загрузке
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        testDnD();
+        checkState();
+        checkDOM();
+      }, 1000);
+    });
+  </script>
+</body>
+</html>

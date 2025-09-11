@@ -92,7 +92,6 @@ export function initMap(canvasEl, tooltipEl) {
   window.addEventListener("resize", resize);
   canvas.addEventListener("mousemove", onMouseMove);
   canvas.addEventListener("mousedown", onMouseDown);
-  window.addEventListener("mouseup", () => (viewState.dragging = false));
   canvas.addEventListener("mouseleave", onMouseLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("click", onClick);
@@ -232,46 +231,7 @@ export function fitActiveProject() {
   // 2. Минимальное расстояние между центрами задач (без пересечений)
   const minDist = avgSize * 2.2 + 10 * DPR;
   // --- DnD: обработка вытаскивания задачи из проекта ---
-  let pendingDetach = null;
-  window.addEventListener("mouseup", (e) => {
-    if (draggedNode && draggedNode._type === "task" && draggedNode.projectId) {
-      // Проверяем, вышла ли задача за пределы круга проекта
-      const pNode = nodes.find(
-        (n) => n._type === "project" && n.id === draggedNode.projectId
-      );
-      if (pNode) {
-        const dx = draggedNode.x - pNode.x;
-        const dy = draggedNode.y - pNode.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > pNode.r + 12 * DPR) {
-          // Предлагаем отвязать задачу
-          pendingDetach = {
-            taskId: draggedNode.id,
-            fromProjectId: draggedNode.projectId,
-            pos: { x: draggedNode.x, y: draggedNode.y },
-          };
-          const toast = document.getElementById("toast");
-          if (toast) {
-            toast.className = "toast detach";
-            toast.innerHTML = `Отвязать задачу от проекта? <button id="detachOk">Отвязать</button> <button id="detachCancel">Отменить</button>`;
-            toast.style.display = "block";
-            toast.style.opacity = "1";
-            const ok = document.getElementById("detachOk");
-            if (ok)
-              ok.onclick = () => {
-                confirmDetach();
-              };
-            const cancel = document.getElementById("detachCancel");
-            if (cancel)
-              cancel.onclick = () => {
-                pendingDetach = null;
-                toast.style.display = "none";
-              };
-          }
-        }
-      }
-    }
-  });
+  // (перенесено в основной обработчик mouseup)
 
   function confirmDetach() {
     if (!pendingDetach) return false;
@@ -1162,16 +1122,17 @@ function onMouseDown(e) {
     viewState.lastY = e.clientY;
     return;
   }
-  // DnD: захват задачи
+  // DnD: захват задачи или проекта
   if (e.button === 0) {
     const pt = screenToWorld(e.offsetX, e.offsetY);
     const n = hit(pt.x, pt.y);
-    if (n && n._type === "task") {
+    if (n && (n._type === "task" || n._type === "project")) {
       pendingDragNode = n;
       pendingDragStart.x = e.clientX;
       pendingDragStart.y = e.clientY;
       dragOffset.x = pt.x - n.x;
       dragOffset.y = pt.y - n.y;
+      console.log('DnD: Started dragging', n._type, n.id);
       return;
     }
   }
@@ -1179,12 +1140,20 @@ function onMouseDown(e) {
 // DnD: отпускание задачи
 // Consolidated mouseup handler: finalize drag, persist, push undo entry
 window.addEventListener("mouseup", (e) => {
+  // Handle view dragging (pan)
+  if (viewState.dragging) {
+    viewState.dragging = false;
+    return;
+  }
+  
   // if drag never started, clear any pending drag
   if (!draggedNode && pendingDragNode) {
     pendingDragNode = null;
     return;
   }
   if (!draggedNode) return;
+  
+  console.log('DnD: Finishing drag for', draggedNode._type, draggedNode.id);
   let moved = false;
   // record before state for undo
   const before = {};
@@ -1264,14 +1233,16 @@ window.addEventListener("mouseup", (e) => {
         setTimeout(() => {
           const ok = document.getElementById("attachOk");
           const cancel = document.getElementById("attachCancel");
-          if (ok)
+          if (ok) {
             ok.onclick = () => {
               confirmAttach();
             };
-          if (cancel)
+          }
+          if (cancel) {
             cancel.onclick = () => {
               cancelAttach();
             };
+          }
         }, 20);
       }
     }
@@ -1332,21 +1303,25 @@ window.addEventListener("mouseup", (e) => {
             toast.innerHTML = `Отвязать задачу от проекта? <button id="detachOk">Отвязать</button> <button id="detachCancel">Отмена</button>`;
             toast.style.display = "block";
             toast.style.opacity = "1";
-            const ok = document.getElementById("detachOk");
-            if (ok)
-              ok.onclick = () => {
-                try {
-                  confirmDetach();
-                } catch (_) {
-                  /* silent */
-                }
-              };
-            const cancel = document.getElementById("detachCancel");
-            if (cancel)
-              cancel.onclick = () => {
-                pendingDetach = null;
-                toast.style.display = "none";
-              };
+            setTimeout(() => {
+              const ok = document.getElementById("detachOk");
+              const cancel = document.getElementById("detachCancel");
+              if (ok) {
+                ok.onclick = () => {
+                  try {
+                    confirmDetach();
+                  } catch (_) {
+                    /* silent */
+                  }
+                };
+              }
+              if (cancel) {
+                cancel.onclick = () => {
+                  pendingDetach = null;
+                  toast.style.display = "none";
+                };
+              }
+            }, 20);
           }
         }
       }
