@@ -55,6 +55,8 @@ export function openInspectorFor(obj) {
       <div class="kv">Проектов: ${prjs.length} · Задач: ${totalTasks}</div>
       <div class="btns">
         <button class="btn primary" id="addProject">+ Проект</button>
+        <button class="btn" id="changeDomainColor">🎨 Изменить цвет</button>
+        <button class="btn danger" id="delDomain">🗑️ Удалить домен</button>
       </div>
       <div class="list">${prjs
         .map(
@@ -84,16 +86,72 @@ export function openInspectorFor(obj) {
       refreshMap({ layout: true });
       openInspectorFor(obj);
     };
+    
+    // Handle domain deletion
+    document.getElementById("delDomain").onclick = () => {
+      if (confirm(`Удалить домен "${obj.title}" и все его проекты и задачи?`)) {
+        // Trigger cosmic explosion for domain
+        if (window.cosmicAnimations) {
+          window.cosmicAnimations.animateDomainPulse(obj.x, obj.y, obj.r, obj.color);
+        }
+        
+        // Remove all projects and tasks in this domain
+        const projIds = state.projects.filter((p) => p.domainId === obj.id).map((p) => p.id);
+        state.tasks = state.tasks.filter((t) => !projIds.includes(t.projectId));
+        state.projects = state.projects.filter((p) => p.domainId !== obj.id);
+        state.domains = state.domains.filter((d) => d.id !== obj.id);
+        
+        // Clear active domain to show entire project instead of focusing on remaining domain
+        state.activeDomain = null;
+        
+        saveState();
+        
+        // Force layout and redraw
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
+        
+        openInspectorFor(null);
+        
+        // Update UI
+        if (window.updateDomainsList) window.updateDomainsList();
+        if (window.updateStatistics) window.updateStatistics();
+        if (window.renderToday) window.renderToday();
+        if (window.renderSidebar) window.renderSidebar();
+      }
+    };
+    
+    // Handle domain color change
+    document.getElementById("changeDomainColor").onclick = () => {
+      const currentColor = obj.color || "#2dd4bf";
+      const newColor = prompt("Введите новый цвет домена (hex код, например #ff6b6b):", currentColor);
+      if (newColor && newColor !== currentColor) {
+        // Validate hex color
+        if (/^#[0-9A-F]{6}$/i.test(newColor)) {
+          obj.color = newColor;
+          obj.updatedAt = Date.now();
+          saveState();
+          drawMap();
+          openInspectorFor(obj); // Refresh inspector
+        } else {
+          alert("Неверный формат цвета. Используйте hex код (например: #ff6b6b)");
+        }
+      }
+    };
   }
   if (type === "project") {
     const tks = tasksOfProject(obj.id);
     ins.innerHTML = `
       <h2>Проект: ${obj.title}</h2>
-      <div class="kv">Домен: ${domainOf(obj).title}</div>
+      <div class="kv">Домен: ${domainOf(obj)?.title || 'Независимый'}</div>
       <div class="kv">Теги: #${(obj.tags || []).join(" #")}</div>
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
         <button class="btn" id="toToday">Взять 3 задачи в Сегодня</button>
+        <button class="btn" id="changeProjectColor">🎨 Изменить цвет</button>
+        <button class="btn" id="editProjectTitle">✏️ Переименовать</button>
+        <button class="btn" id="changeProjectDomain">🏠 Изменить домен</button>
+        <button class="btn" id="makeProjectIndependent">🔓 Сделать независимым</button>
+        <button class="btn danger" id="delProject">🗑️ Удалить проект</button>
       </div>
       <div class="list">${tks
         .map(
@@ -156,6 +214,110 @@ export function openInspectorFor(obj) {
       } catch (_) {}
       drawMap();
       renderToday();
+    };
+    
+    // Handle project deletion
+    document.getElementById("delProject").onclick = () => {
+      if (confirm(`Удалить проект "${obj.title}" и все его задачи?`)) {
+        // Trigger cosmic explosion for project
+        if (window.cosmicAnimations) {
+          window.cosmicAnimations.animateTaskDeletion(obj.x, obj.y, 'project');
+        }
+        
+        // Remove all tasks in this project
+        state.tasks = state.tasks.filter((t) => t.projectId !== obj.id);
+        state.projects = state.projects.filter((p) => p.id !== obj.id);
+        
+        saveState();
+        
+        // Force layout and redraw
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
+        
+        openInspectorFor(null);
+        
+        // Update UI
+        if (window.updateDomainsList) window.updateDomainsList();
+        if (window.updateStatistics) window.updateStatistics();
+        if (window.renderToday) window.renderToday();
+        if (window.renderSidebar) window.renderSidebar();
+      }
+    };
+    
+    // Handle project color change
+    document.getElementById("changeProjectColor").onclick = () => {
+      const currentColor = obj.color || "#7b68ee";
+      const newColor = prompt("Введите новый цвет проекта (hex код, например #ff6b6b):", currentColor);
+      if (newColor && newColor !== currentColor) {
+        // Validate hex color
+        if (/^#[0-9A-F]{6}$/i.test(newColor)) {
+          obj.color = newColor;
+          obj.updatedAt = Date.now();
+          saveState();
+          drawMap();
+          openInspectorFor(obj); // Refresh inspector
+        } else {
+          alert("Неверный формат цвета. Используйте hex код (например: #ff6b6b)");
+        }
+      }
+    };
+    
+    // Handle project title editing
+    document.getElementById("editProjectTitle").onclick = () => {
+      const newTitle = prompt("Введите новое название проекта:", obj.title);
+      if (newTitle && newTitle !== obj.title) {
+        obj.title = newTitle;
+        obj.updatedAt = Date.now();
+        saveState();
+        drawMap();
+        openInspectorFor(obj); // Refresh inspector
+      }
+    };
+    
+    // Handle project domain change
+    document.getElementById("changeProjectDomain").onclick = () => {
+      const currentDomain = state.domains.find(d => d.id === obj.domainId);
+      const availableDomains = state.domains.filter(d => d.id !== obj.domainId);
+      
+      if (availableDomains.length === 0) {
+        alert("Нет других доменов для перемещения");
+        return;
+      }
+      
+      const domainList = availableDomains.map((d, i) => `${i + 1}. ${d.title}`).join('\n');
+      const choice = prompt(`Выберите домен для перемещения проекта:\n\n${domainList}\n\nВведите номер домена:`, "1");
+      
+      if (choice) {
+        const domainIndex = parseInt(choice) - 1;
+        if (domainIndex >= 0 && domainIndex < availableDomains.length) {
+          const newDomain = availableDomains[domainIndex];
+          const oldDomain = currentDomain?.title || "независимый";
+          
+          if (confirm(`Переместить проект "${obj.title}" из домена "${oldDomain}" в домен "${newDomain.title}"?`)) {
+            obj.domainId = newDomain.id;
+            obj.updatedAt = Date.now();
+            saveState();
+            drawMap();
+            openInspectorFor(obj); // Refresh inspector
+          }
+        } else {
+          alert("Неверный номер домена");
+        }
+      }
+    };
+    
+    // Handle making project independent
+    document.getElementById("makeProjectIndependent").onclick = () => {
+      const currentDomain = state.domains.find(d => d.id === obj.domainId);
+      const domainName = currentDomain?.title || "неизвестный";
+      
+      if (confirm(`Сделать проект "${obj.title}" независимым (извлечь из домена "${domainName}")?`)) {
+        obj.domainId = null;
+        obj.updatedAt = Date.now();
+        saveState();
+        drawMap();
+        openInspectorFor(obj); // Refresh inspector
+      }
     };
   }
   if (type === "task") {
@@ -296,27 +458,52 @@ export function openInspectorFor(obj) {
       }
     }
     document.getElementById("delTask").onclick = () => {
-      if (confirm("Удалить задачу без возможности восстановления?")) {
+      // Create backup of task for undo
+      const taskBackup = { ...obj };
+      
+      // Trigger cosmic explosion before deletion
+      if (window.cosmicAnimations) {
+        // Find task position on map for explosion effect
+        // Get nodes from the map module
+        const mapNodes = window.getMapNodes ? window.getMapNodes() : null;
+        const taskNode = mapNodes?.find(n => n.id === obj.id);
+        if (taskNode) {
+          window.cosmicAnimations.animateTaskDeletion(taskNode.x, taskNode.y, obj.status);
+        }
+      }
+      
+      // Remove task from state
         state.tasks = state.tasks.filter((t) => t.id !== obj.id);
+      saveState();
+      drawMap();
+      renderToday();
+      openInspectorFor(null);
+      
+      // Show undo toast
+      showUndoToast("Задача удалена", () => {
+        // Restore task
+        state.tasks.push(taskBackup);
         saveState();
         drawMap();
         renderToday();
-        openInspectorFor(null);
-      }
+        
+        // Show success message
+        showToast("Задача восстановлена", "ok");
+      });
     };
     // Handle "Make project" button (already in HTML)
     document.getElementById("mkProject").onclick = () => {
-      const domId = obj.projectId ? (state.projects.find(p=>p.id===obj.projectId)?.domainId) : (obj.domainId||state.activeDomain||state.domains[0]?.id);
-      if(!domId) return;
-      const pid = 'p'+Math.random().toString(36).slice(2,8);
-      state.projects.push({ id:pid, domainId:domId, title: obj.title, tags:[...(obj.tags||[])], priority: obj.priority||2, createdAt:Date.now(), updatedAt:Date.now() });
-      obj.projectId = pid;
-      try{ if(state.settings && state.settings.layoutMode==='auto'){ delete obj.pos; } }catch(_){}
-      obj.updatedAt = Date.now();
-      saveState();
-      refreshMap({ layout: true });
-      openInspectorFor(state.projects.find(p=>p.id===pid));
-    };
+          const domId = obj.projectId ? (state.projects.find(p=>p.id===obj.projectId)?.domainId) : (obj.domainId||state.activeDomain||state.domains[0]?.id);
+          if(!domId) return;
+          const pid = 'p'+Math.random().toString(36).slice(2,8);
+          state.projects.push({ id:pid, domainId:domId, title: obj.title, tags:[...(obj.tags||[])], priority: obj.priority||2, createdAt:Date.now(), updatedAt:Date.now() });
+          obj.projectId = pid;
+          try{ if(state.settings && state.settings.layoutMode==='auto'){ delete obj.pos; } }catch(_){}
+          obj.updatedAt = Date.now();
+          saveState();
+          refreshMap({ layout: true });
+          openInspectorFor(state.projects.find(p=>p.id===pid));
+        };
     
     // Handle title editing
     let originalTitle = obj.title;

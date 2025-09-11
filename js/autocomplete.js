@@ -445,16 +445,32 @@ class AutocompleteSystem {
 
 // Initialize autocomplete when DOM is ready
 export function initAutocomplete() {
+  // Prevent multiple initialization
+  if (window.autocompleteInstance) {
+    console.log('Autocomplete already initialized, skipping...');
+    return;
+  }
+  
   console.log('initAutocomplete called, readyState:', document.readyState);
   console.log('State available:', !!state, 'Tasks:', state?.tasks?.length, 'Projects:', state?.projects?.length);
   
   // Wait a bit for state to be fully loaded
   setTimeout(() => {
+    // Double-check after timeout
+    if (window.autocompleteInstance) {
+      console.log('Autocomplete already initialized during timeout, skipping...');
+      return;
+    }
+    
     console.log('Delayed init - State available:', !!state, 'Tasks:', state?.tasks?.length, 'Projects:', state?.projects?.length);
     
     if (document.readyState === 'loading') {
       console.log('DOM still loading, waiting for DOMContentLoaded');
       document.addEventListener('DOMContentLoaded', () => {
+        if (window.autocompleteInstance) {
+          console.log('Autocomplete already initialized on DOMContentLoaded, skipping...');
+          return;
+        }
         console.log('DOMContentLoaded fired, initializing autocomplete');
         window.autocompleteInstance = new AutocompleteSystem();
       });

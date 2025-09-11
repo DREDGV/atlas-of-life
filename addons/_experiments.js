@@ -18,6 +18,7 @@
         const query = new Set((url.searchParams.getAll('exp') || []).flatMap(s => String(s).split(',')));
         if (query.has(meta.id)) enabled.add(meta.id);
       } catch (_) {}
+      // Enable experiments for all browsers
       if (enabled.has(meta.id)) {
         try { meta.enable && meta.enable(); } catch (e) { console.warn('exp enable error', meta.id, e); }
       }

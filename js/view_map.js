@@ -35,12 +35,17 @@ let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
 
 // wheel/zoom handler
 let pendingFrame = false;
+let lastDrawTime = 0;
+const MIN_DRAW_INTERVAL = 16; // 60 FPS
+
 function requestDraw() {
-  if (pendingFrame) return;
+  if (pendingFrame || isDrawing) return;
   pendingFrame = true;
   requestAnimationFrame(() => {
     pendingFrame = false;
-    drawMap();
+    if (!isDrawing) {
+      drawMap();
+    }
   });
 }
 
@@ -75,6 +80,945 @@ let dropTargetProjectId = null;
 let dropTargetDomainId = null;
 // drag threshold (px, screen space before scale/DPR)
 let pendingDragNode = null;
+
+// Visualization style settings
+let projectVisualStyle = 'original'; // 'galaxy', 'simple', 'planet', 'modern', 'original' - default to original style
+
+// Function to change visualization style
+function setProjectVisualStyle(style) {
+  if (['galaxy', 'simple', 'planet', 'modern', 'neon', 'tech', 'minimal', 'holographic', 'gradient', 'mixed', 'original'].includes(style)) {
+    projectVisualStyle = style;
+    drawMap(); // Redraw with new style
+    console.log(`Project visualization style changed to: ${style}`);
+  } else {
+    console.warn('Invalid visualization style. Use: galaxy, simple, planet, modern, neon, tech, minimal, holographic, gradient, mixed, or original');
+  }
+}
+
+// Export function globally
+try { window.setProjectVisualStyle = setProjectVisualStyle; } catch (_) {}
+
+// Demo functions for different visual styles
+function demoNeonStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Neon domain with pulsing glow
+    const time = performance.now() * 0.003;
+    const pulse = 1 + Math.sin(time) * 0.3;
+    
+    // Outer glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20 * pulse;
+    ctx.fillStyle = color + '20';
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Main circle
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Inner glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = color + '40';
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (type === 'project') {
+    // Neon hexagon with particles
+    const time = performance.now() * 0.002;
+    
+    // Hexagon
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    
+    // Particles
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = color;
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + time;
+      const distance = radius * 1.5;
+      const px = x + Math.cos(angle) * distance;
+      const py = y + Math.sin(angle) * distance;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+  } else if (type === 'task') {
+    // Neon task with pulsing border
+    const time = performance.now() * 0.005;
+    const pulse = 1 + Math.sin(time) * 0.2;
+    
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12 * pulse;
+    ctx.fillStyle = color + '60';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+}
+
+function demoTechStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Tech domain with circuit pattern
+    const time = performance.now() * 0.001;
+    
+    // Main circle
+    ctx.fillStyle = color + '20';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Circuit lines
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + time;
+      const startRadius = radius * 0.7;
+      const endRadius = radius * 1.1;
+      
+      ctx.beginPath();
+      ctx.moveTo(
+        x + Math.cos(angle) * startRadius,
+        y + Math.sin(angle) * startRadius
+      );
+      ctx.lineTo(
+        x + Math.cos(angle) * endRadius,
+        y + Math.sin(angle) * endRadius
+      );
+      ctx.stroke();
+    }
+    
+    // Center node
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (type === 'project') {
+    // Tech project with data flow
+    const time = performance.now() * 0.002;
+    
+    // Hexagon outline
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    
+    // Data flow lines
+    ctx.strokeStyle = color + '80';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2 + time;
+      const distance = radius * 0.8;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(
+        x + Math.cos(angle) * distance,
+        y + Math.sin(angle) * distance
+      );
+      ctx.stroke();
+    }
+    
+  } else if (type === 'task') {
+    // Tech task with status indicator
+    ctx.fillStyle = color + '40';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Status dot
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  
+  ctx.restore();
+}
+
+function demoMinimalStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Minimal domain - clean circle
+    ctx.fillStyle = color + '30';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+  } else if (type === 'project') {
+    // Minimal project - clean rectangle
+    const width = radius * 1.4;
+    const height = radius * 1.0;
+    
+    ctx.fillStyle = color + '40';
+    ctx.fillRect(x - width/2, y - height/2, width, height);
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - width/2, y - height/2, width, height);
+    
+  } else if (type === 'task') {
+    // Minimal task - clean circle
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+}
+
+// Demo function to show all styles
+function showStyleDemo(style) {
+  const canvas = document.querySelector('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Demo positions
+  const demos = [
+    { x: 200, y: 150, type: 'domain', color: '#00ffff' },
+    { x: 400, y: 150, type: 'project', color: '#ff00ff' },
+    { x: 300, y: 300, type: 'task', color: '#ffff00' }
+  ];
+  
+  demos.forEach(demo => {
+    if (style === 'neon') {
+      demoNeonStyle(ctx, demo.x, demo.y, 40, demo.color, demo.type);
+    } else if (style === 'tech') {
+      demoTechStyle(ctx, demo.x, demo.y, 40, demo.color, demo.type);
+    } else if (style === 'minimal') {
+      demoMinimalStyle(ctx, demo.x, demo.y, 40, demo.color, demo.type);
+    }
+  });
+  
+  console.log(`Demo style: ${style}`);
+}
+
+// Fixed drawing functions that work with real map data
+function drawNeonStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Enhanced neon domain with multiple glow layers
+    const time = performance.now() * 0.003;
+    const pulse = 1 + Math.sin(time) * 0.4;
+    const pulse2 = 1 + Math.sin(time * 1.3) * 0.2;
+    
+    // Outer mega glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 40 * pulse;
+    ctx.fillStyle = color + '15';
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Middle glow
+    ctx.shadowBlur = 25 * pulse2;
+    ctx.fillStyle = color + '25';
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Main circle with thick border
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Inner bright core
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = color + '80';
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Center bright dot
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (type === 'project') {
+    // Enhanced neon hexagon with energy field
+    const time = performance.now() * 0.002;
+    
+    // Energy field around hexagon
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = color + '10';
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Hexagon with thick glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    
+    // Rotating energy particles
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = color;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + time;
+      const distance = radius * 1.8;
+      const px = x + Math.cos(angle) * distance;
+      const py = y + Math.sin(angle) * distance;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Center energy core
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (type === 'task') {
+    // Enhanced neon task with energy pulse
+    const time = performance.now() * 0.005;
+    const pulse = 1 + Math.sin(time) * 0.3;
+    const pulse2 = 1 + Math.sin(time * 1.5) * 0.2;
+    
+    // Outer energy ring
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20 * pulse;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Main task with strong glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 15 * pulse2;
+    ctx.fillStyle = color + '70';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Bright border
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Center bright dot
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  
+  ctx.restore();
+}
+
+function drawTechStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Tech domain with circuit pattern
+    const time = performance.now() * 0.001;
+    
+    // Main circle
+    ctx.fillStyle = color + '20';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Circuit lines
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + time;
+      const startRadius = radius * 0.7;
+      const endRadius = radius * 1.1;
+      
+      ctx.beginPath();
+      ctx.moveTo(
+        x + Math.cos(angle) * startRadius,
+        y + Math.sin(angle) * startRadius
+      );
+      ctx.lineTo(
+        x + Math.cos(angle) * endRadius,
+        y + Math.sin(angle) * endRadius
+      );
+      ctx.stroke();
+    }
+    
+    // Center node
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (type === 'project') {
+    // Tech project with data flow
+    const time = performance.now() * 0.002;
+    
+    // Hexagon outline
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    
+    // Data flow lines
+    ctx.strokeStyle = color + '80';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2 + time;
+      const distance = radius * 0.8;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(
+        x + Math.cos(angle) * distance,
+        y + Math.sin(angle) * distance
+      );
+      ctx.stroke();
+    }
+    
+  } else if (type === 'task') {
+    // Tech task with status indicator
+    ctx.fillStyle = color + '40';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Status dot
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  
+  ctx.restore();
+}
+
+function drawMinimalStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Minimal domain - clean circle
+    ctx.fillStyle = color + '30';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+  } else if (type === 'project') {
+    // Minimal project - clean rectangle
+    const width = radius * 1.4;
+    const height = radius * 1.0;
+    
+    ctx.fillStyle = color + '40';
+    ctx.fillRect(x - width/2, y - height/2, width, height);
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - width/2, y - height/2, width, height);
+    
+  } else if (type === 'task') {
+    // Minimal task - clean circle
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+}
+
+// New style: Holographic
+function drawHolographicStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Holographic domain with scan lines
+    const time = performance.now() * 0.001;
+    
+    // Base circle with transparency
+    ctx.fillStyle = color + '30';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Scan lines effect
+    ctx.strokeStyle = color + '60';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + time;
+      const startRadius = radius * 0.3;
+      const endRadius = radius * 1.1;
+      
+      ctx.beginPath();
+      ctx.moveTo(
+        x + Math.cos(angle) * startRadius,
+        y + Math.sin(angle) * startRadius
+      );
+      ctx.lineTo(
+        x + Math.cos(angle) * endRadius,
+        y + Math.sin(angle) * endRadius
+      );
+      ctx.stroke();
+    }
+    
+    // Holographic border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Center data node
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (type === 'project') {
+    // Holographic project with data matrix
+    const time = performance.now() * 0.002;
+    
+    // Base hexagon
+    ctx.fillStyle = color + '20';
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Data streams
+    ctx.strokeStyle = color + '80';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + time;
+      const distance = radius * 1.3;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(
+        x + Math.cos(angle) * distance,
+        y + Math.sin(angle) * distance
+      );
+      ctx.stroke();
+    }
+    
+    // Holographic border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+  } else if (type === 'task') {
+    // Holographic task with data pulse
+    const time = performance.now() * 0.003;
+    const pulse = 1 + Math.sin(time) * 0.3;
+    
+    // Base circle
+    ctx.fillStyle = color + '40';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Data pulse rings
+    ctx.strokeStyle = color + '60';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const ringRadius = radius * (0.5 + i * 0.3) * pulse;
+      ctx.beginPath();
+      ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Holographic border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  
+  ctx.restore();
+}
+
+// New style: Gradient
+function drawGradientStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Gradient domain with multiple color stops
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.5, color + '80');
+    gradient.addColorStop(1, color + '20');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Outer glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+  } else if (type === 'project') {
+    // Gradient project with diagonal gradient
+    const gradient = ctx.createLinearGradient(x - radius, y - radius, x + radius, y + radius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.5, color + '60');
+    gradient.addColorStop(1, color + '30');
+    
+    // Rounded rectangle
+    const width = radius * 1.4;
+    const height = radius * 1.0;
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x - width/2, y - height/2, width, height);
+    
+    // Border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - width/2, y - height/2, width, height);
+    
+  } else if (type === 'task') {
+    // Gradient task with radial gradient
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.3, color);
+    gradient.addColorStop(1, color + '60');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+}
+
+// Mixed style: Combines neon, gradient and holographic effects
+function drawMixedStyle(ctx, x, y, radius, color, type) {
+  ctx.save();
+  
+  if (type === 'domain') {
+    // Mixed domain: gradient base + neon glow + holographic scan lines
+    const time = performance.now() * 0.002;
+    const pulse = 1 + Math.sin(time) * 0.3;
+    
+    // Gradient base
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.6, color + '60');
+    gradient.addColorStop(1, color + '20');
+    
+    // Neon glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 25 * pulse;
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Holographic scan lines
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color + '80';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + time;
+      const startRadius = radius * 0.4;
+      const endRadius = radius * 1.2;
+      
+      ctx.beginPath();
+      ctx.moveTo(
+        x + Math.cos(angle) * startRadius,
+        y + Math.sin(angle) * startRadius
+      );
+      ctx.lineTo(
+        x + Math.cos(angle) * endRadius,
+        y + Math.sin(angle) * endRadius
+      );
+      ctx.stroke();
+    }
+    
+    // Neon border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Bright center
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+  } else if (type === 'project') {
+    // Mixed project: gradient hexagon + neon particles + holographic data streams
+    const time = performance.now() * 0.001;
+    
+    // Gradient hexagon
+    const gradient = ctx.createLinearGradient(x - radius, y - radius, x + radius, y + radius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.5, color + '70');
+    gradient.addColorStop(1, color + '30');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Neon particles
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = color;
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + time;
+      const distance = radius * 1.6;
+      const px = x + Math.cos(angle) * distance;
+      const py = y + Math.sin(angle) * distance;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Holographic data streams
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color + '60';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2 + time;
+      const distance = radius * 1.2;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(
+        x + Math.cos(angle) * distance,
+        y + Math.sin(angle) * distance
+      );
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    
+    // Neon border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    
+  } else if (type === 'task') {
+    // Mixed task: gradient + neon pulse + holographic rings
+    const time = performance.now() * 0.003;
+    const pulse = 1 + Math.sin(time) * 0.4;
+    
+    // Gradient base
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.4, color);
+    gradient.addColorStop(1, color + '50');
+    
+    // Neon glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 18 * pulse;
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Holographic rings
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color + '70';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([1, 1]);
+    for (let i = 0; i < 2; i++) {
+      const ringRadius = radius * (0.6 + i * 0.4) * pulse;
+      ctx.beginPath();
+      ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    
+    // Neon border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Bright center
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  
+  ctx.restore();
+}
+
+
+// Export demo functions globally (temporarily disabled for debugging)
+// try { 
+//   window.showStyleDemo = showStyleDemo;
+//   window.demoNeonStyle = demoNeonStyle;
+//   window.demotechStyle = demoTechStyle;
+//   window.demoMinimalStyle = demoMinimalStyle;
+// } catch (_) {}
 let pendingDragStart = { x: 0, y: 0 };
 // simple undo stack for moves: store { type: 'task'|'project', id, fromProjectId, toProjectId, fromPos, toPos }
 let undoStack = [];
@@ -82,6 +1026,67 @@ let undoStack = [];
 let pendingAttach = null;
 // transient pending detach: { taskId, fromProjectId, pos }
 let pendingDetach = null;
+// transient pending project move: { projectId, fromDomainId, toDomainId, pos }
+let pendingProjectMove = null;
+
+// Function to position toast near user action
+function positionToastNearAction(worldX, worldY, toast) {
+  if (!toast) return;
+  
+  // Convert world coordinates to screen coordinates
+  const screenPos = worldToScreen(worldX, worldY);
+  
+  // Get canvas position
+  const canvas = document.getElementById('canvas');
+  const canvasRect = canvas.getBoundingClientRect();
+  
+  // Calculate toast position relative to screen
+  const toastX = canvasRect.left + screenPos.x;
+  const toastY = canvasRect.top + screenPos.y;
+  
+  // Ensure toast stays within viewport
+  const toastWidth = 300; // Approximate toast width
+  const toastHeight = 60; // Approximate toast height
+  const margin = 20;
+  
+  let finalX = toastX;
+  let finalY = toastY;
+  
+  // Adjust X position if toast would go off screen
+  if (finalX + toastWidth > window.innerWidth - margin) {
+    finalX = window.innerWidth - toastWidth - margin;
+  }
+  if (finalX < margin) {
+    finalX = margin;
+  }
+  
+  // Adjust Y position if toast would go off screen
+  if (finalY + toastHeight > window.innerHeight - margin) {
+    finalY = window.innerHeight - toastHeight - margin;
+  }
+  if (finalY < margin) {
+    finalY = margin;
+  }
+  
+  // Apply position
+  toast.style.position = 'fixed';
+  toast.style.left = finalX + 'px';
+  toast.style.top = finalY + 'px';
+  toast.style.right = 'auto';
+  toast.style.transform = 'none';
+}
+
+// Helper function to convert world coordinates to screen coordinates
+function worldToScreen(worldX, worldY) {
+  const canvas = document.getElementById('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  
+  // Apply view transform
+  const screenX = (worldX - viewState.tx) * viewState.scale / dpr;
+  const screenY = (worldY - viewState.ty) * viewState.scale / dpr;
+  
+  return { x: screenX, y: screenY };
+}
 // perf tuning
 let dynamicEdgeCap = 300;
 let allowGlow = true;
@@ -94,11 +1099,31 @@ let showFps = false;
 let starField = [];
 let lastStarUpdate = 0;
 
+// Global flag to prevent multiple map initialization
+let mapInitialized = false;
+
 export function initMap(canvasEl, tooltipEl) {
+  // Prevent multiple initialization
+  if (mapInitialized) {
+    console.log('Map already initialized, skipping...');
+    return;
+  }
+  
+  mapInitialized = true;
   canvas = canvasEl;
   tooltip = tooltipEl;
   resize();
   initStarField();
+  
+  // Initialize cosmic animations
+  if (window.cosmicAnimations) {
+    console.log('Initializing cosmic animations...');
+    window.cosmicAnimations.init(canvas, ctx);
+    console.log('Cosmic animations initialized successfully');
+  } else {
+    console.warn('Cosmic animations not available!');
+  }
+  
   window.addEventListener("resize", () => {
     resize();
     initStarField();
@@ -111,17 +1136,74 @@ export function initMap(canvasEl, tooltipEl) {
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
+  canvas.addEventListener("contextmenu", onContextMenu);
   layoutMap();
   drawMap();
   // Автоматически подгоняем вид под все объекты при инициализации
   setTimeout(() => {
     try { fitAll(); } catch(_) {}
   }, 100);
+  
+  // Start cosmic animation loop
+  startCosmicAnimationLoop();
+}
+
+// Global flags to prevent multiple initialization and loops
+let cosmicAnimationRunning = false;
+let isDrawing = false;
+let isLayouting = false;
+
+// Export demo functions globally
+try { 
+  window.showStyleDemo = showStyleDemo;
+  window.demoNeonStyle = demoNeonStyle;
+  window.demotechStyle = demoTechStyle;
+  window.demoMinimalStyle = demoMinimalStyle;
+} catch (_) {}
+
+// Optimized cosmic animation loop
+function startCosmicAnimationLoop() {
+  // Prevent multiple animation loops
+  if (cosmicAnimationRunning) {
+    console.log('Cosmic animation loop already running, skipping...');
+    return;
+  }
+  
+  cosmicAnimationRunning = true;
+  console.log('Starting cosmic animation loop...');
+  let lastUpdate = 0;
+  const targetFPS = 30; // Limit to 30 FPS for better performance
+  const frameInterval = 1000 / targetFPS;
+  
+  function animate(currentTime) {
+    // Only update if enough time has passed and not already drawing
+    if (currentTime - lastUpdate >= frameInterval && !isDrawing) {
+      // Update cosmic effects
+      if (window.cosmicAnimations) {
+        window.cosmicAnimations.update();
+      }
+      
+      // Only redraw if there are active particles and not already drawing
+      if (window.cosmicAnimations && window.cosmicAnimations.particles.length > 0 && !isDrawing) {
+        drawMap();
+      }
+      
+      lastUpdate = currentTime;
+    }
+    
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
 }
 
 export function setShowFps() {
   showFps = !showFps;
   drawMap();
+}
+
+// Export function to get current nodes for external modules
+export function getMapNodes() {
+  return nodes;
 }
 
 // Camera helpers and fit animations
@@ -316,6 +1398,12 @@ function calculateProjectRadius(tasks) {
   return Math.max(baseRadius, radiusFromArea);
 }
 export function layoutMap() {
+  // Prevent recursive layout calls
+  if (isLayouting) {
+    return;
+  }
+  isLayouting = true;
+  
   nodes = [];
   edges = [];
   const domains = state.activeDomain
@@ -380,7 +1468,7 @@ export function layoutMap() {
   });
 
   const visibleProjects = state.projects
-    .filter((p) => domains.some((d) => d.id === p.domainId))
+    .filter((p) => domains.some((d) => d.id === p.domainId) || p.domainId === null) // Include independent projects
     .filter((p) => {
       if (!state.filterTag) return true;
       return state.tasks.some(
@@ -392,6 +1480,28 @@ export function layoutMap() {
     const dNode = nodes.find(
       (n) => n._type === "domain" && n.id === p.domainId
     );
+    
+    if (p.domainId === null) {
+      // Independent project - use saved position or default position
+      const projectTasks = taskList.filter((t) => t.projectId === p.id);
+      let projectRadius = calculateProjectRadius(projectTasks);
+      const saved = p.pos || p._pos;
+      
+      // Default position for independent projects (center-right of screen)
+      const defaultX = W * 0.75;
+      const defaultY = H * 0.5;
+      
+      nodes.push({
+        _type: "project",
+        id: p.id,
+        title: p.title,
+        x: saved && typeof saved.x === "number" ? saved.x : defaultX,
+        y: saved && typeof saved.y === "number" ? saved.y : defaultY,
+        r: projectRadius,
+        color: p.color,
+      });
+    } else if (dNode) {
+      // Project in domain - use existing logic
     const prjs = visibleProjects.filter((pp) => pp.domainId === p.domainId);
     const ii = prjs.indexOf(p);
     const total = prjs.length;
@@ -416,6 +1526,7 @@ export function layoutMap() {
       r: projectRadius,
       parent: dNode.id,
     });
+    }
   });
 
   const golden = Math.PI * (3 - Math.sqrt(5));
@@ -625,10 +1736,20 @@ export function layoutMap() {
     const cap = Math.min(state.maxEdges || 300, dynamicEdgeCap || 300);
     edges = edges.slice(0, cap);
   }
+  
+  // Reset layouting flag
+  isLayouting = false;
 }
 
 export function drawMap() {
   if (!ctx) return;
+  
+  // Prevent recursive drawing
+  if (isDrawing) {
+    return;
+  }
+  isDrawing = true;
+  
   // if nodes not prepared (empty), try to rebuild layout once — helps recover after edits
   if (!nodes || nodes.length === 0) {
     try {
@@ -650,6 +1771,11 @@ export function drawMap() {
 
   // Cosmic starfield with twinkling stars
   drawStarfield(ctx, W, H, viewState);
+  
+  // Render cosmic effects (particles, animations)
+  if (window.cosmicAnimations) {
+    window.cosmicAnimations.render();
+  }
 
   // compute viewport in world coords for culling
   const inv = 1 / Math.max(0.0001, viewState.scale);
@@ -661,12 +1787,17 @@ export function drawMap() {
   const inView = (x, y, r = 0) =>
     x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
 
-  // edges
+  // edges - enhanced visibility
   if (state.showLinks) {
     ctx.lineCap = "round";
     edges.forEach((e) => {
       if (!inView(e.a.x, e.a.y, e.a.r) && !inView(e.b.x, e.b.y, e.b.r)) return;
-      ctx.beginPath();
+      
+      // Add energy flow effect for connections
+      if (window.cosmicAnimations && Math.random() < 0.1) { // 10% chance per frame
+        window.cosmicAnimations.createEnergyFlow(e.a.x, e.a.y, e.b.x, e.b.y, e.color);
+      }
+      
       const a = e.a,
         b = e.b;
       const mx = (a.x + b.x) / 2,
@@ -675,11 +1806,35 @@ export function drawMap() {
       const k = 0.12 * (1 / (1 + dist / (300 * DPR)));
       const dx = (b.y - a.y) * k,
         dy = (a.x - b.x) * k;
+      
+      // Draw connection with enhanced visibility
+      // Outer glow
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = e.color + '40';
+      ctx.strokeStyle = e.color + '20';
+      ctx.lineWidth = e.w + 4;
+      ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
+      ctx.stroke();
+      
+      // Main connection
+      ctx.shadowBlur = 0;
       ctx.strokeStyle = e.color;
       ctx.lineWidth = e.w;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
       ctx.stroke();
+      
+      // Add connection dots at endpoints
+      ctx.fillStyle = e.color;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 2, 0, Math.PI * 2);
+      ctx.fill();
     });
   }
 
@@ -733,12 +1888,42 @@ export function drawMap() {
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
       
-      // Draw nebula
-      drawPlanet(ctx, n.x, n.y, n.r, n.color, 'nebula');
+      // Draw nebula with style support
+      if (projectVisualStyle === 'original') {
+        // Original domain drawing from v0.2.7.5
+      const grad = ctx.createRadialGradient(n.x, n.y, n.r * 0.3, n.x, n.y, n.r);
+      grad.addColorStop(0, n.color + "33");
+      grad.addColorStop(1, "#0000");
+      ctx.beginPath();
+      ctx.fillStyle = grad;
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fill();
+        ctx.beginPath();
+        ctx.strokeStyle = n.color;
+        ctx.lineWidth = 1.2 * DPR;
+        ctx.setLineDash([4 * DPR, 4 * DPR]);
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (projectVisualStyle === 'neon') {
+        drawNeonStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+      } else if (projectVisualStyle === 'tech') {
+        drawTechStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+      } else if (projectVisualStyle === 'minimal') {
+        drawMinimalStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+      } else if (projectVisualStyle === 'holographic') {
+        drawHolographicStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+      } else if (projectVisualStyle === 'gradient') {
+        drawGradientStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+      } else if (projectVisualStyle === 'mixed') {
+        drawMixedStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+      } else {
+        drawPlanet(ctx, n.x, n.y, n.r, n.color, 'nebula');
+      }
       
       // Search highlight
       if (state.searchResults && state.searchResults.domains && state.searchResults.domains.includes(n.id)) {
-        ctx.beginPath();
+      ctx.beginPath();
         ctx.strokeStyle = "#ffd700";
         ctx.lineWidth = 2 * DPR;
         ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
@@ -776,8 +1961,48 @@ export function drawMap() {
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
       
-      // Draw planet
-      drawPlanet(ctx, n.x, n.y, n.r, "#7b68ee", 'planet');
+      // Draw planet with gentle pulsing animation
+      const time = performance.now() * 0.0008; // Очень медленная анимация
+      const pulse = 1 + Math.sin(time) * 0.05; // Очень слабая пульсация
+      const pulseRadius = n.r * pulse;
+      
+      // Use project ID as seed for unique shape and project color
+      const seed = n.id ? n.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0) : 0;
+      const projectColor = n.color || "#7b68ee";
+      
+      // Choose visualization style based on settings
+      if (projectVisualStyle === 'original') {
+        // Original project drawing from v0.2.7.5
+        ctx.beginPath();
+        ctx.strokeStyle = "#1d2b4a";
+        ctx.lineWidth = 1 * DPR;
+        ctx.arc(n.x, n.y, pulseRadius + 18 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.fillStyle = "#8ab4ff";
+        ctx.arc(n.x, n.y, 6 * DPR, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (projectVisualStyle === 'modern') {
+        drawProjectModern(ctx, n.x, n.y, pulseRadius, projectColor, seed);
+      } else if (projectVisualStyle === 'simple') {
+        drawProjectSimple(ctx, n.x, n.y, pulseRadius, projectColor, seed);
+      } else if (projectVisualStyle === 'planet') {
+        drawPlanet(ctx, n.x, n.y, pulseRadius, projectColor, 'planet');
+      } else if (projectVisualStyle === 'neon') {
+        drawNeonStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
+      } else if (projectVisualStyle === 'tech') {
+        drawTechStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
+      } else if (projectVisualStyle === 'minimal') {
+        drawMinimalStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
+      } else if (projectVisualStyle === 'holographic') {
+        drawHolographicStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
+      } else if (projectVisualStyle === 'gradient') {
+        drawGradientStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
+      } else if (projectVisualStyle === 'mixed') {
+        drawMixedStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
+      } else {
+        drawGalaxy(ctx, n.x, n.y, pulseRadius, projectColor, seed);
+      }
       
       // Search highlight
       if (state.searchResults && state.searchResults.projects && state.searchResults.projects.includes(n.id)) {
@@ -824,21 +2049,111 @@ export function drawMap() {
       ctx.fillText(n.title, n.x, n.y - (n.r + 28 * DPR));
     });
 
-  // transient drag feedback: dashed connector from dragged task to potential drop target
-  if (draggedNode && draggedNode._type === "task") {
+  // Enhanced drag feedback: improved visual indicators for all drag operations
+  if (draggedNode) {
     try {
+      // Draw dragged object with enhanced visibility
+      ctx.save();
+      ctx.globalAlpha = 0.8;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#ffffff';
+      
+      if (draggedNode._type === "task") {
+        // Draw task with glow effect
+        ctx.fillStyle = getTaskColor(draggedNode.status);
+        ctx.beginPath();
+        ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add pulsing border
+        const time = performance.now() * 0.005;
+        const pulse = 1 + Math.sin(time) * 0.2;
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 2 * pulse;
+        ctx.beginPath();
+        ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (draggedNode._type === "project") {
+        // Draw project with glow effect
+        // Use project ID as seed for unique shape and project color
+        const seed = draggedNode.id ? draggedNode.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0) : 0;
+        const projectColor = draggedNode.color || "#7b68ee";
+        
+        // Choose visualization style based on settings
+        if (projectVisualStyle === 'original') {
+          // Original project drawing from v0.2.7.5
+          ctx.beginPath();
+          ctx.strokeStyle = "#1d2b4a";
+          ctx.lineWidth = 1 * DPR;
+          ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 18 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.fillStyle = "#8ab4ff";
+          ctx.arc(draggedNode.x, draggedNode.y, 6 * DPR, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (projectVisualStyle === 'modern') {
+          drawProjectModern(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, seed);
+        } else if (projectVisualStyle === 'simple') {
+          drawProjectSimple(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, seed);
+        } else if (projectVisualStyle === 'planet') {
+          drawPlanet(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, 'planet');
+        } else if (projectVisualStyle === 'neon') {
+          drawNeonStyle(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, 'project');
+        } else if (projectVisualStyle === 'tech') {
+          drawTechStyle(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, 'project');
+        } else if (projectVisualStyle === 'minimal') {
+          drawMinimalStyle(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, 'project');
+        } else if (projectVisualStyle === 'holographic') {
+          drawHolographicStyle(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, 'project');
+        } else if (projectVisualStyle === 'gradient') {
+          drawGradientStyle(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, 'project');
+        } else if (projectVisualStyle === 'mixed') {
+          drawMixedStyle(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, 'project');
+        } else {
+          drawGalaxy(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, seed);
+        }
+        
+        // Add pulsing border
+        const time = performance.now() * 0.005;
+        const pulse = 1 + Math.sin(time) * 0.2;
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 3 * pulse;
+        ctx.beginPath();
+        ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+      
+      // Draw connection line to drop target
+      if (draggedNode._type === "task" && dropTargetProjectId) {
       const target = nodes.find(
         (n) => n._type === "project" && n.id === dropTargetProjectId
       );
       if (target) {
         ctx.beginPath();
         ctx.setLineDash([8 * DPR, 6 * DPR]);
-        ctx.strokeStyle = "#ffd27a";
-        ctx.lineWidth = 1.6 * DPR;
+          ctx.strokeStyle = "#00ff00"; // Green for valid drop
+          ctx.lineWidth = 3 * DPR;
         ctx.moveTo(draggedNode.x, draggedNode.y);
         ctx.lineTo(target.x, target.y);
         ctx.stroke();
         ctx.setLineDash([]);
+        }
+      } else if (dropTargetDomainId) {
+        const target = nodes.find(
+          (n) => n._type === "domain" && n.id === dropTargetDomainId
+        );
+        if (target) {
+          ctx.beginPath();
+          ctx.setLineDash([8 * DPR, 6 * DPR]);
+          ctx.strokeStyle = "#00ff00"; // Green for valid drop
+          ctx.lineWidth = 3 * DPR;
+          ctx.moveTo(draggedNode.x, draggedNode.y);
+          ctx.lineTo(target.x, target.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
       }
     } catch (e) {}
   }
@@ -859,8 +2174,49 @@ export function drawMap() {
       };
       const baseColor = taskColors[n.status] || taskColors["backlog"];
       
-      // Draw task as a star/asteroid
-      drawTaskStar(ctx, n.x, n.y, n.r, baseColor, n.status);
+      // Draw task with style support
+      if (projectVisualStyle === 'original') {
+        // Original task drawing from v0.2.7.5
+      if (state.showAging) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
+        ctx.strokeStyle = colorByAging(n.aging);
+        ctx.lineWidth = 2 * DPR;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      if (state.showGlow && allowGlow) {
+        ctx.shadowColor = baseColor;
+        ctx.shadowBlur = 12 * DPR;
+      } else {
+        ctx.shadowBlur = 0;
+      }
+      ctx.fillStyle = baseColor;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+        if (n.status === "today") {
+          ctx.beginPath();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 1 * DPR;
+          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (projectVisualStyle === 'neon') {
+        drawNeonStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+      } else if (projectVisualStyle === 'tech') {
+        drawTechStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+      } else if (projectVisualStyle === 'minimal') {
+        drawMinimalStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+      } else if (projectVisualStyle === 'holographic') {
+        drawHolographicStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+      } else if (projectVisualStyle === 'gradient') {
+        drawGradientStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+      } else if (projectVisualStyle === 'mixed') {
+        drawMixedStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+      } else {
+        drawTaskModern(ctx, n.x, n.y, n.r, baseColor, n.status);
+      }
       
       // Search highlight
       if (state.searchResults && state.searchResults.tasks && state.searchResults.tasks.includes(n.id)) {
@@ -964,6 +2320,9 @@ export function drawMap() {
       highFrames = 0;
     }
   }
+  
+  // Reset drawing flag
+  isDrawing = false;
 }
 // optionally draw debug overlay
 debugOverlay();
@@ -1101,27 +2460,57 @@ function onMouseMove(e) {
       dragOffset.y = pt.y - pendingDragNode.y;
       pendingDragNode = null;
       canvas.style.cursor = "grabbing";
+      
+      // Add visual feedback for drag start
+      canvas.style.filter = "brightness(1.05)";
+      canvas.style.transition = "filter 0.2s ease";
     }
   }
   if (draggedNode) {
     const pt = screenToWorld(e.offsetX, e.offsetY);
     draggedNode.x = pt.x - dragOffset.x;
     draggedNode.y = pt.y - dragOffset.y;
-    // detect potential drop targets while dragging
+    
+    // Enhanced drop target detection with better visual feedback
     dropTargetProjectId = null;
     dropTargetDomainId = null;
     const hitNode = hitExcluding(pt.x, pt.y, draggedNode.id);
+    
+    // More precise domain detection for tasks and projects
+    let targetDomain = null;
+    for (const domain of state.domains) {
+      const dNode = nodes.find(n => n._type === 'domain' && n.id === domain.id);
+      if (dNode) {
+        const dx = pt.x - dNode.x;
+        const dy = pt.y - dNode.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= dNode.r) {
+          targetDomain = domain;
+          break;
+        }
+      }
+    }
+    
     if (hitNode) {
       if (draggedNode._type === "task" && hitNode._type === "project") {
         dropTargetProjectId = hitNode.id;
+        canvas.style.cursor = "copy"; // Visual feedback for valid drop
+      } else if (targetDomain) {
+        // Use precise domain detection instead of hitNode
+        dropTargetDomainId = targetDomain.id;
+        canvas.style.cursor = "copy"; // Visual feedback for valid drop
+      } else {
+        canvas.style.cursor = "not-allowed"; // Visual feedback for invalid drop
       }
-      if (
-        (draggedNode._type === "project" || draggedNode._type === "task") &&
-        hitNode._type === "domain"
-      ) {
-        dropTargetDomainId = hitNode.id;
+    } else {
+      // Check if we're over empty space (for independent tasks)
+      if (draggedNode._type === "task") {
+        canvas.style.cursor = "move"; // Visual feedback for independent placement
+      } else {
+        canvas.style.cursor = "grabbing"; // Default drag cursor
       }
     }
+    
     requestDraw();
     return;
   }
@@ -1167,6 +2556,10 @@ function onMouseLeave() {
   if (draggedNode) {
     draggedNode = null;
     canvas.style.cursor = "";
+    
+    // Reset visual effects
+    canvas.style.filter = "";
+    canvas.style.transition = "";
   }
   dropTargetProjectId = null;
   dropTargetDomainId = null;
@@ -1180,11 +2573,11 @@ function onMouseDown(e) {
     viewState.lastY = e.clientY;
     return;
   }
-  // DnD: захват задачи
+  // DnD: захват задачи или проекта
   if (e.button === 0) {
     const pt = screenToWorld(e.offsetX, e.offsetY);
     const n = hit(pt.x, pt.y);
-    if (n && n._type === "task") {
+    if (n && (n._type === "task" || n._type === "project")) {
       pendingDragNode = n;
       pendingDragStart.x = e.clientX;
       pendingDragStart.y = e.clientY;
@@ -1278,6 +2671,9 @@ window.addEventListener("mouseup", (e) => {
         toast.innerHTML = `Привязать задачу к проекту? <button id="attachOk">Привязать</button> <button id="attachCancel">Отменить</button>`;
         toast.style.display = "block";
         toast.style.opacity = "1";
+        
+        // Position toast near the dragged task
+        positionToastNearAction(draggedNode.x, draggedNode.y, toast);
         // handlers
         setTimeout(() => {
           const ok = document.getElementById("attachOk");
@@ -1295,22 +2691,160 @@ window.addEventListener("mouseup", (e) => {
     }
   }
 
-  // For projects: if dropped over a domain, move project to that domain
+  // For projects: if dropped over a domain, move project to that domain; if dropped outside, make independent
   if (draggedNode._type === "project") {
-    // find world point under mouse
-    const offX =
-      e && typeof e.offsetX === "number" ? e.offsetX : lastMouseClient.offsetX;
-    const offY =
-      e && typeof e.offsetY === "number" ? e.offsetY : lastMouseClient.offsetY;
-    const pt = screenToWorld(offX || 0, offY || 0);
-    const n = hit(pt.x, pt.y);
-    if (n && n._type === "domain") {
-      const p = state.projects.find((x) => x.id === draggedNode.id);
-      if (p && p.domainId !== n.id) {
-        p.domainId = n.id;
-        p.updatedAt = Date.now();
-        // mark moved for toast
-        var projectMoved = true;
+    const p = state.projects.find((x) => x.id === draggedNode.id);
+    if (p) {
+      console.log("Project move logic - dropTargetDomainId:", dropTargetDomainId, "p.domainId:", p.domainId);
+      if (dropTargetDomainId) {
+        const targetDomain = state.domains.find(d => d.id === dropTargetDomainId);
+        if (targetDomain) {
+          // Move project to domain (only if it's actually moving to a different domain)
+          if (p.domainId !== targetDomain.id) {
+            const currentDomain = p.domainId ? state.domains.find(d => d.id === p.domainId)?.title : "независимый";
+            const newDomain = targetDomain.title;
+            console.log("Project move - showing confirmation:", currentDomain, "->", newDomain);
+            
+            // Set up pending project move
+            pendingProjectMove = {
+              projectId: draggedNode.id,
+              fromDomainId: p.domainId,
+              toDomainId: targetDomain.id,
+              pos: { x: draggedNode.x, y: draggedNode.y }
+            };
+            
+            // Show toast with buttons
+            const toast = document.getElementById("toast");
+            console.log("Project move toast - toast element:", toast);
+            if (toast) {
+              toast.className = "toast attach";
+              toast.innerHTML = `Переместить проект "${p.title}" из домена "${currentDomain}" в домен "${newDomain}"? <button id="projectMoveOk">Переместить</button> <button id="projectMoveCancel">Отменить</button>`;
+              toast.style.display = "block !important";
+              toast.style.opacity = "1 !important";
+              toast.style.zIndex = "1000 !important";
+              toast.style.visibility = "visible !important";
+              console.log("Project move toast - displayed:", toast.style.display, "opacity:", toast.style.opacity);
+              
+              // Position toast near the dragged project
+              positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+              
+              // Fallback: if positioning failed, use center positioning
+              setTimeout(() => {
+                if (toast.style.left === '' || toast.style.top === '') {
+                  toast.style.position = 'fixed';
+                  toast.style.left = '50%';
+                  toast.style.top = '50%';
+                  toast.style.transform = 'translate(-50%, -50%)';
+                  toast.style.right = 'auto';
+                }
+              }, 10);
+              
+              // Set up handlers
+              setTimeout(() => {
+                const ok = document.getElementById("projectMoveOk");
+                const cancel = document.getElementById("projectMoveCancel");
+                if (ok) {
+                  ok.onclick = () => {
+                    confirmProjectMove();
+                  };
+                }
+                if (cancel) {
+                  cancel.onclick = () => {
+                    pendingProjectMove = null;
+                    toast.style.display = "none";
+                  };
+                }
+              }, 20);
+            }
+          } else {
+            // Project is already in this domain, just update position
+            p.pos = { x: draggedNode.x, y: draggedNode.y };
+            p.updatedAt = Date.now();
+            saveState();
+            
+            const toast = document.getElementById("toast");
+            if (toast) {
+              toast.className = "toast ok";
+              toast.textContent = `Позиция проекта "${p.title}" в домене "${targetDomain.title}" обновлена`;
+              toast.style.display = "block";
+              toast.style.opacity = "1";
+              
+              // Position toast near the dragged project
+              positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+              
+              setTimeout(() => {
+                toast.style.transition = "opacity .3s linear";
+                toast.style.opacity = "0";
+                setTimeout(() => {
+                  toast.style.display = "none";
+                  toast.style.transition = "";
+                }, 320);
+              }, 1400);
+            }
+            
+            layoutMap();
+            drawMap();
+          }
+        } else {
+          // Extract project from domain (make independent) - when dropped outside any domain
+          console.log("Project extract logic - p.domainId:", p.domainId, "dropTargetDomainId:", dropTargetDomainId);
+          if (p.domainId !== null) {
+            const currentDomain = state.domains.find(d => d.id === p.domainId)?.title;
+            console.log("Project extract - showing confirmation for:", currentDomain);
+            
+            // Set up pending project extraction
+            pendingProjectMove = {
+              projectId: draggedNode.id,
+              fromDomainId: p.domainId,
+              toDomainId: null,
+              pos: { x: draggedNode.x, y: draggedNode.y }
+            };
+            
+            // Show toast with buttons
+            const toast = document.getElementById("toast");
+            console.log("Project extract toast - toast element:", toast);
+            if (toast) {
+              toast.className = "toast detach";
+              toast.innerHTML = `Извлечь проект "${p.title}" из домена "${currentDomain}" и сделать его независимым? <button id="projectExtractOk">Извлечь</button> <button id="projectExtractCancel">Отменить</button>`;
+              toast.style.display = "block !important";
+              toast.style.opacity = "1 !important";
+              toast.style.zIndex = "1000 !important";
+              toast.style.visibility = "visible !important";
+              console.log("Project extract toast - displayed:", toast.style.display, "opacity:", toast.style.opacity);
+              
+              // Position toast near the dragged project
+              positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+              
+              // Fallback: if positioning failed, use center positioning
+              setTimeout(() => {
+                if (toast.style.left === '' || toast.style.top === '') {
+                  toast.style.position = 'fixed';
+                  toast.style.left = '50%';
+                  toast.style.top = '50%';
+                  toast.style.transform = 'translate(-50%, -50%)';
+                  toast.style.right = 'auto';
+                }
+              }, 10);
+              
+              // Set up handlers
+              setTimeout(() => {
+                const ok = document.getElementById("projectExtractOk");
+                const cancel = document.getElementById("projectExtractCancel");
+                if (ok) {
+                  ok.onclick = () => {
+                    confirmProjectMove();
+                  };
+                }
+                if (cancel) {
+                  cancel.onclick = () => {
+                    pendingProjectMove = null;
+                    toast.style.display = "none";
+                  };
+                }
+              }, 20);
+            }
+          }
+        }
       }
     }
   }
@@ -1331,13 +2865,26 @@ window.addEventListener("mouseup", (e) => {
         if (toast) {
           toast.className = "toast ok";
           toast.textContent = "Задача прикреплена к домену";
-          setTimeout(() => { toast.style.display = "none"; }, 1400);
+          toast.style.display = "block";
+          toast.style.opacity = "1";
+          
+          // Position toast near the dragged task
+          positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+          
+          setTimeout(() => {
+            toast.style.transition = "opacity .3s linear";
+            toast.style.opacity = "0";
+            setTimeout(() => {
+              toast.style.display = "none";
+              toast.style.transition = "";
+            }, 320);
+          }, 1400);
         }
         layoutMap();
         drawMap();
       } else {
         // Для остальных случаев показываем модалку выбора
-      openMoveTaskModal(t, dropTargetDomainId);
+        openMoveTaskModal(t, dropTargetDomainId, draggedNode.x, draggedNode.y);
       }
     }
   }
@@ -1366,6 +2913,9 @@ window.addEventListener("mouseup", (e) => {
             toast.innerHTML = `Отвязать задачу от проекта? <button id="detachOk">Отвязать</button> <button id="detachCancel">Отмена</button>`;
             toast.style.display = "block";
             toast.style.opacity = "1";
+            
+            // Position toast near the dragged task
+            positionToastNearAction(draggedNode.x, draggedNode.y, toast);
             setTimeout(() => {
               const ok = document.getElementById("detachOk");
               if (ok) {
@@ -1388,8 +2938,37 @@ window.addEventListener("mouseup", (e) => {
           }
         }
       }
+    } else if (t && !t.projectId && !t.domainId) {
+      // Task is already independent, just update position
+      t.pos = { x: draggedNode.x, y: draggedNode.y };
+      t.updatedAt = Date.now();
+      saveState();
+      
+      const toast = document.getElementById("toast");
+      if (toast) {
+        toast.className = "toast ok";
+        toast.textContent = "Позиция задачи обновлена";
+        toast.style.display = "block";
+        toast.style.opacity = "1";
+        
+        // Position toast near the dragged task
+        positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+        
+        setTimeout(() => {
+          toast.style.transition = "opacity .3s linear";
+          toast.style.opacity = "0";
+          setTimeout(() => {
+            toast.style.display = "none";
+            toast.style.transition = "";
+          }, 320);
+        }, 1400);
+      }
+      
+      layoutMap();
+      drawMap();
     }
   }
+
 
   // persist visual position back to state
   if (draggedNode._type === "task") {
@@ -1407,8 +2986,37 @@ window.addEventListener("mouseup", (e) => {
   if (draggedNode._type === "project") {
     const p = state.projects.find((x) => x.id === draggedNode.id);
     if (p) {
-      p.pos = { x: draggedNode.x, y: draggedNode.y };
-      saveState();
+      // if there is a pendingProjectMove for this project, don't persist yet (wait for confirm)
+      if (pendingProjectMove && pendingProjectMove.projectId === p.id) {
+        // keep transient pending visualization; actual save occurs on confirmProjectMove
+      } else {
+        p.pos = { x: draggedNode.x, y: draggedNode.y };
+        p.updatedAt = Date.now();
+        saveState();
+      }
+      
+      // Show feedback for independent project position update (only if no pending move)
+      if (!p.domainId && !(pendingProjectMove && pendingProjectMove.projectId === p.id)) {
+        const toast = document.getElementById("toast");
+        if (toast) {
+          toast.className = "toast ok";
+          toast.textContent = "Позиция независимого проекта обновлена";
+          toast.style.display = "block";
+          toast.style.opacity = "1";
+          
+          // Position toast near the dragged project
+          positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+          
+          setTimeout(() => {
+            toast.style.transition = "opacity .3s linear";
+            toast.style.opacity = "0";
+            setTimeout(() => {
+              toast.style.display = "none";
+              toast.style.transition = "";
+            }, 320);
+          }, 1400);
+        }
+      }
     }
   }
 
@@ -1467,6 +3075,11 @@ window.addEventListener("mouseup", (e) => {
   dropTargetProjectId = null;
   dropTargetDomainId = null;
   canvas.style.cursor = "";
+  
+  // Reset visual effects
+  canvas.style.filter = "";
+  canvas.style.transition = "";
+  
   layoutMap();
   drawMap();
 
@@ -1668,6 +3281,70 @@ function confirmDetach() {
   }
 }
 
+// Confirm project move between domains (uses pendingProjectMove)
+function confirmProjectMove() {
+  try {
+    console.log("confirmProjectMove called, pendingProjectMove:", pendingProjectMove);
+    if (!pendingProjectMove) return false;
+    const item = pendingProjectMove;
+    const p = state.projects.find((x) => x.id === item.projectId);
+    if (!p) {
+      console.log("Project not found:", item.projectId);
+      pendingProjectMove = null;
+      return false;
+    }
+    
+    console.log("Updating project domain from", p.domainId, "to", item.toDomainId);
+    // Update project domain
+    p.domainId = item.toDomainId;
+    p.updatedAt = Date.now();
+    
+    // Update position if provided
+    if (item.pos) {
+      p.pos = { x: item.pos.x, y: item.pos.y };
+    }
+    
+    saveState();
+    pendingProjectMove = null;
+    
+    // Show success toast
+    const toast = document.getElementById("toast");
+    if (toast) {
+      toast.className = "toast ok";
+      if (item.toDomainId === null) {
+        toast.textContent = "Проект извлечен из домена";
+      } else {
+        const domain = state.domains.find(d => d.id === item.toDomainId);
+        toast.textContent = `Проект перемещен в домен "${domain?.title || 'неизвестный'}"`;
+      }
+      toast.style.display = "block";
+      toast.style.opacity = "1";
+      setTimeout(() => {
+        toast.style.transition = "opacity .3s linear";
+        toast.style.opacity = "0";
+        setTimeout(() => {
+          toast.style.display = "none";
+          toast.style.transition = "";
+        }, 320);
+      }, 1400);
+    }
+    
+    layoutMap();
+    drawMap();
+    return true;
+  } catch (e) {
+    console.error("Error in confirmProjectMove:", e);
+    pendingProjectMove = null;
+    const toast = document.getElementById("toast");
+    if (toast) {
+      toast.className = "toast error";
+      toast.textContent = "Ошибка при перемещении проекта";
+      setTimeout(() => { toast.style.display = "none"; }, 1400);
+    }
+    return false;
+  }
+}
+
 export function getPendingAttach() {
   return pendingAttach;
 }
@@ -1738,62 +3415,88 @@ function openModalLocal({
   modal.style.display = "flex";
 }
 
-function openMoveTaskModal(task, targetDomainId) {
+function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
   const projs = state.projects.filter((p) => p.domainId === targetDomainId);
+  const domTitle = state.domains.find((d) => d.id === targetDomainId)?.title || "";
+  
+  // Create a more compact toast-based interface instead of modal
+  const toast = document.getElementById("toast");
+  if (toast) {
   const options = [`<option value="__indep__">Оставить независимой</option>`]
     .concat(projs.map((p) => `<option value="${p.id}">${p.title}</option>`))
     .join("");
-  const domTitle =
-    state.domains.find((d) => d.id === targetDomainId)?.title || "";
-  const body = `<div style="display:flex;flex-direction:column;gap:8px">
+    
+    toast.className = "toast attach";
+    toast.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:280px;">
     <div>Перенести в домен "${domTitle}"?</div>
-    <label>В проект:</label>
-    <select id="selProject">${options}</select>
-  </div>`;
-  openModalLocal({
-    title: `Переместить задачу`,
-    bodyHTML: body,
-    confirmText: "Переместить",
-    onConfirm: (bodyEl) => {
-      const sel = bodyEl.querySelector("#selProject");
+        <select id="selProject" style="padding:4px;border:1px solid var(--panel-2);background:var(--panel);color:var(--text);border-radius:4px;">${options}</select>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button id="moveTaskOk" style="flex:1;">Переместить</button>
+          <button id="moveTaskCancel" style="flex:1;">Отменить</button>
+        </div>
+      </div>
+    `;
+    toast.style.display = "block";
+    toast.style.opacity = "1";
+    
+    // Position toast near the dragged task
+    if (worldX !== undefined && worldY !== undefined) {
+      positionToastNearAction(worldX, worldY, toast);
+    }
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("moveTaskOk");
+      const cancel = document.getElementById("moveTaskCancel");
+      const sel = document.getElementById("selProject");
+      
+      if (ok) {
+        ok.onclick = () => {
       const val = sel ? sel.value : "__indep__";
       if (val === "__indep__") {
         task.projectId = null;
         task.domainId = targetDomainId;
-        // keep manual pos if manual; else recompute on next layout
       } else {
         task.projectId = val;
-        // Устанавливаем domainId из проекта
-        try {
-          const project = state.projects.find(p => p.id === val);
-          if (project) task.domainId = project.domainId;
-        } catch (_) {}
-        if (state.settings && state.settings.layoutMode === "auto") {
           try {
-            delete task.pos;
+              const project = state.projects.find(p => p.id === val);
+              if (project) task.domainId = project.domainId;
           } catch (_) {}
+            if (state.settings && state.settings.layoutMode === "auto") {
+              try { delete task.pos; } catch (_) {}
         }
       }
       task.updatedAt = Date.now();
       saveState();
-      const toast = document.getElementById("toast");
-      if (toast) {
+          
+          // Show success toast
         toast.className = "toast ok";
-        toast.textContent = "Перемещено";
+          toast.innerHTML = "Задача перемещена";
         toast.style.display = "block";
         toast.style.opacity = "1";
+          
         setTimeout(() => {
+            toast.style.transition = "opacity .3s linear";
           toast.style.opacity = "0";
           setTimeout(() => {
             toast.style.display = "none";
             toast.style.transition = "";
           }, 320);
         }, 1400);
-      }
+          
       layoutMap();
       drawMap();
-    },
-  });
+        };
+      }
+      
+      if (cancel) {
+        cancel.onclick = () => {
+          toast.style.display = "none";
+        };
+      }
+    }, 20);
+  }
 }
 
 function onDblClick(e) {
@@ -1833,6 +3536,177 @@ function onDblClick(e) {
     drawMap();
     fitActiveDomain();
   }
+}
+
+function onContextMenu(e) {
+  e.preventDefault(); // Prevent default browser context menu
+  
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  const n = hit(pt.x, pt.y);
+  
+  if (!n) return;
+  
+  // Create context menu
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+  menu.style.cssText = `
+    position: fixed;
+    left: ${e.clientX}px;
+    top: ${e.clientY}px;
+    background: var(--panel-1);
+    border: 1px solid var(--panel-2);
+    border-radius: 6px;
+    padding: 8px 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    min-width: 150px;
+  `;
+  
+  // Add menu items based on object type
+  if (n._type === 'task') {
+    menu.innerHTML = `
+      <div class="context-item" data-action="edit">✏️ Редактировать</div>
+      <div class="context-item" data-action="delete">🗑️ Удалить</div>
+    `;
+  } else if (n._type === 'project') {
+    menu.innerHTML = `
+      <div class="context-item" data-action="edit">✏️ Редактировать</div>
+      <div class="context-item" data-action="delete">🗑️ Удалить проект</div>
+    `;
+  } else if (n._type === 'domain') {
+    menu.innerHTML = `
+      <div class="context-item" data-action="edit">✏️ Редактировать</div>
+      <div class="context-item" data-action="delete">🗑️ Удалить домен</div>
+    `;
+  }
+  
+  // Style menu items
+  const style = document.createElement('style');
+  style.textContent = `
+    .context-item {
+      padding: 8px 16px;
+      cursor: pointer;
+      color: var(--text-1);
+      font-size: 14px;
+    }
+    .context-item:hover {
+      background: var(--panel-2);
+    }
+  `;
+  document.head.appendChild(style);
+  
+  document.body.appendChild(menu);
+  
+  // Handle menu item clicks
+  menu.addEventListener('click', (e) => {
+    const action = e.target.dataset.action;
+    if (action === 'edit') {
+      // Open inspector for editing
+      if (window.openInspectorFor) {
+        window.openInspectorFor(n);
+      }
+    } else if (action === 'delete') {
+      // Trigger deletion based on type
+      if (n._type === 'task') {
+        if (confirm("Удалить задачу без возможности восстановления?")) {
+          // Trigger cosmic explosion
+          if (window.cosmicAnimations) {
+            window.cosmicAnimations.animateTaskDeletion(n.x, n.y, n.status);
+          }
+          // Delete task
+          state.tasks = state.tasks.filter((t) => t.id !== n.id);
+          saveState();
+          drawMap();
+          if (window.renderToday) window.renderToday();
+        }
+      } else if (n._type === 'project') {
+        if (confirm(`Удалить проект "${n.title}" и все его задачи?`)) {
+          // Trigger cosmic explosion
+          if (window.cosmicAnimations) {
+            window.cosmicAnimations.animateTaskDeletion(n.x, n.y, 'project');
+          }
+          // Delete project and its tasks
+          state.tasks = state.tasks.filter((t) => t.projectId !== n.id);
+          state.projects = state.projects.filter((p) => p.id !== n.id);
+          saveState();
+          
+          // Force layout and redraw
+          if (window.layoutMap) window.layoutMap();
+          drawMap();
+          
+          if (window.updateDomainsList) window.updateDomainsList();
+          if (window.updateStatistics) window.updateStatistics();
+          if (window.renderToday) window.renderToday();
+          if (window.renderSidebar) window.renderSidebar();
+        }
+      } else if (n._type === 'domain') {
+        if (confirm(`Удалить домен "${n.title}" и все его проекты и задачи?`)) {
+          // Trigger cosmic explosion
+          if (window.cosmicAnimations) {
+            window.cosmicAnimations.animateDomainPulse(n.x, n.y, n.r, n.color);
+          }
+          // Delete domain and all its content
+          const projIds = state.projects.filter((p) => p.domainId === n.id).map((p) => p.id);
+          state.tasks = state.tasks.filter((t) => !projIds.includes(t.projectId));
+          state.projects = state.projects.filter((p) => p.domainId !== n.id);
+          state.domains = state.domains.filter((d) => d.id !== n.id);
+          // Clear active domain to show entire project instead of focusing on remaining domain
+          state.activeDomain = null;
+          saveState();
+          
+          // Force layout and redraw
+          if (window.layoutMap) window.layoutMap();
+          drawMap();
+          
+          if (window.updateDomainsList) window.updateDomainsList();
+          if (window.updateStatistics) window.updateStatistics();
+          if (window.renderToday) window.renderToday();
+          if (window.renderSidebar) window.renderSidebar();
+        }
+      }
+    }
+    
+    // Remove menu
+    try {
+      if (menu.parentNode) {
+        document.body.removeChild(menu);
+      }
+    } catch (e) {
+      // Menu already removed
+    }
+    try {
+      if (style.parentNode) {
+        document.head.removeChild(style);
+      }
+    } catch (e) {
+      // Style already removed
+    }
+  });
+  
+  // Remove menu when clicking outside
+  const removeMenu = (e) => {
+    if (!menu.contains(e.target)) {
+      try {
+        if (menu.parentNode) {
+          document.body.removeChild(menu);
+        }
+      } catch (e) {
+        // Menu already removed
+      }
+      try {
+        if (style.parentNode) {
+          document.head.removeChild(style);
+        }
+      } catch (e) {
+        // Style already removed
+      }
+      document.removeEventListener('click', removeMenu);
+    }
+  };
+  
+  setTimeout(() => {
+    document.addEventListener('click', removeMenu);
+  }, 100);
 }
 
 function onClick(e) {
@@ -1965,13 +3839,19 @@ function drawPlanet(ctx, x, y, radius, color, type = 'planet') {
     ctx.arc(x, y, radius * 1.5, 0, Math.PI * 2);
     ctx.fill();
     
-    // Add surface details
+    // Add static surface details (no more flickering!)
     ctx.globalAlpha = 0.3;
     ctx.fillStyle = colors[2];
+    
+    // Use deterministic positions based on planet coordinates
+    const seed = Math.floor(x * 1000 + y * 1000) % 1000;
     for (let i = 0; i < 3; i++) {
-      const detailX = x + (Math.random() - 0.5) * radius * 0.8;
-      const detailY = y + (Math.random() - 0.5) * radius * 0.8;
-      const detailR = radius * (0.1 + Math.random() * 0.2);
+      // Create pseudo-random but stable positions
+      const angle = (seed + i * 120) * 0.01;
+      const distance = radius * (0.3 + (seed + i * 200) % 100 * 0.005);
+      const detailX = x + Math.cos(angle) * distance;
+      const detailY = y + Math.sin(angle) * distance;
+      const detailR = radius * (0.08 + (seed + i * 300) % 50 * 0.002);
       
       ctx.beginPath();
       ctx.arc(detailX, detailY, detailR, 0, Math.PI * 2);
@@ -1979,53 +3859,201 @@ function drawPlanet(ctx, x, y, radius, color, type = 'planet') {
     }
     
   } else if (type === 'nebula') {
-    // Draw nebula (for domains)
-    const nebulaGradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    nebulaGradient.addColorStop(0, color + '40');
-    nebulaGradient.addColorStop(0.5, color + '20');
-    nebulaGradient.addColorStop(1, 'transparent');
+    // Modern flat design for domains
+    ctx.save();
     
-    ctx.fillStyle = nebulaGradient;
+    // Subtle shadow for depth
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 4;
+    
+    // Main domain circle with flat color
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
     
-    // Add nebula swirls
-    ctx.globalAlpha = 0.2;
-    for (let i = 0; i < 5; i++) {
-      const swirlX = x + (Math.random() - 0.5) * radius * 0.8;
-      const swirlY = y + (Math.random() - 0.5) * radius * 0.8;
-      const swirlR = radius * (0.3 + Math.random() * 0.4);
-      
-      const swirlGradient = ctx.createRadialGradient(swirlX, swirlY, 0, swirlX, swirlY, swirlR);
-      swirlGradient.addColorStop(0, color + '30');
-      swirlGradient.addColorStop(1, 'transparent');
-      
-      ctx.fillStyle = swirlGradient;
-      ctx.beginPath();
-      ctx.arc(swirlX, swirlY, swirlR, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Add subtle inner highlight
+    ctx.shadowBlur = 0;
+    const highlightGradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 0.6);
+    highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+    highlightGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+    highlightGradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = highlightGradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Modern border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius - 2, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    ctx.restore();
   }
   
   ctx.restore();
 }
 
-function drawTaskStar(ctx, x, y, radius, color, status) {
+// Modern Flat Design for projects
+function drawProjectModern(ctx, x, y, radius, color, seed = 0) {
   ctx.save();
   
-  // Add dark border/outline for better visibility against stars
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(x, y, radius + 1, 0, Math.PI * 2);
-  ctx.stroke();
+  // Modern flat design with subtle shadows
+  const shapeType = Math.floor(seed % 3);
   
-  // Add white inner border for extra contrast
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1;
+  // Add subtle shadow for depth
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
+  
+  if (shapeType === 0) {
+    // Modern rounded rectangle
+    const width = radius * 1.6;
+    const height = radius * 1.2;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(x - width/2, y - height/2, width, height, radius * 0.3);
+    ctx.fill();
+  } else if (shapeType === 1) {
+    // Modern circle with accent
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add accent dot
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x + radius * 0.3, y - radius * 0.3, radius * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Modern hexagon
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  
+  ctx.restore();
+}
+
+// Simplified galaxy for better performance
+function drawGalaxy(ctx, x, y, radius, color, seed = 0) {
+  ctx.save();
+  
+  // Simple seed-based random function
+  const rng = (n) => {
+    const randomValue = Math.sin(n * 12.9898 + seed * 78.233) * 43758.5453;
+    return randomValue - Math.floor(randomValue);
+  };
+  
+  // Galaxy center (bright core) - simplified
+  const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 0.3);
+  coreGradient.addColorStop(0, '#ffffff');
+  coreGradient.addColorStop(0.5, color + 'cc');
+  coreGradient.addColorStop(1, 'transparent');
+  
+  ctx.fillStyle = coreGradient;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Simplified spiral arms (2-3 arms max for performance)
+  const armCount = 2 + Math.floor(rng(1) * 2); // 2-3 arms only
+  const time = performance.now() * 0.0001; // Slower rotation
+  
+  for (let arm = 0; arm < armCount; arm++) {
+    const armAngle = (arm / armCount) * Math.PI * 2 + time;
+    const armLength = radius * 0.7;
+    
+    // Simplified spiral - just a curved line
+    ctx.beginPath();
+    ctx.strokeStyle = color + '60';
+    ctx.lineWidth = radius * 0.08;
+    ctx.lineCap = 'round';
+    
+    // Draw simple spiral with fewer points
+    for (let i = 0; i < 8; i++) {
+      const t = i / 7;
+      const spiralRadius = t * armLength;
+      const spiralAngle = armAngle + t * Math.PI;
+      
+      const px = x + Math.cos(spiralAngle) * spiralRadius;
+      const py = y + Math.sin(spiralAngle) * spiralRadius;
+      
+      if (i === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.stroke();
+  }
+  
+  // Simplified star clusters (fewer for performance)
+  const clusterCount = 2 + Math.floor(rng(3) * 3); // 2-4 clusters only
+  for (let i = 0; i < clusterCount; i++) {
+    const clusterAngle = rng(i + 30) * Math.PI * 2;
+    const clusterRadius = radius * (0.4 + rng(i + 40) * 0.4);
+    const clusterX = x + Math.cos(clusterAngle) * clusterRadius;
+    const clusterY = y + Math.sin(clusterAngle) * clusterRadius;
+    const clusterSize = radius * 0.06;
+    
+    // Simple star cluster without glow
+    ctx.fillStyle = color + 'aa';
+    ctx.beginPath();
+    ctx.arc(clusterX, clusterY, clusterSize, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  
+  ctx.restore();
+}
+
+function drawTaskModern(ctx, x, y, radius, color, status) {
+  ctx.save();
+  
+  // Modern flat design for tasks
+  const statusColors = {
+    'backlog': '#6b7280',    // Gray
+    'today': '#f59e0b',      // Amber
+    'wip': '#3b82f6',        // Blue
+    'done': '#10b981'        // Green
+  };
+  
+  const taskColor = statusColors[status] || color;
+  
+  // Subtle shadow for depth
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetX = 1;
+  ctx.shadowOffsetY = 2;
+  
+  // Main task circle
+  ctx.fillStyle = taskColor;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Modern border
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, radius - 1, 0, Math.PI * 2);
   ctx.stroke();
   
   // Different shapes based on status
@@ -2071,9 +4099,9 @@ function drawTaskStar(ctx, x, y, radius, color, status) {
     }
     
   } else if (status === 'doing') {
-    // Doing tasks as pulsing stars with solid core
-    const time = performance.now() * 0.003;
-    const pulse = 1 + Math.sin(time) * 0.15;
+    // Doing tasks as gentle pulsing stars with solid core
+    const time = performance.now() * 0.001; // Замедлили в 3 раза
+    const pulse = 1 + Math.sin(time) * 0.08; // Уменьшили амплитуду
     const pulseRadius = radius * pulse;
     
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, pulseRadius);

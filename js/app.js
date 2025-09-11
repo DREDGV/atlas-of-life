@@ -11,12 +11,16 @@ import {
   resetView,
   setShowFps,
   undoLastMove,
+  getMapNodes,
 } from "./view_map.js";
 import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
+import { openInspectorFor } from "./inspector.js";
 import { logEvent } from "./utils/analytics.js";
 import { initializeHotkeys } from "./hotkeys.js";
 import { initAutocomplete } from "./autocomplete.js";
+import { AnalyticsDashboard, analyticsDashboard } from "./analytics.js";
+import { CosmicAnimations } from "./cosmic-effects.js";
 
 // I18N
 const I18N = {
@@ -40,7 +44,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.10";
+let APP_VERSION = "Atlas_of_life_v0.2.15.9-критические-исправления";
 
 // ephemeral UI state
 const ui = {
@@ -106,6 +110,53 @@ function showToast(text, cls = "ok", ms = 2500) {
       el.style.display = "none";
       el.style.transition = "";
     }, 320);
+  }, ms);
+}
+
+// undo toast helper with action button
+function showUndoToast(text, undoAction, ms = 8000) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  
+  // Create undo button
+  const undoBtn = document.createElement("button");
+  undoBtn.textContent = "Отменить";
+  undoBtn.className = "undo-btn";
+  undoBtn.style.cssText = `
+    margin-left: 12px;
+    padding: 4px 8px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  `;
+  
+  // Set up toast content
+  el.className = "toast undo";
+  el.innerHTML = text;
+  el.appendChild(undoBtn);
+  el.style.display = "block";
+  el.style.opacity = "1";
+  
+  // Handle undo button click
+  undoBtn.onclick = () => {
+    undoAction();
+    el.style.display = "none";
+  };
+  
+  // Auto-hide after timeout
+  setTimeout(() => {
+    if (el.style.display !== "none") {
+      el.style.transition = "opacity .3s linear";
+      el.style.opacity = "0";
+      setTimeout(() => {
+        el.style.display = "none";
+        el.style.transition = "";
+        el.innerHTML = "";
+      }, 320);
+    }
   }, ms);
 }
 
@@ -282,6 +333,22 @@ function openDisplayModal() {
         <span>✨ Показывать свечение элементов</span>
       </label>
     </div>
+    
+    <div style="border-top:1px solid var(--panel-2);padding-top:12px;margin-top:8px;">
+      <button onclick="
+        console.log('Analytics button clicked');
+        console.log('analyticsDashboard available:', !!window.analyticsDashboard);
+        if (window.analyticsDashboard) {
+          window.analyticsDashboard.openModal();
+  } else {
+          alert('Аналитика недоступна. Проверьте консоль для ошибок.');
+        }
+      " style="
+        width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;display:flex;align-items:center;justify-content:center;gap:8px;
+      ">
+        📊 Открыть аналитику
+      </button>
+    </div>
   `;
   
   bodyHTML += '</div>';
@@ -392,6 +459,24 @@ function openExportModal() {
 // expose globally for addons/other modules
 try { window.showToast = showToast; } catch (_) {}
 try { window.clearHotkey = clearHotkey; } catch (_) {}
+try { window.openModal = openModal; } catch (_) {}
+try { window.getMapNodes = getMapNodes; } catch (_) {}
+
+// Analytics dashboard will be initialized in init() function
+
+// Initialize cosmic animations (with protection against multiple initialization)
+let cosmicAnimations;
+if (!window.cosmicAnimations) {
+  try {
+    cosmicAnimations = new CosmicAnimations();
+    window.cosmicAnimations = cosmicAnimations;
+    console.log('Cosmic animations initialized successfully');
+  } catch (e) {
+    console.warn('Failed to initialize cosmic animations:', e);
+  }
+} else {
+  console.log('Cosmic animations already initialized, skipping...');
+}
 
 // Calculate statistics for sidebar
 function calculateStats() {
@@ -1184,8 +1269,17 @@ function openDomainMenuX(id, rowEl) {
           );
         }
         state.domains = state.domains.filter((x) => x.id !== id);
-        state.activeDomain = state.domains[0]?.id || null;
+        // Clear active domain to show entire project instead of focusing on remaining domain
+        state.activeDomain = null;
         saveState();
+        
+        // Update UI after domain deletion
+        updateDomainsList();
+        updateStatistics();
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
+        if (window.renderToday) window.renderToday();
+        if (window.renderSidebar) window.renderSidebar();
         renderSidebar();
         layoutMap();
         drawMap();
@@ -1280,6 +1374,25 @@ function setupHeader() {
       } catch (_) {}
     }, 100);
   });
+  
+  // Debounced resize handler to prevent infinite loops
+  let resizeToken = 0;
+  window.onResize = () => {
+    const token = ++resizeToken;
+    setTimeout(() => {
+      if (token !== resizeToken) return;   // только последний вызов
+      const canvas = document.getElementById('canvas');
+      if (!canvas) return;
+      
+      const w = canvas.clientWidth|0, h = canvas.clientHeight|0, dpr = Math.max(1, window.devicePixelRatio||1);
+      // обновлять размер ТОЛЬКО если реально изменился на целый пиксель
+      if (canvas.width !== (w*dpr)|0 || canvas.height !== (h*dpr)|0) {
+        canvas.width  = (w*dpr)|0;
+        canvas.height = (h*dpr)|0;
+      }
+      if (typeof requestDraw === 'function') requestDraw(); // один кадр
+    }, 120);
+  };
 
   // Export/import moved to settings menu
   // edge cap slider
@@ -1310,6 +1423,7 @@ function setupHeader() {
           `<div><strong>Версия:</strong> ${APP_VERSION}</div>` +
           `<div><a href="CHANGELOG.md" target="_blank" rel="noopener">📝 Открыть CHANGELOG</a></div>` +
           `<div><a href="IDEAS.md" target="_blank" rel="noopener">🚀 Открыть IDEAS</a></div>` +
+          `<div><a href="REQUESTS.md" target="_blank" rel="noopener">📋 Открыть REQUESTS</a></div>` +
           '<div style="margin-top:12px;padding:8px;background:var(--panel-2);border-radius:4px;">' +
           '<strong>⚙️ Настройки:</strong><br/>' +
           'Все настройки приложения доступны через кнопку ⚙️ в верхней панели' +
@@ -1737,6 +1851,16 @@ function submitQuick(text) {
   drawMap();
     updateWip(); // Update WIP count
     
+    // Trigger cosmic animation for task creation
+    if (window.cosmicAnimations) {
+      setTimeout(() => {
+        const taskNode = nodes?.find(n => n.id === newTask.id);
+        if (taskNode) {
+          window.cosmicAnimations.animateTaskCreation(taskNode.x, taskNode.y, newTask.status);
+        }
+      }, 100);
+    }
+    
     const location = domainId ? `в домене "${state.domains.find(d => d.id === domainId)?.title}"` : "как независимая";
     const timeInfo = parsed.when ? ` на ${parsed.when.label}` : "";
     showToast(`Задача "${title}" добавлена ${location}${timeInfo}`, "ok");
@@ -1810,6 +1934,14 @@ function submitQuickToDomain(text) {
 }
 
 async function init() {
+  // Prevent double initialization
+  if (window.__atlasInitDone) {
+    console.log('Atlas already initialized, skipping...');
+    return;
+  }
+  window.__atlasInitDone = true;
+  
+  // Normal initialization for all browsers (including Edge)
   const ok = loadState();
   if (!ok) initDemoData();
   
@@ -1819,6 +1951,18 @@ async function init() {
   // Initialize autocomplete
   console.log('About to initialize autocomplete...');
   initAutocomplete();
+  
+  // Initialize cosmic animations
+  if (!window.cosmicAnimations) {
+    import('./cosmic-effects.js').then(module => {
+      window.cosmicAnimations = new module.CosmicAnimations();
+      console.log('Cosmic animations initialized successfully');
+    });
+  }
+  
+  // Initialize analytics dashboard
+  window.analyticsDashboard = analyticsDashboard;
+  console.log('Analytics dashboard initialized successfully');
   
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
@@ -1882,6 +2026,8 @@ async function init() {
 }
 init();
 
+
 // expose renderers for external refresh (storage, addons)
 try { window.renderSidebar = renderSidebar; } catch(_) {}
 try { window.renderToday = renderToday; } catch(_) {}
+try { window.openInspectorFor = openInspectorFor; } catch(_) {}

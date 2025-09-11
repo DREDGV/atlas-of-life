@@ -56,7 +56,7 @@ export const $ = s => document.querySelector(s);
 export const $$ = s => [...document.querySelectorAll(s)];
 export const byId = (arr,id) => arr.find(x=>x.id===id);
 export const project = id => byId(state.projects,id);
-export const domainOf = prj => byId(state.domains, prj.domainId);
+export const domainOf = prj => prj.domainId ? byId(state.domains, prj.domainId) : null;
 export const tasksOfProject = pid => state.tasks.filter(t=>t.projectId===pid);
 export const tasksIndependentOfDomain = (did) => state.tasks.filter(t=>!t.projectId && (t.domainId===did));
 export const daysSince = ts => Math.floor((Date.now()-ts)/(24*3600*1000));
