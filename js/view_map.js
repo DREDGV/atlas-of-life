@@ -1028,6 +1028,19 @@ let pendingAttach = null;
 let pendingDetach = null;
 // transient pending project move: { projectId, fromDomainId, toDomainId, pos }
 let pendingProjectMove = null;
+let isModalOpen = false; // Flag to block canvas events when toast is shown
+
+// DnD State Machine
+const DnDState = {
+  IDLE: 'idle',
+  PRESSED: 'pressed', 
+  DRAGGING: 'dragging',
+  DROPPED: 'dropped',
+  CANCELED: 'canceled'
+};
+
+let dndState = DnDState.IDLE;
+let dndData = null; // { type: 'task'|'project', id: string, startPos: {x,y} }
 
 // Function to position toast near user action
 function positionToastNearAction(worldX, worldY, toast) {
@@ -1129,10 +1142,11 @@ export function initMap(canvasEl, tooltipEl) {
     initStarField();
     try { fitAll(); } catch(_) {}
   });
-  canvas.addEventListener("mousemove", onMouseMove);
-  canvas.addEventListener("mousedown", onMouseDown);
-  window.addEventListener("mouseup", () => (viewState.dragging = false));
-  canvas.addEventListener("mouseleave", onMouseLeave);
+  // Use pointer events for better DnD handling
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointerleave", onPointerLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
@@ -2587,12 +2601,468 @@ function onMouseDown(e) {
     }
   }
 }
-// DnD: отпускание задачи
-// Consolidated mouseup handler: finalize drag, persist, push undo entry
+// Helper function to properly hide toast and clean up handlers
+function hideToast() {
+  const toast = document.getElementById("toast");
+  if (toast) {
+    // Clear all event handlers
+    const buttons = toast.querySelectorAll("button");
+    buttons.forEach(btn => {
+      btn.onclick = null;
+    });
+    
+    // Hide toast
+    toast.className = "toast";
+    toast.style.display = "none";
+    toast.innerHTML = "";
+    
+    // Clear modal flag
+    isModalOpen = false;
+  }
+}
+
+// New pointer event handlers with state machine
+function onPointerDown(e) {
+  if (isModalOpen) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const worldPos = screenToWorld(x, y);
+  
+  const hitNode = hit(worldPos.x, worldPos.y);
+  if (hitNode && (hitNode._type === "task" || hitNode._type === "project")) {
+    dndState = DnDState.PRESSED;
+    dndData = {
+      type: hitNode._type,
+      id: hitNode.id,
+      startPos: { x: worldPos.x, y: worldPos.y },
+      pointerId: e.pointerId
+    };
+    
+    // Capture pointer to prevent losing events
+    canvas.setPointerCapture(e.pointerId);
+    
+    // Set initial drag state
+    draggedNode = hitNode;
+    dragOffset = { x: worldPos.x - hitNode.x, y: worldPos.y - hitNode.y };
+    
+    console.log("Pointer down - hit:", hitNode._type, hitNode.id, "state:", dndState);
+  }
+}
+
+function onPointerMove(e) {
+  if (isModalOpen) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const worldPos = screenToWorld(x, y);
+  
+  if (dndState === DnDState.PRESSED || dndState === DnDState.DRAGGING) {
+    dndState = DnDState.DRAGGING;
+    
+    if (draggedNode) {
+      draggedNode.x = worldPos.x - dragOffset.x;
+      draggedNode.y = worldPos.y - dragOffset.y;
+      requestDraw();
+    }
+  } else {
+    // Handle panning when not dragging
+    onMouseMove(e);
+  }
+}
+
+function onPointerUp(e) {
+  if (isModalOpen) return;
+  
+  // Release pointer capture
+  canvas.releasePointerCapture(e.pointerId);
+  
+  if (dndState === DnDState.DRAGGING && draggedNode) {
+    handleDrop();
+  }
+  
+  // Reset state
+  dndState = DnDState.IDLE;
+  dndData = null;
+  draggedNode = null;
+  dragOffset = null;
+}
+
+function onPointerLeave(e) {
+  // Handle pointer leave
+  if (dndState === DnDState.DRAGGING) {
+    // Continue dragging even if pointer leaves canvas
+    return;
+  }
+  onMouseLeave(e);
+}
+
+// Find drop target based on world coordinates
+function findDropTarget(worldX, worldY) {
+  // Check for domain targets (for projects)
+  for (const domain of state.domains) {
+    const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
+    if (domainNode) {
+      const dx = worldX - domainNode.x;
+      const dy = worldY - domainNode.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= domainNode.r) {
+        return { type: 'domain', id: domain.id, node: domainNode };
+      }
+    }
+  }
+  
+  // Check for project targets (for tasks)
+  for (const project of state.projects) {
+    const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+    if (projectNode) {
+      const dx = worldX - projectNode.x;
+      const dy = worldY - projectNode.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= projectNode.r) {
+        return { type: 'project', id: project.id, node: projectNode };
+      }
+    }
+  }
+  
+  return null; // No target found
+}
+
+// Consolidated drop handler
+function handleDrop() {
+  if (!draggedNode) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = lastMouseClient.offsetX || 0;
+  const y = lastMouseClient.offsetY || 0;
+  const worldPos = screenToWorld(x, y);
+  
+  console.log("Handling drop for:", draggedNode._type, draggedNode.id, "at world pos:", worldPos);
+  
+  // Find drop target
+  const dropTarget = findDropTarget(worldPos.x, worldPos.y);
+  
+  if (draggedNode._type === "project") {
+    handleProjectDrop(draggedNode, dropTarget);
+  } else if (draggedNode._type === "task") {
+    handleTaskDrop(draggedNode, dropTarget);
+  }
+}
+
+// Simplified project drop handler
+function handleProjectDrop(projectNode, dropTarget) {
+  const project = state.projects.find(p => p.id === projectNode.id);
+  if (!project) return;
+  
+  console.log("Project drop - target:", dropTarget, "current domain:", project.domainId);
+  
+  if (dropTarget && dropTarget.type === 'domain') {
+    // Moving to domain
+    if (project.domainId !== dropTarget.id) {
+      showProjectMoveConfirmation(project, project.domainId, dropTarget.id);
+    } else {
+      // Already in this domain, just update position
+      project.pos = { x: projectNode.x, y: projectNode.y };
+      project.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция проекта обновлена", "ok");
+    }
+  } else {
+    // Moving to independent (outside any domain)
+    if (project.domainId !== null) {
+      showProjectExtractConfirmation(project, projectNode);
+    } else {
+      // Already independent, just update position
+      project.pos = { x: projectNode.x, y: projectNode.y };
+      project.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция проекта обновлена", "ok");
+    }
+  }
+}
+
+// Simplified task drop handler
+function handleTaskDrop(taskNode, dropTarget) {
+  const task = state.tasks.find(t => t.id === taskNode.id);
+  if (!task) return;
+  
+  console.log("Task drop - target:", dropTarget, "current project:", task.projectId);
+  
+  if (dropTarget && dropTarget.type === 'project') {
+    // Moving to project
+    if (task.projectId !== dropTarget.id) {
+      showTaskMoveConfirmation(task, task.projectId, dropTarget.id);
+    } else {
+      // Already in this project, just update position
+      task.pos = { x: taskNode.x, y: taskNode.y };
+      task.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция задачи обновлена", "ok");
+    }
+  } else {
+    // Moving to independent (outside any project)
+    if (task.projectId !== null) {
+      showTaskDetachConfirmation(task);
+    } else {
+      // Already independent, just update position
+      task.pos = { x: taskNode.x, y: taskNode.y };
+      task.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция задачи обновлена", "ok");
+    }
+  }
+}
+
+// Toast helper function
+function showToast(message, type = "ok") {
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = `toast ${type} show`;
+    toast.innerHTML = message;
+    isModalOpen = true;
+    
+    setTimeout(() => {
+      hideToast();
+    }, 2000);
+  }
+}
+
+// Project move confirmation functions
+function showProjectMoveConfirmation(project, fromDomainId, toDomainId) {
+  const fromDomain = fromDomainId ? state.domains.find(d => d.id === fromDomainId)?.title : "независимый";
+  const toDomain = state.domains.find(d => d.id === toDomainId)?.title;
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast attach show";
+    toast.innerHTML = `Переместить проект "${project.title}" из домена "${fromDomain}" в домен "${toDomain}"? <button id="projectMoveOk">Переместить</button> <button id="projectMoveCancel">Отменить</button>`;
+    
+    // Center toast reliably
+    toast.style.position = "fixed";
+    toast.style.left = "50%";
+    toast.style.top = "50%";
+    toast.style.transform = "translate(-50%, -50%)";
+    toast.style.right = "auto";
+    
+    isModalOpen = true;
+    
+    // Set up pending move
+    pendingProjectMove = {
+      projectId: project.id,
+      fromDomainId: fromDomainId,
+      toDomainId: toDomainId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("projectMoveOk");
+      const cancel = document.getElementById("projectMoveCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmProjectMove();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingProjectMove = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+function showProjectExtractConfirmation(project, projectNode) {
+  const currentDomain = project.domainId ? state.domains.find(d => d.id === project.domainId)?.title : "независимый";
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast detach show";
+    toast.innerHTML = `Сделать проект "${project.title}" независимым (извлечь из домена "${currentDomain}")? <button id="projectExtractOk">Извлечь</button> <button id="projectExtractCancel">Отменить</button>`;
+    
+    // Center toast reliably
+    toast.style.position = "fixed";
+    toast.style.left = "50%";
+    toast.style.top = "50%";
+    toast.style.transform = "translate(-50%, -50%)";
+    toast.style.right = "auto";
+    
+    isModalOpen = true;
+    
+    // Set up pending extract
+    pendingProjectMove = {
+      projectId: project.id,
+      fromDomainId: project.domainId,
+      toDomainId: null,
+      pos: { x: projectNode.x, y: projectNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("projectExtractOk");
+      const cancel = document.getElementById("projectExtractCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmProjectMove();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingProjectMove = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+// Task move confirmation functions
+function showTaskMoveConfirmation(task, fromProjectId, toProjectId) {
+  const fromProject = fromProjectId ? state.projects.find(p => p.id === fromProjectId)?.title : "независимая";
+  const toProject = state.projects.find(p => p.id === toProjectId)?.title;
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast attach show";
+    toast.innerHTML = `Переместить задачу "${task.title}" из проекта "${fromProject}" в проект "${toProject}"? <button id="taskMoveOk">Переместить</button> <button id="taskMoveCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending attach
+    pendingAttach = {
+      taskId: task.id,
+      fromProjectId: fromProjectId,
+      toProjectId: toProjectId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("taskMoveOk");
+      const cancel = document.getElementById("taskMoveCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmTaskMove();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingAttach = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+function showTaskDetachConfirmation(task) {
+  const currentProject = task.projectId ? state.projects.find(p => p.id === task.projectId)?.title : "независимая";
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast detach show";
+    toast.innerHTML = `Сделать задачу "${task.title}" независимой (отвязать от проекта "${currentProject}")? <button id="taskDetachOk">Отвязать</button> <button id="taskDetachCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending detach
+    pendingDetach = {
+      taskId: task.id,
+      fromProjectId: task.projectId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("taskDetachOk");
+      const cancel = document.getElementById("taskDetachCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmTaskDetach();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingDetach = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+// Confirmation action functions
+function confirmTaskMove() {
+  if (!pendingAttach) return;
+  
+  const task = state.tasks.find(t => t.id === pendingAttach.taskId);
+  if (task) {
+    task.projectId = pendingAttach.toProjectId;
+    task.updatedAt = Date.now();
+    
+    if (pendingAttach.pos) {
+      task.pos = pendingAttach.pos;
+    }
+    
+    saveState();
+    showToast("Задача перемещена", "ok");
+  }
+  
+  pendingAttach = null;
+}
+
+function confirmTaskDetach() {
+  if (!pendingDetach) return;
+  
+  const task = state.tasks.find(t => t.id === pendingDetach.taskId);
+  if (task) {
+    task.projectId = null;
+    task.updatedAt = Date.now();
+    
+    if (pendingDetach.pos) {
+      task.pos = pendingDetach.pos;
+    }
+    
+    saveState();
+    showToast("Задача отвязана", "ok");
+  }
+  
+  pendingDetach = null;
+}
+
+// Legacy mouseup handler (keep for compatibility)
 window.addEventListener("mouseup", (e) => {
+  // Block canvas events when modal is open
+  if (isModalOpen) {
+    return;
+  }
+  
+  // Clear any pending project move if user clicks elsewhere
+  if (!draggedNode && pendingProjectMove) {
+    pendingProjectMove = null;
+    hideToast();
+  }
+  
+  // Handle panning (when no drag started)
+  if (!draggedNode && !pendingDragNode) {
+    viewState.dragging = false;
+    return;
+  }
+  
   // if drag never started, clear any pending drag
   if (!draggedNode && pendingDragNode) {
     pendingDragNode = null;
+    viewState.dragging = false;
     return;
   }
   if (!draggedNode) return;
@@ -2667,13 +3137,13 @@ window.addEventListener("mouseup", (e) => {
       // show attach toast with buttons
       const toast = document.getElementById("toast");
       if (toast) {
-        toast.className = "toast attach";
+        toast.className = "toast attach show";
         toast.innerHTML = `Привязать задачу к проекту? <button id="attachOk">Привязать</button> <button id="attachCancel">Отменить</button>`;
         toast.style.display = "block";
         toast.style.opacity = "1";
         
         // Position toast near the dragged task
-        positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+        // Use CSS class for positioning
         // handlers
         setTimeout(() => {
           const ok = document.getElementById("attachOk");
@@ -2717,27 +3187,23 @@ window.addEventListener("mouseup", (e) => {
             const toast = document.getElementById("toast");
             console.log("Project move toast - toast element:", toast);
             if (toast) {
-              toast.className = "toast attach";
+              // Clear any existing content and handlers
+              console.log("About to clear existing toast...");
+              hideToast();
+              console.log("Toast cleared, now setting up new toast...");
+              
+              // Set up toast content
+              toast.className = "toast attach show";
               toast.innerHTML = `Переместить проект "${p.title}" из домена "${currentDomain}" в домен "${newDomain}"? <button id="projectMoveOk">Переместить</button> <button id="projectMoveCancel">Отменить</button>`;
-              toast.style.display = "block !important";
-              toast.style.opacity = "1 !important";
-              toast.style.zIndex = "1000 !important";
-              toast.style.visibility = "visible !important";
+              
+              // Set modal flag to block canvas events
+              isModalOpen = true;
+              
+              // Use CSS class for positioning - no manual style overrides
+              
               console.log("Project move toast - displayed:", toast.style.display, "opacity:", toast.style.opacity);
-              
-              // Position toast near the dragged project
-              positionToastNearAction(draggedNode.x, draggedNode.y, toast);
-              
-              // Fallback: if positioning failed, use center positioning
-              setTimeout(() => {
-                if (toast.style.left === '' || toast.style.top === '') {
-                  toast.style.position = 'fixed';
-                  toast.style.left = '50%';
-                  toast.style.top = '50%';
-                  toast.style.transform = 'translate(-50%, -50%)';
-                  toast.style.right = 'auto';
-                }
-              }, 10);
+              console.log("Project move toast - className:", toast.className);
+              console.log("Project move toast - computed style:", window.getComputedStyle(toast).display);
               
               // Set up handlers
               setTimeout(() => {
@@ -2746,16 +3212,17 @@ window.addEventListener("mouseup", (e) => {
                 if (ok) {
                   ok.onclick = () => {
                     confirmProjectMove();
+                    hideToast();
                   };
                 }
                 if (cancel) {
                   cancel.onclick = () => {
                     pendingProjectMove = null;
-                    toast.style.display = "none";
+                    hideToast();
                   };
                 }
-              }, 20);
-            }
+        }, 20);
+      }
           } else {
             // Project is already in this domain, just update position
             p.pos = { x: draggedNode.x, y: draggedNode.y };
@@ -2764,19 +3231,20 @@ window.addEventListener("mouseup", (e) => {
             
             const toast = document.getElementById("toast");
             if (toast) {
-              toast.className = "toast ok";
+              toast.className = "toast ok show";
               toast.textContent = `Позиция проекта "${p.title}" в домене "${targetDomain.title}" обновлена`;
               toast.style.display = "block";
               toast.style.opacity = "1";
               
               // Position toast near the dragged project
-              positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+              // Use CSS class for positioning
               
               setTimeout(() => {
                 toast.style.transition = "opacity .3s linear";
                 toast.style.opacity = "0";
                 setTimeout(() => {
-                  toast.style.display = "none";
+                  toast.className = "toast";
+                    hideToast();
                   toast.style.transition = "";
                 }, 320);
               }, 1400);
@@ -2804,16 +3272,16 @@ window.addEventListener("mouseup", (e) => {
             const toast = document.getElementById("toast");
             console.log("Project extract toast - toast element:", toast);
             if (toast) {
-              toast.className = "toast detach";
+              toast.className = "toast detach show";
               toast.innerHTML = `Извлечь проект "${p.title}" из домена "${currentDomain}" и сделать его независимым? <button id="projectExtractOk">Извлечь</button> <button id="projectExtractCancel">Отменить</button>`;
-              toast.style.display = "block !important";
-              toast.style.opacity = "1 !important";
-              toast.style.zIndex = "1000 !important";
-              toast.style.visibility = "visible !important";
+              toast.style.setProperty("display", "block", "important");
+              toast.style.setProperty("opacity", "1", "important");
+              toast.style.setProperty("z-index", "1000", "important");
+              toast.style.setProperty("visibility", "visible", "important");
               console.log("Project extract toast - displayed:", toast.style.display, "opacity:", toast.style.opacity);
               
               // Position toast near the dragged project
-              positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+              // Use CSS class for positioning
               
               // Fallback: if positioning failed, use center positioning
               setTimeout(() => {
@@ -2838,13 +3306,15 @@ window.addEventListener("mouseup", (e) => {
                 if (cancel) {
                   cancel.onclick = () => {
                     pendingProjectMove = null;
-                    toast.style.display = "none";
-                  };
-                }
-              }, 20);
-            }
-          }
-        }
+                    toast.className = "toast";
+                    toast.className = "toast";
+                    hideToast();
+      };
+    }
+        }, 20);
+      }
+    }
+  }
       }
     }
   }
@@ -2863,19 +3333,20 @@ window.addEventListener("mouseup", (e) => {
         saveState();
         const toast = document.getElementById("toast");
         if (toast) {
-          toast.className = "toast ok";
+          toast.className = "toast ok show";
           toast.textContent = "Задача прикреплена к домену";
           toast.style.display = "block";
           toast.style.opacity = "1";
           
           // Position toast near the dragged task
-          positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+          // Use CSS class for positioning
           
           setTimeout(() => {
             toast.style.transition = "opacity .3s linear";
             toast.style.opacity = "0";
             setTimeout(() => {
-              toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
               toast.style.transition = "";
             }, 320);
           }, 1400);
@@ -2915,7 +3386,7 @@ window.addEventListener("mouseup", (e) => {
             toast.style.opacity = "1";
             
             // Position toast near the dragged task
-            positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+            // Use CSS class for positioning
             setTimeout(() => {
               const ok = document.getElementById("detachOk");
               if (ok) {
@@ -2931,7 +3402,9 @@ window.addEventListener("mouseup", (e) => {
               if (cancel) {
                 cancel.onclick = () => {
                     pendingDetach = null;
-                    toast.style.display = "none";
+                    toast.className = "toast";
+                    toast.className = "toast";
+                    hideToast();
                 };
               }
             }, 10);
@@ -2946,19 +3419,20 @@ window.addEventListener("mouseup", (e) => {
       
       const toast = document.getElementById("toast");
       if (toast) {
-        toast.className = "toast ok";
+        toast.className = "toast ok show";
         toast.textContent = "Позиция задачи обновлена";
         toast.style.display = "block";
         toast.style.opacity = "1";
         
         // Position toast near the dragged task
-        positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+        // Use CSS class for positioning
         
         setTimeout(() => {
           toast.style.transition = "opacity .3s linear";
           toast.style.opacity = "0";
           setTimeout(() => {
-            toast.style.display = "none";
+            toast.className = "toast";
+                    hideToast();
             toast.style.transition = "";
           }, 320);
         }, 1400);
@@ -2990,28 +3464,29 @@ window.addEventListener("mouseup", (e) => {
       if (pendingProjectMove && pendingProjectMove.projectId === p.id) {
         // keep transient pending visualization; actual save occurs on confirmProjectMove
       } else {
-        p.pos = { x: draggedNode.x, y: draggedNode.y };
+      p.pos = { x: draggedNode.x, y: draggedNode.y };
         p.updatedAt = Date.now();
-        saveState();
+      saveState();
       }
       
       // Show feedback for independent project position update (only if no pending move)
       if (!p.domainId && !(pendingProjectMove && pendingProjectMove.projectId === p.id)) {
         const toast = document.getElementById("toast");
         if (toast) {
-          toast.className = "toast ok";
+          toast.className = "toast ok show";
           toast.textContent = "Позиция независимого проекта обновлена";
           toast.style.display = "block";
           toast.style.opacity = "1";
           
           // Position toast near the dragged project
-          positionToastNearAction(draggedNode.x, draggedNode.y, toast);
+          // Use CSS class for positioning
           
           setTimeout(() => {
             toast.style.transition = "opacity .3s linear";
             toast.style.opacity = "0";
             setTimeout(() => {
-              toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
               toast.style.transition = "";
             }, 320);
           }, 1400);
@@ -3087,7 +3562,7 @@ window.addEventListener("mouseup", (e) => {
   if (moved) {
     const toast = document.getElementById("toast");
     if (toast) {
-      toast.className = "toast ok";
+      toast.className = "toast ok show";
       toast.textContent = "Задача перенесена";
       toast.style.display = "block";
       toast.style.opacity = "1";
@@ -3095,7 +3570,8 @@ window.addEventListener("mouseup", (e) => {
         toast.style.transition = "opacity .3s linear";
         toast.style.opacity = "0";
         setTimeout(() => {
-          toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
           toast.style.transition = "";
         }, 320);
       }, 1800);
@@ -3105,7 +3581,7 @@ window.addEventListener("mouseup", (e) => {
   if (typeof projectMoved !== "undefined" && projectMoved) {
     const toast = document.getElementById("toast");
     if (toast) {
-      toast.className = "toast ok";
+      toast.className = "toast ok show";
       toast.textContent = "Проект перенесён";
       toast.style.display = "block";
       toast.style.opacity = "1";
@@ -3113,7 +3589,8 @@ window.addEventListener("mouseup", (e) => {
         toast.style.transition = "opacity .3s linear";
         toast.style.opacity = "0";
         setTimeout(() => {
-          toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
           toast.style.transition = "";
         }, 320);
       }, 1800);
@@ -3187,7 +3664,8 @@ export function confirmAttach() {
   if (toast) {
     toast.style.opacity = "0";
     setTimeout(() => {
-      toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
       toast.innerHTML = "";
     }, 300);
   }
@@ -3202,7 +3680,8 @@ export function cancelAttach() {
   if (toast) {
     toast.style.opacity = "0";
     setTimeout(() => {
-      toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
       toast.innerHTML = "";
     }, 300);
   }
@@ -3261,9 +3740,9 @@ function confirmDetach() {
     pendingDetach = null;
     const toast = document.getElementById("toast");
     if (toast) {
-      toast.className = "toast ok";
+      toast.className = "toast ok show";
       toast.textContent = insideDomain ? "Отвязано от проекта" : "Задача стала независимой";
-      setTimeout(() => { toast.style.display = "none"; }, 1400);
+      setTimeout(() => { hideToast(); }, 1400);
     }
     layoutMap();
     drawMap();
@@ -3273,9 +3752,9 @@ function confirmDetach() {
     pendingDetach = null;
     const toast = document.getElementById("toast");
     if (toast) {
-      toast.className = "toast error";
+      toast.className = "toast error show";
       toast.textContent = "Ошибка при отвязке";
-      setTimeout(() => { toast.style.display = "none"; }, 1400);
+      setTimeout(() => { hideToast(); }, 1400);
     }
     return false;
   }
@@ -3307,10 +3786,20 @@ function confirmProjectMove() {
     saveState();
     pendingProjectMove = null;
     
+    // Hide any existing toast first
+    hideToast();
+    
+    // Update inspector and redraw
+    if (p) {
+      openInspectorFor(p);
+    }
+    layoutMap();
+    drawMap();
+    
     // Show success toast
     const toast = document.getElementById("toast");
     if (toast) {
-      toast.className = "toast ok";
+      toast.className = "toast ok show";
       if (item.toDomainId === null) {
         toast.textContent = "Проект извлечен из домена";
       } else {
@@ -3323,7 +3812,8 @@ function confirmProjectMove() {
         toast.style.transition = "opacity .3s linear";
         toast.style.opacity = "0";
         setTimeout(() => {
-          toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
           toast.style.transition = "";
         }, 320);
       }, 1400);
@@ -3337,9 +3827,9 @@ function confirmProjectMove() {
     pendingProjectMove = null;
     const toast = document.getElementById("toast");
     if (toast) {
-      toast.className = "toast error";
+      toast.className = "toast error show";
       toast.textContent = "Ошибка при перемещении проекта";
-      setTimeout(() => { toast.style.display = "none"; }, 1400);
+      setTimeout(() => { hideToast(); }, 1400);
     }
     return false;
   }
@@ -3426,7 +3916,7 @@ function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
     .concat(projs.map((p) => `<option value="${p.id}">${p.title}</option>`))
     .join("");
     
-    toast.className = "toast attach";
+    toast.className = "toast attach show";
     toast.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:8px;min-width:280px;">
     <div>Перенести в домен "${domTitle}"?</div>
@@ -3442,7 +3932,7 @@ function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
     
     // Position toast near the dragged task
     if (worldX !== undefined && worldY !== undefined) {
-      positionToastNearAction(worldX, worldY, toast);
+      // Use CSS class for positioning
     }
     
     // Set up handlers
@@ -3471,7 +3961,7 @@ function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
       saveState();
           
           // Show success toast
-        toast.className = "toast ok";
+        toast.className = "toast ok show";
           toast.innerHTML = "Задача перемещена";
         toast.style.display = "block";
         toast.style.opacity = "1";
@@ -3480,7 +3970,8 @@ function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
             toast.style.transition = "opacity .3s linear";
           toast.style.opacity = "0";
           setTimeout(() => {
-            toast.style.display = "none";
+            toast.className = "toast";
+                    hideToast();
             toast.style.transition = "";
           }, 320);
         }, 1400);
@@ -3492,7 +3983,8 @@ function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
       
       if (cancel) {
         cancel.onclick = () => {
-          toast.style.display = "none";
+              toast.className = "toast";
+                    hideToast();
         };
       }
     }, 20);

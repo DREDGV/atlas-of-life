@@ -175,9 +175,14 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .domenu .dot{width:14px;height:14px;border:1px solid var(--panel-2);border-radius:999px;cursor:pointer}
 
 /* toast */
-.toast{display:none; position:fixed; right:16px; top:16px; z-index:60; min-width:220px; max-width:60vw; 
-  background:var(--panel); border:1px solid var(--panel-2); border-radius:10px; padding:10px 12px; 
-  color:var(--text); box-shadow:0 10px 30px rgba(0,0,0,.4); font-size:13px; backdrop-filter: blur(10px);}
+.toast{display:none; position:fixed; right:16px; top:16px; z-index:1000; min-width:220px; max-width:60vw; 
+  background:var(--panel, #333); border:1px solid var(--panel-2, #555); border-radius:10px; padding:10px 12px; 
+  color:var(--text, #fff); box-shadow:0 10px 30px rgba(0,0,0,.4); font-size:13px;}
+.toast.show{
+  display:block !important; 
+  opacity:1 !important; 
+  visibility:visible !important;
+}
 .toast.ok{border-left:3px solid var(--ok); background:var(--panel);}
 .toast.warn{border-left:3px solid var(--warn); background:var(--panel);}
 .toast.error{border-left:3px solid var(--danger); background:var(--panel);}

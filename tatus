@@ -1,0 +1,10 @@
+[33mb71977b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m feat: prepare version for AI analysis of project issues
+[33mb792123[m refactor: remove legacy code and unused files
+[33m212186d[m feat(autocomplete): implement advanced autocomplete system v0.2.10
+[33mdc73b08[m[33m ([m[1;33mtag: [m[1;33mv0.2.9[m[33m)[m feat: add hotkeys system and centralized settings menu
+[33mb9f796d[m feat(tasks): improve task creation and inspector UI
+[33m20769c6[m fix: Исправлен поиск в левой панели
+[33m3efb044[m feat: новая функция - создан автоматический генератор коммитов
+[33m90ade65[m fix: исправлены критические ошибки JavaScript v0.2.7.8
+[33mfbd2a14[m feat: улучшена панель слева v0.2.7.7
+[33m4c6ecfe[m Merge pull request #3 from DREDGV/repo-flatten
