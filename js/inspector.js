@@ -7,6 +7,10 @@ import {
   tasksOfProject,
   daysSince,
   statusPill,
+  getProjectColor,
+  getRandomProjectColor,
+  getContrastColor,
+  PROJECT_COLOR_PRESETS,
 } from "./state.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
 function drawMap() {
@@ -246,20 +250,7 @@ export function openInspectorFor(obj) {
     
     // Handle project color change
     document.getElementById("changeProjectColor").onclick = () => {
-      const currentColor = obj.color || "#7b68ee";
-      const newColor = prompt("Введите новый цвет проекта (hex код, например #ff6b6b):", currentColor);
-      if (newColor && newColor !== currentColor) {
-        // Validate hex color
-        if (/^#[0-9A-F]{6}$/i.test(newColor)) {
-          obj.color = newColor;
-          obj.updatedAt = Date.now();
-          saveState();
-          drawMap();
-          openInspectorFor(obj); // Refresh inspector
-        } else {
-          alert("Неверный формат цвета. Используйте hex код (например: #ff6b6b)");
-        }
-      }
+      showColorPicker(obj);
     };
     
     // Handle project title editing
@@ -559,4 +550,152 @@ export function openInspectorFor(obj) {
       }
     });
   }
+}
+
+// Функция для показа цветового пикера
+function showColorPicker(project) {
+  const currentColor = getProjectColor(project);
+  
+  // Создаем модальное окно
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const picker = document.createElement('div');
+  picker.style.cssText = `
+    background: var(--panel);
+    border: 1px solid var(--panel-2);
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 400px;
+    width: 90%;
+    color: var(--text);
+  `;
+  
+  picker.innerHTML = `
+    <h3 style="margin: 0 0 15px 0; color: var(--text);">🎨 Выберите цвет проекта</h3>
+    <div style="margin-bottom: 15px;">
+      <label style="display: block; margin-bottom: 8px; color: var(--muted);">Текущий цвет:</label>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 30px; height: 30px; border-radius: 6px; background: ${currentColor}; border: 2px solid var(--panel-2);"></div>
+        <span style="font-family: monospace; color: var(--text);">${currentColor}</span>
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+      <label style="display: block; margin-bottom: 8px; color: var(--muted);">Пресеты цветов:</label>
+      <div id="colorPresets" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 10px;"></div>
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+      <label style="display: block; margin-bottom: 8px; color: var(--muted);">Или выберите произвольный цвет:</label>
+      <input type="color" id="customColor" value="${currentColor}" style="width: 100%; height: 40px; border: none; border-radius: 6px; cursor: pointer;">
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+      <button id="randomColor" style="width: 100%; padding: 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--panel-2); border-radius: 6px; cursor: pointer; margin-bottom: 10px;">🎲 Случайный цвет</button>
+    </div>
+    
+    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+      <button id="cancelColor" style="padding: 8px 16px; background: var(--panel-2); color: var(--text); border: 1px solid var(--panel-2); border-radius: 6px; cursor: pointer;">Отмена</button>
+      <button id="applyColor" style="padding: 8px 16px; background: var(--accent); color: var(--bg); border: 1px solid var(--accent); border-radius: 6px; cursor: pointer;">Применить</button>
+    </div>
+  `;
+  
+  modal.appendChild(picker);
+  document.body.appendChild(modal);
+  
+  // Заполняем пресеты
+  const presetsContainer = picker.querySelector('#colorPresets');
+  PROJECT_COLOR_PRESETS.forEach(color => {
+    const preset = document.createElement('div');
+    preset.style.cssText = `
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: ${color};
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s ease;
+    `;
+    
+    if (color === currentColor) {
+      preset.style.borderColor = 'var(--accent)';
+      preset.style.transform = 'scale(1.1)';
+    }
+    
+    preset.addEventListener('click', () => {
+      // Убираем выделение с других пресетов
+      presetsContainer.querySelectorAll('div').forEach(p => {
+        p.style.borderColor = 'transparent';
+        p.style.transform = 'scale(1)';
+      });
+      
+      // Выделяем выбранный
+      preset.style.borderColor = 'var(--accent)';
+      preset.style.transform = 'scale(1.1)';
+      
+      // Обновляем выбранный цвет и цветовой инпут
+      selectedColor = color;
+      picker.querySelector('#customColor').value = color;
+      console.log(`🎨 Preset color selected: ${color}`);
+    });
+    
+    presetsContainer.appendChild(preset);
+  });
+  
+  let selectedColor = currentColor;
+  
+  // Обработчики событий
+  picker.querySelector('#customColor').addEventListener('change', (e) => {
+    selectedColor = e.target.value;
+    // Убираем выделение с пресетов
+    presetsContainer.querySelectorAll('div').forEach(p => {
+      p.style.borderColor = 'transparent';
+      p.style.transform = 'scale(1)';
+    });
+  });
+  
+  picker.querySelector('#randomColor').addEventListener('click', () => {
+    selectedColor = getRandomProjectColor();
+    picker.querySelector('#customColor').value = selectedColor;
+    // Убираем выделение с пресетов
+    presetsContainer.querySelectorAll('div').forEach(p => {
+      p.style.borderColor = 'transparent';
+      p.style.transform = 'scale(1)';
+    });
+  });
+  
+  picker.querySelector('#cancelColor').addEventListener('click', () => {
+    document.body.removeChild(modal);
+  });
+  
+  picker.querySelector('#applyColor').addEventListener('click', () => {
+    if (selectedColor && selectedColor !== currentColor) {
+      console.log(`🎨 Changing project color from ${currentColor} to ${selectedColor}`);
+      project.color = selectedColor;
+      project.updatedAt = Date.now();
+      saveState();
+      drawMap();
+      openInspectorFor(project); // Обновляем инспектор
+    }
+    document.body.removeChild(modal);
+  });
+  
+  // Закрытие по клику вне модального окна
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  });
 }

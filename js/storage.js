@@ -4,7 +4,7 @@ import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const MIGRATIONS = [
   // 0 -> 1
   (data) => {
@@ -15,6 +15,16 @@ const MIGRATIONS = [
       : { layoutMode:'auto' };
     if (Array.isArray(out.domains)) {
       out.domains = out.domains.map(d => ({ archived:false, ...d }));
+    }
+    return out;
+  },
+  // 1 -> 2
+  (data) => {
+    // add default color to existing projects (не добавляем цвет, оставляем единый по умолчанию)
+    const out = { ...data };
+    if (Array.isArray(out.projects)) {
+      // Не добавляем цвет - пусть используется единый по умолчанию из getProjectColor()
+      // out.projects = out.projects.map(project => ({ ...project }));
     }
     return out;
   },

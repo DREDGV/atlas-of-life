@@ -38,9 +38,9 @@ export function initDemoData(){
     {id:'d2', title:'Дача', color:'var(--dacha)', createdAt:days(45), updatedAt:days(2)}
   ];
   state.projects = [
-    {id:'p1', domainId:'d1', title:'Домашние дела', tags:['дом'], priority:2, createdAt:days(20), updatedAt:days(1)},
-    {id:'p2', domainId:'d2', title:'Дачные планы', tags:['дом','дача'], priority:2, createdAt:days(25), updatedAt:days(10)},
-    {id:'p3', domainId:'d2', title:'Сад и огород', tags:['дача'], priority:1, createdAt:days(18), updatedAt:days(3)}
+    {id:'p1', domainId:'d1', title:'Домашние дела', tags:['дом'], priority:2, color:'#ff6b6b', createdAt:days(20), updatedAt:days(1)},
+    {id:'p2', domainId:'d2', title:'Дачные планы', tags:['дом','дача'], priority:2, color:'#4ecdc4', createdAt:days(25), updatedAt:days(10)},
+    {id:'p3', domainId:'d2', title:'Сад и огород', tags:['дача'], priority:1, color:'#45b7d1', createdAt:days(18), updatedAt:days(3)}
   ];
   state.tasks = [
     {id:'t1', projectId:'p1', title:'Купить продукты', tags:['дом','покупки'], status:'today', estimateMin:5, priority:2, updatedAt:days(1), createdAt:days(5)},
@@ -50,6 +50,11 @@ export function initDemoData(){
     {id:'t5', projectId:'p1', title:'Уборка на кухне', tags:['дом'], status:'today', estimateMin:90, priority:3, updatedAt:days(0), createdAt:days(2)},
     {id:'t6', projectId:'p3', title:'Настроить полив', tags:['дача','сад','техника'], status:'doing', estimateMin:45, priority:2, updatedAt:days(8), createdAt:days(14)}
   ];
+  
+  // Отладка для Edge
+  if (window.DEBUG_EDGE_TASKS) {
+    console.log('initDemoData called, tasks created:', state.tasks.length, state.tasks);
+  }
 }
 
 export const $ = s => document.querySelector(s);
@@ -78,4 +83,39 @@ export function statusPill(s){
   const map = {today:'Сегодня', doing:'В работе', done:'Готово', backlog:'Бэклог'};
   const cls = `status-pill ${s==='today'?'today': s==='doing'?'doing': s==='done'?'done':''}`;
   return `<span class="${cls}">${map[s]||s}</span>`;
+}
+
+// Цветовая палитра для проектов
+export const PROJECT_COLOR_PRESETS = [
+  '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57',
+  '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43',
+  '#10ac84', '#ee5a24', '#0984e3', '#6c5ce7', '#a29bfe'
+];
+
+// Получить случайный цвет для проекта
+export function getRandomProjectColor() {
+  return PROJECT_COLOR_PRESETS[Math.floor(Math.random() * PROJECT_COLOR_PRESETS.length)];
+}
+
+// Получить цвет проекта или дефолтный
+export function getProjectColor(project) {
+  // Если у проекта есть цвет - используем его, иначе - единый цвет по умолчанию
+  return project?.color || "#7b68ee"; // Единый цвет по умолчанию для всех проектов
+}
+
+// Проверить контрастность цвета (светлый/темный текст)
+export function getContrastColor(hexColor) {
+  // Убираем # если есть
+  const color = hexColor.replace('#', '');
+  
+  // Конвертируем в RGB
+  const r = parseInt(color.substr(0, 2), 16);
+  const g = parseInt(color.substr(2, 2), 16);
+  const b = parseInt(color.substr(4, 2), 16);
+  
+  // Вычисляем яркость
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  
+  // Возвращаем светлый или темный цвет текста
+  return brightness > 128 ? '#000000' : '#ffffff';
 }

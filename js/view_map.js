@@ -8,6 +8,9 @@ import {
   colorByAging,
   sizeByImportance,
   daysSince,
+  getProjectColor,
+  getRandomProjectColor,
+  getContrastColor,
 } from "./state.js";
 import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
@@ -22,6 +25,8 @@ let canvas,
 let nodes = [],
   edges = [];
 let hoverNodeId = null;
+let clickedNodeId = null;
+let clickEffectTime = 0;
 const viewState = {
   scale: 1,
   tx: 0,
@@ -96,7 +101,54 @@ function setProjectVisualStyle(style) {
 }
 
 // Export function globally
-try { window.setProjectVisualStyle = setProjectVisualStyle; } catch (_) {}
+try { 
+  window.setProjectVisualStyle = setProjectVisualStyle;
+  // Добавляем удобные функции для тестирования
+  window.testProjectColors = () => {
+    console.log('🎨 Доступные стили проектов:');
+    console.log('- original (по умолчанию) - улучшенный с эффектами');
+    console.log('- modern, simple, planet');
+    console.log('- neon, tech, minimal, holographic');
+    console.log('- gradient, mixed, galaxy');
+    console.log('Использование: setProjectVisualStyle("modern")');
+    console.log('✨ Все стили теперь имеют улучшенные эффекты клика!');
+  };
+  
+  // Функция для тестирования эффекта клика
+  window.testClickEffect = () => {
+    if (nodes.length > 0) {
+      const project = nodes.find(n => n._type === 'project');
+      if (project) {
+        clickedNodeId = project.id;
+        clickEffectTime = 1.0;
+        console.log('🎯 Тестируем эффект клика на проекте:', project.id);
+      } else {
+        console.log('❌ Проекты не найдены');
+      }
+    } else {
+      console.log('❌ Узлы не загружены');
+    }
+  };
+  
+  // Функция для тестирования мыши
+  window.testMouse = () => {
+    console.log('🖱️ Тестирование мыши:');
+    console.log('- Средняя кнопка мыши: панорамирование (только на пустом месте)');
+    console.log('- Alt + левая кнопка: панорамирование (только на пустом месте)');
+    console.log('- Левая кнопка: перетаскивание объектов');
+    console.log('- Для отладки: window.DEBUG_MOUSE = true');
+  };
+  
+  // Функция для тестирования задач
+  window.testTasks = () => {
+    console.log('📋 Тестирование задач:');
+    console.log('State tasks:', state.tasks);
+    console.log('Nodes:', nodes);
+    console.log('Task nodes:', nodes.filter(n => n._type === 'task'));
+    console.log('Для отладки: window.DEBUG_EDGE_TASKS = true');
+    console.log('Принудительно перерисовать: layoutMap(); drawMap();');
+  };
+} catch (_) {}
 
 // Demo functions for different visual styles
 function demoNeonStyle(ctx, x, y, radius, color, type) {
@@ -1151,6 +1203,11 @@ export function initMap(canvasEl, tooltipEl) {
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
   canvas.addEventListener("contextmenu", onContextMenu);
+  
+  // Добавляем обработчик mousedown для средней кнопки мыши
+  canvas.addEventListener("mousedown", onMouseDown);
+  canvas.addEventListener("mousemove", onMouseMove);
+  canvas.addEventListener("mouseup", onMouseUp);
   layoutMap();
   drawMap();
   // Автоматически подгоняем вид под все объекты при инициализации
@@ -1417,6 +1474,14 @@ export function layoutMap() {
     return;
   }
   isLayouting = true;
+  
+  // Отладка для Edge
+  if (window.DEBUG_EDGE_TASKS) {
+    console.log('=== LAYOUT MAP ===');
+    console.log('layoutMap called, state.tasks:', state.tasks.length, state.tasks);
+    console.log('state.projects:', state.projects.length, state.projects);
+    console.log('state.domains:', state.domains.length, state.domains);
+  }
   
   nodes = [];
   edges = [];
@@ -1751,6 +1816,16 @@ export function layoutMap() {
     edges = edges.slice(0, cap);
   }
   
+  // Отладка для Edge - показываем результат layoutMap
+  if (window.DEBUG_EDGE_TASKS) {
+    console.log('=== LAYOUT RESULT ===');
+    console.log('Total nodes created:', nodes.length);
+    console.log('Node types:', nodes.map(n => n._type));
+    console.log('Task nodes:', nodes.filter(n => n._type === 'task').length);
+    console.log('Project nodes:', nodes.filter(n => n._type === 'project').length);
+    console.log('Domain nodes:', nodes.filter(n => n._type === 'domain').length);
+  }
+  
   // Reset layouting flag
   isLayouting = false;
 }
@@ -1771,6 +1846,16 @@ export function drawMap() {
     } catch (_) {}
   }
   const t0 = performance.now();
+  
+  // Анимация эффекта клика (медленнее и плавнее)
+  if (clickEffectTime > 0) {
+    clickEffectTime -= 0.02; // Медленнее затухание (было 0.05)
+    if (clickEffectTime <= 0) {
+      clickEffectTime = 0;
+      clickedNodeId = null;
+    }
+  }
+  
   ctx.save();
   ctx.clearRect(0, 0, W, H);
   // single transform matrix: scale + translate
@@ -1982,20 +2067,55 @@ export function drawMap() {
       
       // Use project ID as seed for unique shape and project color
       const seed = n.id ? n.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0) : 0;
-      const projectColor = n.color || "#7b68ee";
+      const project = byId(state.projects, n.id);
+      const projectColor = getProjectColor(project) || "#7b68ee";
+      
+      // Отладка цветов проектов
+      if (window.DEBUG_COLORS) {
+        console.log(`Project ${n.id}:`, project, 'Color:', projectColor);
+      }
+      
+      // Показываем информацию о цвете в консоли при первом рендере
+      if (!window._colorsLogged) {
+        console.log('🎨 Цвета проектов загружены!');
+        console.log('Для отладки: window.DEBUG_COLORS = true');
+        console.log('Для смены стиля: setProjectVisualStyle("modern")');
+        console.log('🔧 Для отладки Edge: window.DEBUG_EDGE_TASKS = true');
+        console.log('🖱️ Средняя кнопка мыши для панорамирования работает!');
+        window._colorsLogged = true;
+      }
       
       // Choose visualization style based on settings
       if (projectVisualStyle === 'original') {
-        // Original project drawing from v0.2.7.5
+        // Улучшенная отрисовка проектов
+        const isHovered = hoverNodeId === n.id;
+        const baseRadius = 12 * DPR;
+        const hoverRadius = isHovered ? baseRadius + 4 * DPR : baseRadius;
+        
+        // Основной круг проекта (непрозрачный)
         ctx.beginPath();
-        ctx.strokeStyle = "#1d2b4a";
-        ctx.lineWidth = 1 * DPR;
-        ctx.arc(n.x, n.y, pulseRadius + 18 * DPR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.fillStyle = "#8ab4ff";
-        ctx.arc(n.x, n.y, 6 * DPR, 0, Math.PI * 2);
+        ctx.fillStyle = projectColor;
+        ctx.arc(n.x, n.y, hoverRadius, 0, Math.PI * 2);
         ctx.fill();
+        
+        // Обводка (тонкая, контрастная)
+        ctx.beginPath();
+        ctx.strokeStyle = getContrastColor(projectColor);
+        ctx.lineWidth = 1.5 * DPR;
+        ctx.arc(n.x, n.y, hoverRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Свечение при наведении
+        if (isHovered) {
+          ctx.shadowColor = projectColor;
+          ctx.shadowBlur = 15 * DPR;
+          ctx.beginPath();
+          ctx.fillStyle = projectColor + "60";
+          ctx.arc(n.x, n.y, hoverRadius + 3 * DPR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        
       } else if (projectVisualStyle === 'modern') {
         drawProjectModern(ctx, n.x, n.y, pulseRadius, projectColor, seed);
       } else if (projectVisualStyle === 'simple') {
@@ -2016,6 +2136,34 @@ export function drawMap() {
         drawMixedStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
       } else {
         drawGalaxy(ctx, n.x, n.y, pulseRadius, projectColor, seed);
+      }
+      
+      // Универсальный эффект клика для всех стилей
+      if (clickedNodeId === n.id && clickEffectTime > 0) {
+        const baseRadius = n.r || pulseRadius;
+        const clickRadius = baseRadius + (clickEffectTime * 40 * DPR);
+        const easeOut = 1 - Math.pow(1 - clickEffectTime, 3);
+        const clickAlpha = easeOut * 0.6;
+        
+        // Внешнее кольцо
+        ctx.shadowColor = projectColor;
+        ctx.shadowBlur = 30 * DPR;
+        ctx.beginPath();
+        ctx.strokeStyle = projectColor + Math.floor(clickAlpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 3 * DPR;
+        ctx.arc(n.x, n.y, clickRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Внутреннее кольцо
+        const innerRadius = baseRadius + (clickEffectTime * 25 * DPR);
+        const innerAlpha = easeOut * 0.4;
+        ctx.beginPath();
+        ctx.strokeStyle = projectColor + Math.floor(innerAlpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 2 * DPR;
+        ctx.arc(n.x, n.y, innerRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.shadowBlur = 0;
       }
       
       // Search highlight
@@ -2091,20 +2239,35 @@ export function drawMap() {
         // Draw project with glow effect
         // Use project ID as seed for unique shape and project color
         const seed = draggedNode.id ? draggedNode.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0) : 0;
-        const projectColor = draggedNode.color || "#7b68ee";
+        const project = byId(state.projects, draggedNode.id);
+        const projectColor = getProjectColor(project) || "#7b68ee";
         
         // Choose visualization style based on settings
         if (projectVisualStyle === 'original') {
-          // Original project drawing from v0.2.7.5
+          // Улучшенная отрисовка перетаскиваемого проекта
+          const dragRadius = 16 * DPR; // Немного больше при перетаскивании
+          
+          // Основной круг проекта (непрозрачный)
           ctx.beginPath();
-          ctx.strokeStyle = "#1d2b4a";
-          ctx.lineWidth = 1 * DPR;
-          ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 18 * DPR, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.fillStyle = "#8ab4ff";
-          ctx.arc(draggedNode.x, draggedNode.y, 6 * DPR, 0, Math.PI * 2);
+          ctx.fillStyle = projectColor;
+          ctx.arc(draggedNode.x, draggedNode.y, dragRadius, 0, Math.PI * 2);
           ctx.fill();
+          
+          // Обводка (тонкая, контрастная)
+          ctx.beginPath();
+          ctx.strokeStyle = getContrastColor(projectColor);
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(draggedNode.x, draggedNode.y, dragRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          
+          // Свечение при перетаскивании
+          ctx.shadowColor = projectColor;
+          ctx.shadowBlur = 20 * DPR;
+          ctx.beginPath();
+          ctx.fillStyle = projectColor + "80";
+          ctx.arc(draggedNode.x, draggedNode.y, dragRadius + 5 * DPR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
         } else if (projectVisualStyle === 'modern') {
           drawProjectModern(ctx, draggedNode.x, draggedNode.y, draggedNode.r, projectColor, seed);
         } else if (projectVisualStyle === 'simple') {
@@ -2173,9 +2336,28 @@ export function drawMap() {
   }
 
   // tasks as stars/asteroids
-  nodes
-    .filter((n) => n._type === "task")
-    .forEach((n) => {
+  const taskNodes = nodes.filter((n) => n._type === "task");
+  
+  // Отладка для Edge - показываем количество задач
+  if (window.DEBUG_EDGE_TASKS) {
+    console.log('=== ОТЛАДКА ЗАДАЧ ===');
+    console.log(`Total tasks in state: ${state.tasks.length}`);
+    console.log(`Task nodes created: ${taskNodes.length}`);
+    console.log('State tasks:', state.tasks);
+    console.log('Task nodes:', taskNodes);
+    console.log('All nodes count:', nodes.length);
+    console.log('Node types:', nodes.map(n => n._type));
+    console.log('Viewport:', { vx0, vx1, vy0, vy1 });
+    console.log('DPR:', DPR);
+    
+    // Проверяем, почему задачи не отображаются
+    taskNodes.forEach((n, i) => {
+      const inViewport = inView(n.x, n.y, n.r + 20 * DPR);
+      console.log(`Task ${i}: ${n.id}, pos: (${n.x}, ${n.y}), r: ${n.r}, inView: ${inViewport}`);
+    });
+  }
+  
+  taskNodes.forEach((n) => {
       if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
       const t = state.tasks.find((x) => x.id === n.id);
       
@@ -2337,6 +2519,11 @@ export function drawMap() {
   
   // Reset drawing flag
   isDrawing = false;
+  
+  // Продолжаем анимацию эффекта клика
+  if (clickEffectTime > 0) {
+    requestDraw();
+  }
 }
 // optionally draw debug overlay
 debugOverlay();
@@ -2580,25 +2767,72 @@ function onMouseLeave() {
   drawMap();
 }
 
-function onMouseDown(e) {
-  if (e.button === 1 || (e.button === 0 && e.altKey)) {
-    viewState.dragging = true;
-    viewState.lastX = e.clientX;
-    viewState.lastY = e.clientY;
+function onMouseUp(e) {
+  // Обработка отпускания средней кнопки мыши для панорамирования
+  if (viewState.dragging) {
+    viewState.dragging = false;
+    canvas.style.cursor = "";
     return;
   }
-  // DnD: захват задачи или проекта
-  if (e.button === 0) {
-    const pt = screenToWorld(e.offsetX, e.offsetY);
-    const n = hit(pt.x, pt.y);
-    if (n && (n._type === "task" || n._type === "project")) {
-      pendingDragNode = n;
+  
+  // Обработка отпускания левой кнопки для DnD
+  if (e.button === 0 && pendingDragNode) {
+    // Если не было движения - это клик, а не перетаскивание
+    pendingDragNode = null;
+  }
+  
+  // Обработка отпускания средней кнопки мыши
+  if (e.button === 1) {
+    canvas.style.cursor = "";
+  }
+}
+
+function onMouseDown(e) {
+  // Проверяем, что клик был на пустом месте, а не на объекте
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  const hitNode = hit(pt.x, pt.y);
+  
+  // Средняя кнопка мыши или Alt + левая кнопка - только для панорамирования
+  if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    // Панорамирование работает только при клике на пустое место
+    if (!hitNode) {
+      viewState.dragging = true;
+      viewState.lastX = e.clientX;
+      viewState.lastY = e.clientY;
+      canvas.style.cursor = "grabbing";
+      if (window.DEBUG_MOUSE) {
+        console.log('🖱️ Панорамирование начато (клик на пустом месте)');
+      }
+    } else {
+      if (window.DEBUG_MOUSE) {
+        console.log('🖱️ Панорамирование заблокировано (клик на объект):', hitNode._type, hitNode.id);
+      }
+    }
+    return;
+  }
+  
+  // DnD: захват задачи или проекта (ТОЛЬКО левая кнопка без Alt)
+  // Средняя кнопка мыши НЕ должна запускать DnD
+  if (e.button === 0 && !e.altKey) {
+    if (hitNode && (hitNode._type === "task" || hitNode._type === "project")) {
+      pendingDragNode = hitNode;
       pendingDragStart.x = e.clientX;
       pendingDragStart.y = e.clientY;
-      dragOffset.x = pt.x - n.x;
-      dragOffset.y = pt.y - n.y;
+      dragOffset.x = pt.x - hitNode.x;
+      dragOffset.y = pt.y - hitNode.y;
+      if (window.DEBUG_MOUSE) {
+        console.log('🖱️ DnD начат для:', hitNode._type, hitNode.id);
+      }
       return;
     }
+  }
+  
+  // Блокируем любые другие действия средней кнопкой мыши
+  if (e.button === 1) {
+    if (window.DEBUG_MOUSE) {
+      console.log('🖱️ Средняя кнопка заблокирована для DnD');
+    }
+    return;
   }
 }
 // Helper function to properly hide toast and clean up handlers
@@ -3213,14 +3447,14 @@ window.addEventListener("mouseup", (e) => {
                   ok.onclick = () => {
                     confirmProjectMove();
                     hideToast();
-                  };
-                }
-                if (cancel) {
-                  cancel.onclick = () => {
+            };
+          }
+          if (cancel) {
+            cancel.onclick = () => {
                     pendingProjectMove = null;
                     hideToast();
-                  };
-                }
+            };
+          }
         }, 20);
       }
           } else {
@@ -4219,6 +4453,11 @@ function onClick(e) {
   } else if (n._type === "project") {
     const obj = state.projects.find((p) => p.id === n.id);
     obj._type = "project";
+    
+    // Запускаем эффект клика
+    clickedNodeId = n.id;
+    clickEffectTime = 1.0;
+    
     openInspectorFor(obj);
   } else {
     const obj = state.domains.find((d) => d.id === n.id);

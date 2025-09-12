@@ -1,0 +1,56 @@
+---
+description: Atlas of Life project context and development guidelines
+globs:
+alwaysApply: true
+---
+
+# Atlas of Life - Project Context
+
+## Project Overview
+Atlas of Life is a life management application using cosmic metaphors. Current version: v0.2.16.2-chronos-concept
+
+## Key Files
+- `index.html` - Main page
+- `js/app.js` - Core application logic
+- `js/view_map.js` - Map rendering and Drag&Drop
+- `js/state.js` - State management
+- `styles.css` - Main styles
+
+## Documentation
+- `PRD_v0.3_Vision.md` - Product vision
+- `CHRONOS_ENGINE_v0.3.md` - Time machine concept
+- `IDEAS.md` - Ideas bank
+- `CHANGELOG.md` - Change history
+
+## Architecture
+- JavaScript ES6+, HTML5, CSS3
+- No external dependencies
+- localStorage for data
+- Canvas for map rendering
+- Modular structure
+
+## Key Concepts
+- Domains = galaxies (life spheres)
+- Projects = orbits (task groups)
+- Tasks = stars (specific actions)
+- Status flow: backlog → today → doing → done
+- Priorities: p1 (critical) → p4 (low)
+
+## Technical Preferences
+- Microsoft Edge compatibility priority
+- 60 FPS performance
+- Viewport culling for optimization
+- Pointer Events instead of Mouse Events
+- Conventional Commits for Git
+
+## Common Issues
+- Edge bugs: limit requestAnimationFrame
+- DnD bugs: check pointer capture
+- Toast not showing: check z-index
+- Performance: use throttling
+
+## Constraints
+- No external APIs, everything local
+- No accounts, privacy is important
+- No complex analytics
+- No gamification

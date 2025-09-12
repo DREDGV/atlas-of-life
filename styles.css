@@ -21,7 +21,24 @@
 html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial;overflow:hidden;min-width:600px;min-height:100vh}
 .app{display:grid;grid-template-rows:56px 1fr 56px; height:100%}
 header{display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--panel-2);min-height:48px}
-header .brand{font-weight:700;letter-spacing:.3px;background:linear-gradient(45deg, #ff6b6b, #4ecdc4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;color:#ff6b6b}
+header .brand{font-weight:700;letter-spacing:.3px;background:linear-gradient(45deg, #ff6b6b, #4ecdc4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;color:#ff6b6b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+header .brand .version{font-size:11px;opacity:0.8;margin-left:4px}
+
+/* Адаптивность для заголовка */
+@media (max-width: 1200px) {
+  header .brand { max-width: 150px; }
+  header .brand .version { display: none; }
+}
+
+@media (max-width: 900px) {
+  header .brand { max-width: 120px; }
+  header .chip { font-size: 11px; padding: 3px 6px; }
+}
+
+@media (max-width: 700px) {
+  header .brand { max-width: 100px; }
+  header .chip { font-size: 10px; padding: 2px 4px; }
+}
 header .chip{padding:4px 8px;border-radius:8px;background:var(--panel-2);color:var(--muted);cursor:pointer;-webkit-user-select:none;user-select:none;font-size:12px}
 header .chip.active{background:var(--panel-2);color:var(--text);border:1px solid var(--accent)}
 header .spacer{flex:1}

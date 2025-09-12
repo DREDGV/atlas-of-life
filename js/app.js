@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
@@ -44,7 +44,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.16.2-chronos-concept";
+let APP_VERSION = "Atlas_of_life_v0.2.17.0-cosmic-colors";
 
 // ephemeral UI state
 const ui = {
@@ -1778,6 +1778,7 @@ function submitQuick(text) {
         id: "p" + Math.random().toString(36).slice(2, 8),
         domainId: domainId,
         title: projectName,
+        // Не добавляем color - будет использоваться единый по умолчанию
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
