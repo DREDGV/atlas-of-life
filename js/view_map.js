@@ -1985,7 +1985,8 @@ export function drawMap() {
   nodes
     .filter((n) => n._type === "domain")
     .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
+      const __skipCull = window.DEBUG_EDGE_TASKS === true;
+      if (!__skipCull && !inView(n.x, n.y, n.r + 30 * DPR)) return;
       
       // Draw nebula with style support
       if (projectVisualStyle === 'original') {
@@ -2058,7 +2059,8 @@ export function drawMap() {
   nodes
     .filter((n) => n._type === "project")
     .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
+      const __skipCull2 = window.DEBUG_EDGE_TASKS === true;
+      if (!__skipCull2 && !inView(n.x, n.y, n.r + 30 * DPR)) return;
       
       // Draw planet with gentle pulsing animation
       const time = performance.now() * 0.0008; // Очень медленная анимация
@@ -2358,7 +2360,8 @@ export function drawMap() {
   }
   
   taskNodes.forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
+      const __skipCull3 = window.DEBUG_EDGE_TASKS === true;
+      if (!__skipCull3 && !inView(n.x, n.y, n.r + 20 * DPR)) return;
       const t = state.tasks.find((x) => x.id === n.id);
       
       // Task colors based on status
@@ -4105,6 +4108,15 @@ function setZoom(percent) {
 window.mapApi.getScale = getScale;
 window.mapApi.setZoom = setZoom;
 
+// Back-compat aliases for modules that call global functions directly
+try {
+  window.layoutMap = layoutMap;
+  window.drawMap = drawMap;
+  window.fitAll = fitAll;
+  window.fitActiveDomain = fitActiveDomain;
+  window.fitActiveProject = fitActiveProject;
+} catch(_) {}
+
 // small modal helper (reuse existing modal structure in index.html)
 function openModalLocal({
   title,
@@ -4443,6 +4455,7 @@ function onClick(e) {
     state.activeDomain = null;
     layoutMap();
     drawMap();
+    try { fitAll(); } catch(_) {}
     return;
   }
   hoverNodeId = n.id;

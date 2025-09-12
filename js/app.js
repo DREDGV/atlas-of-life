@@ -806,6 +806,28 @@ function renderSidebar() {
   html += `<div class="domains-container"></div>`;
   
   dWrap.innerHTML = html;
+
+  // Ensure domain controls (Show all / Fit all)
+  try {
+    if (!document.getElementById('domControls')) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.id = 'domControls';
+      row.style.gap = '6px';
+      row.style.flexWrap = 'wrap';
+      const btnAll = document.createElement('button');
+      btnAll.className = 'btn';
+      btnAll.id = 'btnShowAll';
+      btnAll.textContent = 'Все домены';
+      const btnFit = document.createElement('button');
+      btnFit.className = 'btn';
+      btnFit.id = 'btnFitAll';
+      btnFit.textContent = 'Вписать';
+      row.appendChild(btnAll);
+      row.appendChild(btnFit);
+      dWrap.insertBefore(row, dWrap.firstChild);
+    }
+  } catch(_) {}
   
   // Populate domains container
   updateDomainsList();
@@ -821,6 +843,23 @@ function renderSidebar() {
       renderSidebar();
       const inp = $("#newDomName");
       inp && inp.focus();
+    };
+  }
+  const showAllBtn = document.getElementById('btnShowAll');
+  if (showAllBtn) {
+    showAllBtn.onclick = () => {
+      try { state.activeDomains = []; } catch(_) {}
+      state.activeDomain = null;
+      renderSidebar();
+      layoutMap();
+      drawMap();
+      try { window.mapApi && window.mapApi.fitAll && window.mapApi.fitAll(); } catch(_) {}
+    };
+  }
+  const fitAllBtn = document.getElementById('btnFitAll');
+  if (fitAllBtn) {
+    fitAllBtn.onclick = () => {
+      try { window.mapApi && window.mapApi.fitAll && window.mapApi.fitAll(); } catch(_) {}
     };
   }
   const row = document.getElementById("newDomRow");
