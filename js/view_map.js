@@ -1544,6 +1544,9 @@ export function layoutMap() {
     const moodColor = getMoodColor(mood);
     const moodDescription = getMoodDescription(mood);
     
+    // Отладка mood
+    console.log(`Domain ${d.title}: mood=${mood}, color=${moodColor}`);
+    
     nodes.push({
       _type: "domain",
       id: d.id,
@@ -2002,6 +2005,7 @@ export function drawMap() {
       
       // Используем mood цвет вместо обычного цвета домена
       const domainColor = n.moodColor || n.color;
+      console.log(`Rendering domain ${n.title}: original=${n.color}, mood=${n.mood}, moodColor=${n.moodColor}, final=${domainColor}`);
       
       // Draw nebula with style support
       if (projectVisualStyle === 'original') {
