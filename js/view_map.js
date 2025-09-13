@@ -1545,19 +1545,22 @@ export function layoutMap() {
     // Добавляем mood для домена
     console.log(`=== CALCULATING MOOD FOR DOMAIN: ${d.title} (${d.id}) ===`);
     
+    // Объявляем переменные вне try блока
+    let mood, moodColor, moodDescription;
+    
     // Простая проверка
     try {
-      const mood = getDomainMood(d.id);
+      mood = getDomainMood(d.id);
       console.log(`Mood result: ${mood}`);
-      const moodColor = getMoodColor(mood);
+      moodColor = getMoodColor(mood);
       console.log(`Mood color: ${moodColor}`);
-      const moodDescription = getMoodDescription(mood);
+      moodDescription = getMoodDescription(mood);
       console.log(`Mood description: ${moodDescription}`);
     } catch (error) {
       console.error(`Error calculating mood for ${d.title}:`, error);
-      const mood = 'balance';
-      const moodColor = getMoodColor(mood);
-      const moodDescription = getMoodDescription(mood);
+      mood = 'balance';
+      moodColor = getMoodColor(mood);
+      moodDescription = getMoodDescription(mood);
     }
     
     nodes.push({

@@ -33,6 +33,9 @@ export const now = Date.now();
 export const days = d => now - d*24*3600*1000;
 
 export function initDemoData(){
+  // Принудительно очищаем старые данные для тестирования mood
+  console.log("Initializing demo data with mood test data...");
+  
   state.domains = [
     {id:'d1', title:'Дом', color:'var(--home)', createdAt:days(30), updatedAt:days(1)},
     {id:'d2', title:'Дача', color:'var(--dacha)', createdAt:days(45), updatedAt:days(2)}
