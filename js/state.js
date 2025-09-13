@@ -146,6 +146,13 @@ export function getDomainMood(domainId) {
     domainProjects.some(p => p.id === t.projectId) || t.domainId === domainId
   );
   
+  console.log(`Calculating mood for domain ${domain.title}:`, {
+    domainId,
+    domainProjects: domainProjects.length,
+    domainTasks: domainTasks.length,
+    tasks: domainTasks.map(t => ({ id: t.id, title: t.title, priority: t.priority, status: t.status, due: t.due, createdAt: t.createdAt }))
+  });
+  
   if (domainTasks.length === 0) return 'balance';
   
   const now = Date.now();
@@ -160,7 +167,10 @@ export function getDomainMood(domainId) {
     return dueTime < threeDaysAgo;
   });
   
+  console.log(`Overdue tasks for ${domain.title}:`, overdueTasks.length, overdueTasks.map(t => ({ title: t.title, due: t.due })));
+  
   if (overdueTasks.length > 0) {
+    console.log(`Domain ${domain.title} is in CRISIS due to overdue tasks`);
     return 'crisis';
   }
   
@@ -169,7 +179,10 @@ export function getDomainMood(domainId) {
     t.status !== 'done' && (t.priority === 1 || t.priority === 2)
   );
   
+  console.log(`High priority tasks for ${domain.title}:`, highPriorityTasks.length, highPriorityTasks.map(t => ({ title: t.title, priority: t.priority, status: t.status })));
+  
   if (highPriorityTasks.length >= 5) {
+    console.log(`Domain ${domain.title} is under PRESSURE due to high priority tasks`);
     return 'pressure';
   }
   
@@ -179,11 +192,15 @@ export function getDomainMood(domainId) {
     return createdTime > sevenDaysAgo;
   });
   
+  console.log(`Recent tasks for ${domain.title}:`, recentTasks.length, recentTasks.map(t => ({ title: t.title, createdAt: t.createdAt })));
+  
   if (recentTasks.length > 5) {
+    console.log(`Domain ${domain.title} is in GROWTH due to recent tasks`);
     return 'growth';
   }
   
   // 4. Balance: все остальные случаи
+  console.log(`Domain ${domain.title} is in BALANCE`);
   return 'balance';
 }
 

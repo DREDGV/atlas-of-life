@@ -59,7 +59,6 @@ export function openInspectorFor(obj) {
       <div class="kv">Проектов: ${prjs.length} · Задач: ${totalTasks}</div>
       <div class="btns">
         <button class="btn primary" id="addProject">+ Проект</button>
-        <button class="btn" id="changeDomainColor">🎨 Изменить цвет</button>
         <button class="btn danger" id="delDomain">🗑️ Удалить домен</button>
       </div>
       <div class="list">${prjs
@@ -124,23 +123,7 @@ export function openInspectorFor(obj) {
       }
     };
     
-    // Handle domain color change
-    document.getElementById("changeDomainColor").onclick = () => {
-      const currentColor = obj.color || "#2dd4bf";
-      const newColor = prompt("Введите новый цвет домена (hex код, например #ff6b6b):", currentColor);
-      if (newColor && newColor !== currentColor) {
-        // Validate hex color
-        if (/^#[0-9A-F]{6}$/i.test(newColor)) {
-          obj.color = newColor;
-          obj.updatedAt = Date.now();
-          saveState();
-          drawMap();
-          openInspectorFor(obj); // Refresh inspector
-        } else {
-          alert("Неверный формат цвета. Используйте hex код (например: #ff6b6b)");
-        }
-      }
-    };
+    // Domain color is now automatically determined by mood - no manual change needed
   }
   if (type === "project") {
     const tks = tasksOfProject(obj.id);

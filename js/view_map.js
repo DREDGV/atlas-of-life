@@ -1540,12 +1540,15 @@ export function layoutMap() {
       : d.color || "#2dd4bf";
     
     // Добавляем mood для домена
-    const mood = getDomainMood(d.id);
-    const moodColor = getMoodColor(mood);
-    const moodDescription = getMoodDescription(mood);
+    console.log(`=== CALCULATING MOOD FOR DOMAIN: ${d.title} (${d.id}) ===`);
+    console.log(`Functions available:`, { getDomainMood: typeof getDomainMood, getMoodColor: typeof getMoodColor, getMoodDescription: typeof getMoodDescription });
     
-    // Отладка mood
-    console.log(`Domain ${d.title}: mood=${mood}, color=${moodColor}`);
+    const mood = getDomainMood(d.id);
+    console.log(`Mood result: ${mood}`);
+    const moodColor = getMoodColor(mood);
+    console.log(`Mood color: ${moodColor}`);
+    const moodDescription = getMoodDescription(mood);
+    console.log(`Mood description: ${moodDescription}`);
     
     nodes.push({
       _type: "domain",
