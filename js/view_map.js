@@ -2364,6 +2364,11 @@ export function drawMap() {
       if (!__skipCull3 && !inView(n.x, n.y, n.r + 20 * DPR)) return;
       const t = state.tasks.find((x) => x.id === n.id);
       
+      // Отладка отрисовки задач в Edge
+      if (window.DEBUG_EDGE_TASKS) {
+        console.log(`🎨 РИСУЕМ ЗАДАЧУ: ${n.id}, pos: (${n.x}, ${n.y}), r: ${n.r}, status: ${n.status}`);
+      }
+      
       // Task colors based on status
       const taskColors = {
         "done": "#6b7280",
@@ -2442,6 +2447,11 @@ export function drawMap() {
         ctx.lineWidth = 1 * DPR;
         ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
         ctx.stroke();
+      }
+      
+      // Отладка завершения отрисовки задачи в Edge
+      if (window.DEBUG_EDGE_TASKS) {
+        console.log(`✅ ЗАДАЧА ОТРИСОВАНА: ${n.id}, color: ${baseColor}, style: ${projectVisualStyle}`);
       }
     });
 
@@ -2799,9 +2809,9 @@ function onMouseDown(e) {
   if (e.button === 1 || (e.button === 0 && e.altKey)) {
     // Панорамирование работает только при клике на пустое место
     if (!hitNode) {
-      viewState.dragging = true;
-      viewState.lastX = e.clientX;
-      viewState.lastY = e.clientY;
+    viewState.dragging = true;
+    viewState.lastX = e.clientX;
+    viewState.lastY = e.clientY;
       canvas.style.cursor = "grabbing";
       if (window.DEBUG_MOUSE) {
         console.log('🖱️ Панорамирование начато (клик на пустом месте)');
