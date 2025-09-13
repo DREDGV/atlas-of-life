@@ -1376,7 +1376,7 @@ function setupHeader() {
       $("#viewToday").style.display = state.view === "today" ? "flex" : "none";
       if (state.view === "map") {
         drawMap();
-      } else {
+      } else if (state.view === "today") {
         renderToday();
       }
     };

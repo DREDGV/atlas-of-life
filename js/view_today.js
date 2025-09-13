@@ -71,8 +71,9 @@ function pickTodayTasks() {
   const now = Date.now();
   const tasks = (state.tasks || [])
     .filter(t => {
-      if (!t || t.status === "done") return false;
+      if (!t) return false;
       if (t.status === "today") return true;
+      if (t.status === "done") return true; // Включаем выполненные задачи
       const due = getDue(t);
       return due && isSameDay(due, now);
     })
@@ -373,6 +374,7 @@ function addTaskEventListeners() {
 // Add filter event listeners
 function addFilterEventListeners() {
   const wrap = document.getElementById('viewToday');
+  if (!wrap) return;
   
   // Filter buttons
   wrap.querySelectorAll('.today-filter-btn').forEach(btn => {
@@ -411,6 +413,7 @@ function addKeyboardShortcuts() {
       todayUI.filters = { priority: 'all', status: 'active', time: 'all' };
       saveTodayUI();
       renderToday();
+      e.preventDefault();
     }
     
     // Number keys for priority filters
