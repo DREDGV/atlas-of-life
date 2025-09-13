@@ -1377,7 +1377,10 @@ function setupHeader() {
       if (state.view === "map") {
         drawMap();
       } else if (state.view === "today") {
-        renderToday();
+        // Принудительно вызываем renderToday при переключении на today
+        setTimeout(() => {
+          renderToday();
+        }, 10);
       }
     };
   });

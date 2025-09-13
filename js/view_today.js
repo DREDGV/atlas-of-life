@@ -44,7 +44,11 @@ function getDue(task) {
 
 // Apply filters to tasks
 function applyFilters(tasks) {
-  return tasks.filter(task => {
+  // Debug: log filters
+  console.log('applyFilters - filters:', todayUI.filters);
+  console.log('applyFilters - input tasks:', tasks.length);
+  
+  const filtered = tasks.filter(task => {
     // Priority filter
     if (todayUI.filters.priority !== 'all') {
       const priority = task.priority ?? 2;
@@ -64,12 +68,27 @@ function applyFilters(tasks) {
     
     return true;
   });
+  
+  // Debug: log filtered result
+  console.log('applyFilters - output tasks:', filtered.length);
+  
+  return filtered;
 }
 
 // Pick and sort today's tasks
 function pickTodayTasks() {
   const now = Date.now();
-  const tasks = (state.tasks || [])
+  const allTasks = state.tasks || [];
+  
+  // Debug: log all tasks
+  console.log('pickTodayTasks - all tasks:', allTasks.length, allTasks.map(t => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority
+  })));
+  
+  const tasks = allTasks
     .filter(t => {
       if (!t) return false;
       if (t.status === "today") return true;
@@ -78,6 +97,14 @@ function pickTodayTasks() {
       return due && isSameDay(due, now);
     })
     .map(t => ({ ...t }));
+    
+  // Debug: log filtered tasks
+  console.log('pickTodayTasks - filtered tasks:', tasks.length, tasks.map(t => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority
+  })));
 
   // Add sorting properties
   tasks.forEach(t => {
@@ -158,16 +185,39 @@ export function renderToday() {
     return;
   }
   wrap.style.display = 'flex';
+  
+  // Debug: log current state
+  console.log('renderToday called:', {
+    view: state.view,
+    filters: todayUI.filters,
+    tasksCount: state.tasks?.length || 0
+  });
 
   const tasks = pickTodayTasks();
   const stats = calculateDayStats();
 
   if (tasks.length === 0) {
+    // Мягкое уведомление с возможностью сброса фильтров
+    const hasActiveFilters = todayUI.filters.priority !== 'all' || 
+                            todayUI.filters.status !== 'active' || 
+                            todayUI.filters.time !== 'all';
+    
     wrap.innerHTML = `
       <div class="today-empty">
         <div class="today-empty-icon">📅</div>
         <div class="today-empty-text">На сегодня задач нет</div>
-        <div class="today-empty-hint">Добавьте через форму снизу или выберите из бэклога</div>
+        <div class="today-empty-hint">
+          ${hasActiveFilters ? 
+            'Попробуйте изменить фильтры или' : 
+            ''} Добавьте через форму снизу или выберите из бэклога
+        </div>
+        ${hasActiveFilters ? `
+          <div class="today-empty-actions">
+            <button class="today-reset-filters" onclick="resetTodayFilters()">
+              🔄 Сбросить фильтры
+            </button>
+          </div>
+        ` : ''}
       </div>
     `;
     return;
@@ -441,3 +491,11 @@ function addKeyboardShortcuts() {
 
 // Initialize keyboard shortcuts
 addKeyboardShortcuts();
+
+// Global function for resetting filters (called from HTML)
+window.resetTodayFilters = function() {
+  todayUI.filters = { priority: 'all', status: 'active', time: 'all' };
+  saveTodayUI();
+  renderToday();
+  console.log('Filters reset to default');
+};
