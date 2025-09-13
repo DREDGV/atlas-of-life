@@ -18,11 +18,18 @@
   --gradient-1:#f7fafc; --gradient-2:#f2f6fb; --gradient-3:#e2e8f0;
 }
 *{box-sizing:border-box}
+
+/* Prevent cursor on all icons and emojis */
+[class*="icon"], [class*="emoji"], .emoji, .icon {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial;overflow:hidden;min-width:600px;min-height:100vh}
 .app{display:grid;grid-template-rows:56px 1fr 56px; height:100%}
 header{display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--panel-2);min-height:48px}
-header .brand{font-weight:700;letter-spacing:.3px;background:linear-gradient(45deg, #ff6b6b, #4ecdc4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;color:#ff6b6b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
-header .brand .version{font-size:11px;opacity:0.8;margin-left:4px}
+header .brand{font-weight:700;letter-spacing:.3px;background:linear-gradient(45deg, #ff6b6b, #4ecdc4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;color:#ff6b6b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;-webkit-user-select:none;user-select:none;cursor:default}
+header .brand .version{font-size:11px;opacity:0.8;margin-left:4px;-webkit-user-select:none;user-select:none;cursor:default}
 
 /* Адаптивность для заголовка */
 @media (max-width: 1200px) {
@@ -116,6 +123,9 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .autocomplete-icon {
   margin-right: 8px;
   font-size: 16px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .autocomplete-text {
@@ -191,12 +201,18 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .today-subtitle {
   font-size: 14px;
   color: var(--muted);
   opacity: 0.8;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .today-empty {
@@ -209,6 +225,9 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
   font-size: 48px;
   margin-bottom: 16px;
   opacity: 0.6;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .today-empty-text {
@@ -216,12 +235,18 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
   font-weight: 600;
   margin-bottom: 8px;
   color: var(--text);
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .today-empty-hint {
   font-size: 14px;
   opacity: 0.7;
   margin-bottom: 16px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .today-empty-actions {
@@ -461,6 +486,9 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
   font-weight: 700;
   color: var(--accent);
   margin-bottom: 4px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .today-stat-label {
@@ -468,6 +496,9 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 /* Enhanced Today View - Filters */
@@ -497,6 +528,9 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
   text-transform: uppercase;
   letter-spacing: 0.5px;
   min-width: 60px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .today-filter-buttons {
@@ -965,6 +999,9 @@ kbd {
   font-weight: bold;
   margin-right: 8px;
   min-width: 20px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .autocomplete-label {
