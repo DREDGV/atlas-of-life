@@ -43,12 +43,27 @@ export function initDemoData(){
     {id:'p3', domainId:'d2', title:'Сад и огород', tags:['дача'], priority:1, color:'#45b7d1', createdAt:days(18), updatedAt:days(3)}
   ];
   state.tasks = [
-    {id:'t1', projectId:'p1', title:'Купить продукты', tags:['дом','покупки'], status:'today', estimateMin:5, priority:2, updatedAt:days(1), createdAt:days(5)},
-    {id:'t2', projectId:'p2', title:'Спланировать грядки', tags:['дача','сад'], status:'backlog', estimateMin:60, priority:3, updatedAt:days(10), createdAt:days(20)},
-    {id:'t3', projectId:'p3', title:'Полить растения', tags:['дача','сад'], status:'doing', estimateMin:30, priority:2, updatedAt:days(3), createdAt:days(9)},
-    {id:'t4', projectId:'p2', title:'Купить семена', tags:['покупки','дача'], status:'backlog', estimateMin:20, priority:2, updatedAt:days(15), createdAt:days(22)},
-    {id:'t5', projectId:'p1', title:'Уборка на кухне', tags:['дом'], status:'today', estimateMin:90, priority:3, updatedAt:days(0), createdAt:days(2)},
-    {id:'t6', projectId:'p3', title:'Настроить полив', tags:['дача','сад','техника'], status:'doing', estimateMin:45, priority:2, updatedAt:days(8), createdAt:days(14)}
+    // Домен "Дом" - много приоритетных задач (pressure)
+    {id:'t1', projectId:'p1', title:'Купить продукты', tags:['дом','покупки'], status:'today', estimateMin:5, priority:1, updatedAt:days(1), createdAt:days(5)},
+    {id:'t2', projectId:'p1', title:'Уборка на кухне', tags:['дом'], status:'today', estimateMin:90, priority:1, updatedAt:days(0), createdAt:days(2)},
+    {id:'t3', projectId:'p1', title:'Починить кран', tags:['дом','ремонт'], status:'doing', estimateMin:120, priority:1, updatedAt:days(1), createdAt:days(3)},
+    {id:'t4', projectId:'p1', title:'Повесить картину', tags:['дом','ремонт'], status:'backlog', estimateMin:30, priority:2, updatedAt:days(2), createdAt:days(4)},
+    {id:'t5', projectId:'p1', title:'Настроить Wi-Fi', tags:['дом','техника'], status:'backlog', estimateMin:60, priority:2, updatedAt:days(1), createdAt:days(5)},
+    {id:'t6', projectId:'p1', title:'Помыть окна', tags:['дом','уборка'], status:'backlog', estimateMin:180, priority:2, updatedAt:days(0), createdAt:days(6)},
+    
+    // Домен "Дача" - просроченные задачи (crisis)
+    {id:'t7', projectId:'p2', title:'Спланировать грядки', tags:['дача','сад'], status:'backlog', estimateMin:60, priority:3, updatedAt:days(10), createdAt:days(20), due: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()},
+    {id:'t8', projectId:'p2', title:'Купить семена', tags:['покупки','дача'], status:'backlog', estimateMin:20, priority:2, updatedAt:days(15), createdAt:days(22), due: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()},
+    {id:'t9', projectId:'p3', title:'Полить растения', tags:['дача','сад'], status:'doing', estimateMin:30, priority:2, updatedAt:days(3), createdAt:days(9)},
+    {id:'t10', projectId:'p3', title:'Настроить полив', tags:['дача','сад','техника'], status:'doing', estimateMin:45, priority:2, updatedAt:days(8), createdAt:days(14)},
+    
+    // Недавние задачи для демонстрации growth (если добавим их в один домен)
+    {id:'t11', projectId:'p1', title:'Новая задача 1', tags:['дом','новое'], status:'backlog', estimateMin:30, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t12', projectId:'p1', title:'Новая задача 2', tags:['дом','новое'], status:'backlog', estimateMin:45, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t13', projectId:'p1', title:'Новая задача 3', tags:['дом','новое'], status:'backlog', estimateMin:60, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t14', projectId:'p1', title:'Новая задача 4', tags:['дом','новое'], status:'backlog', estimateMin:90, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t15', projectId:'p1', title:'Новая задача 5', tags:['дом','новое'], status:'backlog', estimateMin:120, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t16', projectId:'p1', title:'Новая задача 6', tags:['дом','новое'], status:'backlog', estimateMin:150, priority:3, updatedAt:days(0), createdAt:days(0)}
   ];
   
   // Отладка для Edge
@@ -118,4 +133,78 @@ export function getContrastColor(hexColor) {
   
   // Возвращаем светлый или темный цвет текста
   return brightness > 128 ? '#000000' : '#ffffff';
+}
+
+// Эмоциональная палитра доменов - расчет mood
+export function getDomainMood(domainId) {
+  const domain = state.domains.find(d => d.id === domainId);
+  if (!domain) return 'balance';
+  
+  // Получаем все задачи домена (через проекты)
+  const domainProjects = state.projects.filter(p => p.domainId === domainId);
+  const domainTasks = state.tasks.filter(t => 
+    domainProjects.some(p => p.id === t.projectId) || t.domainId === domainId
+  );
+  
+  if (domainTasks.length === 0) return 'balance';
+  
+  const now = Date.now();
+  const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000);
+  
+  // 1. Crisis: есть просроченные задачи >3 дней
+  const overdueTasks = domainTasks.filter(t => {
+    if (t.status === 'done') return false;
+    if (!t.due) return false;
+    const dueTime = new Date(t.due).getTime();
+    return dueTime < threeDaysAgo;
+  });
+  
+  if (overdueTasks.length > 0) {
+    return 'crisis';
+  }
+  
+  // 2. Pressure: много незавершенных p1/p2 задач
+  const highPriorityTasks = domainTasks.filter(t => 
+    t.status !== 'done' && (t.priority === 1 || t.priority === 2)
+  );
+  
+  if (highPriorityTasks.length >= 5) {
+    return 'pressure';
+  }
+  
+  // 3. Growth: за 7 дней добавлено >5 задач
+  const recentTasks = domainTasks.filter(t => {
+    const createdTime = new Date(t.createdAt).getTime();
+    return createdTime > sevenDaysAgo;
+  });
+  
+  if (recentTasks.length > 5) {
+    return 'growth';
+  }
+  
+  // 4. Balance: все остальные случаи
+  return 'balance';
+}
+
+// Цвета для mood
+export function getMoodColor(mood) {
+  const moodColors = {
+    crisis: '#ef4444',    // Красный - кризис
+    pressure: '#f59e0b',  // Оранжевый - давление
+    growth: '#10b981',    // Зеленый - рост
+    balance: '#3b82f6'    // Синий - баланс
+  };
+  return moodColors[mood] || moodColors.balance;
+}
+
+// Описание mood для подсказок
+export function getMoodDescription(mood) {
+  const descriptions = {
+    crisis: 'Кризис: есть просроченные задачи',
+    pressure: 'Давление: много приоритетных задач',
+    growth: 'Рост: активно добавляются новые задачи',
+    balance: 'Баланс: стабильное состояние'
+  };
+  return descriptions[mood] || descriptions.balance;
 }

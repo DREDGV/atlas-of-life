@@ -11,6 +11,9 @@ import {
   getProjectColor,
   getRandomProjectColor,
   getContrastColor,
+  getDomainMood,
+  getMoodColor,
+  getMoodDescription,
 } from "./state.js";
 import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
@@ -1535,6 +1538,12 @@ export function layoutMap() {
           .getPropertyValue(d.color.replace("var(", "").replace(")", "").trim())
           .trim()
       : d.color || "#2dd4bf";
+    
+    // Добавляем mood для домена
+    const mood = getDomainMood(d.id);
+    const moodColor = getMoodColor(mood);
+    const moodDescription = getMoodDescription(mood);
+    
     nodes.push({
       _type: "domain",
       id: d.id,
@@ -1543,6 +1552,9 @@ export function layoutMap() {
       y,
       r: domainRadius,
       color,
+      mood,
+      moodColor,
+      moodDescription,
     });
   });
 
@@ -1988,37 +2000,40 @@ export function drawMap() {
       const __skipCull = window.DEBUG_EDGE_TASKS === true;
       if (!__skipCull && !inView(n.x, n.y, n.r + 30 * DPR)) return;
       
+      // Используем mood цвет вместо обычного цвета домена
+      const domainColor = n.moodColor || n.color;
+      
       // Draw nebula with style support
       if (projectVisualStyle === 'original') {
         // Original domain drawing from v0.2.7.5
       const grad = ctx.createRadialGradient(n.x, n.y, n.r * 0.3, n.x, n.y, n.r);
-      grad.addColorStop(0, n.color + "33");
+      grad.addColorStop(0, domainColor + "33");
       grad.addColorStop(1, "#0000");
       ctx.beginPath();
       ctx.fillStyle = grad;
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
         ctx.beginPath();
-        ctx.strokeStyle = n.color;
+        ctx.strokeStyle = domainColor;
         ctx.lineWidth = 1.2 * DPR;
         ctx.setLineDash([4 * DPR, 4 * DPR]);
         ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
       } else if (projectVisualStyle === 'neon') {
-        drawNeonStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+        drawNeonStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else if (projectVisualStyle === 'tech') {
-        drawTechStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+        drawTechStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else if (projectVisualStyle === 'minimal') {
-        drawMinimalStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+        drawMinimalStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else if (projectVisualStyle === 'holographic') {
-        drawHolographicStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+        drawHolographicStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else if (projectVisualStyle === 'gradient') {
-        drawGradientStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+        drawGradientStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else if (projectVisualStyle === 'mixed') {
-        drawMixedStyle(ctx, n.x, n.y, n.r, n.color, 'domain');
+        drawMixedStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else {
-        drawPlanet(ctx, n.x, n.y, n.r, n.color, 'nebula');
+        drawPlanet(ctx, n.x, n.y, n.r, domainColor, 'nebula');
       }
       
       // Search highlight
@@ -2760,7 +2775,9 @@ function onMouseMove(e) {
     }`;
   } else {
     const d = state.domains.find((x) => x.id === n.id);
-    tooltip.innerHTML = `🌌 Домен: <b>${d.title}</b>`;
+    const mood = n.mood || 'balance';
+    const moodDescription = n.moodDescription || 'Баланс: стабильное состояние';
+    tooltip.innerHTML = `🌌 Домен: <b>${d.title}</b><br/><span class="hint">${moodDescription}</span>`;
   }
   requestDraw();
 }
