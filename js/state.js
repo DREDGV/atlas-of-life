@@ -35,6 +35,7 @@ export const days = d => now - d*24*3600*1000;
 export function initDemoData(){
   // Принудительно очищаем старые данные для тестирования mood
   console.log("Initializing demo data with mood test data...");
+  console.log("Current state before init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length });
   
   state.domains = [
     {id:'d1', title:'Дом', color:'var(--home)', createdAt:days(30), updatedAt:days(1)},
@@ -68,6 +69,12 @@ export function initDemoData(){
     {id:'t15', projectId:'p1', title:'Новая задача 5', tags:['дом','новое'], status:'backlog', estimateMin:120, priority:3, updatedAt:days(0), createdAt:days(0)},
     {id:'t16', projectId:'p1', title:'Новая задача 6', tags:['дом','новое'], status:'backlog', estimateMin:150, priority:3, updatedAt:days(0), createdAt:days(0)}
   ];
+  
+  console.log("After init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length });
+  console.log("Tasks for Дача domain:", state.tasks.filter(t => {
+    const project = state.projects.find(p => p.id === t.projectId);
+    return project && project.domainId === 'd2';
+  }));
   
   // Отладка для Edge
   if (window.DEBUG_EDGE_TASKS) {
