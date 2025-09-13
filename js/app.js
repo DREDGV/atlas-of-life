@@ -44,7 +44,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.17.0-cosmic-colors";
+let APP_VERSION = "Atlas_of_life_v0.2.18.2-cursor-fix";
 
 // ephemeral UI state
 const ui = {

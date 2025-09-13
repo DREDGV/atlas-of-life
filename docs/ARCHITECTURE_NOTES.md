@@ -1,4 +1,7 @@
-# Architecture notes for Atlas of life v0.2.6
+# Architecture notes for Atlas of life v0.2.18.2
+
+**Версия документа**: v0.2.18.2  
+**Последнее обновление**: 12.01.2025
 
 This document outlines the key architectural improvements and foundations introduced in release 0.2.6. These changes are designed to prepare the project for future growth while preserving backwards compatibility with existing data and APIs.
 
