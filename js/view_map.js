@@ -15,6 +15,9 @@ import {
   getMoodColor,
   getMoodDescription,
 } from "./state.js";
+
+// Проверка импортов
+console.log("Mood functions imported:", { getDomainMood: typeof getDomainMood, getMoodColor: typeof getMoodColor, getMoodDescription: typeof getMoodDescription });
 import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
@@ -1541,14 +1544,21 @@ export function layoutMap() {
     
     // Добавляем mood для домена
     console.log(`=== CALCULATING MOOD FOR DOMAIN: ${d.title} (${d.id}) ===`);
-    console.log(`Functions available:`, { getDomainMood: typeof getDomainMood, getMoodColor: typeof getMoodColor, getMoodDescription: typeof getMoodDescription });
     
-    const mood = getDomainMood(d.id);
-    console.log(`Mood result: ${mood}`);
-    const moodColor = getMoodColor(mood);
-    console.log(`Mood color: ${moodColor}`);
-    const moodDescription = getMoodDescription(mood);
-    console.log(`Mood description: ${moodDescription}`);
+    // Простая проверка
+    try {
+      const mood = getDomainMood(d.id);
+      console.log(`Mood result: ${mood}`);
+      const moodColor = getMoodColor(mood);
+      console.log(`Mood color: ${moodColor}`);
+      const moodDescription = getMoodDescription(mood);
+      console.log(`Mood description: ${moodDescription}`);
+    } catch (error) {
+      console.error(`Error calculating mood for ${d.title}:`, error);
+      const mood = 'balance';
+      const moodColor = getMoodColor(mood);
+      const moodDescription = getMoodDescription(mood);
+    }
     
     nodes.push({
       _type: "domain",
