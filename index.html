@@ -15,7 +15,7 @@
 <body>
 <div class="app">
   <header>
-    <div class="brand">Атлас жизни <span class="version">v0.2.17.0</span></div>
+    <div class="brand">Атлас жизни <span class="version">v0.2.17.7</span></div>
     <div class="chip active" data-view="map">Карта</div>
     <div class="chip" data-view="today">Сегодня</div>
     <div class="chip" id="btnCenter" title="Центр (C)">Центр</div>
@@ -99,7 +99,12 @@
 <!-- toast area -->
 <div id="toast" class="toast"></div>
 
-    <script type="module" src="./js/app.js?v=0.2.17.0&t=1757491261137"></script>
+    <script>
+      // Принудительно очищаем localStorage для тестирования mood
+      console.log("Clearing localStorage for mood testing...");
+      localStorage.clear();
+    </script>
+    <script type="module" src="./js/app.js?v=0.2.17.1&t=1757491261137"></script>
 <!-- Experiments system -->
 <script src="addons/_experiments.js"></script>
 <script src="addons/experiments/exp-2025-09-07-pulse-active-domain.js"></script>
@@ -108,7 +113,6 @@
 <link rel="stylesheet" href="addons/addons.css">
 <script src="addons/ics-export.js"></script>
 <!-- <script src="addons/autocomplete.js"></script> --> <!-- Disabled: replaced with js/autocomplete.js -->
-<script src="addons/today-plus.js"></script>
 <script src="addons/inspector-plus.js"></script>
 
 <!-- Disabled conflicting addons that override main styles -->

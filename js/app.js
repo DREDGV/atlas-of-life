@@ -1373,7 +1373,7 @@ function setupHeader() {
       ch.classList.add("active");
       state.view = ch.dataset.view;
       $("#canvas").style.display = state.view === "map" ? "block" : "none";
-      $("#viewToday").style.display = state.view === "today" ? "block" : "none";
+      $("#viewToday").style.display = state.view === "today" ? "flex" : "none";
       if (state.view === "map") {
         drawMap();
       } else {
@@ -2018,7 +2018,7 @@ async function init() {
       c.classList.toggle("active", c.dataset.view === state.view);
     });
     $("#canvas").style.display = state.view === "map" ? "block" : "none";
-    $("#viewToday").style.display = state.view === "today" ? "block" : "none";
+    $("#viewToday").style.display = state.view === "today" ? "flex" : "none";
   } catch (_) {}
   // hotkeys: C/F/P/R + N new domain, FPS toggle
   window.addEventListener("keydown", (e) => {

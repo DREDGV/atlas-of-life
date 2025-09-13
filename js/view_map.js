@@ -16,8 +16,7 @@ import {
   getMoodDescription,
 } from "./state.js";
 
-// Проверка импортов
-console.log("Mood functions imported:", { getDomainMood: typeof getDomainMood, getMoodColor: typeof getMoodColor, getMoodDescription: typeof getMoodDescription });
+// Mood functions imported
 import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
@@ -1551,11 +1550,8 @@ export function layoutMap() {
     // Простая проверка
     try {
       mood = getDomainMood(d.id);
-      console.log(`Mood result: ${mood}`);
       moodColor = getMoodColor(mood);
-      console.log(`Mood color: ${moodColor}`);
       moodDescription = getMoodDescription(mood);
-      console.log(`Mood description: ${moodDescription}`);
     } catch (error) {
       console.error(`Error calculating mood for ${d.title}:`, error);
       mood = 'balance';
@@ -2021,7 +2017,6 @@ export function drawMap() {
       
       // Используем mood цвет вместо обычного цвета домена
       const domainColor = n.moodColor || n.color;
-      console.log(`Rendering domain ${n.title}: original=${n.color}, mood=${n.mood}, moodColor=${n.moodColor}, final=${domainColor}`);
       
       // Draw nebula with style support
       if (projectVisualStyle === 'original') {
@@ -2868,8 +2863,14 @@ function onMouseDown(e) {
       pendingDragNode = hitNode;
       pendingDragStart.x = e.clientX;
       pendingDragStart.y = e.clientY;
-      dragOffset.x = pt.x - hitNode.x;
-      dragOffset.y = pt.y - hitNode.y;
+      // Проверяем что hitNode существует и имеет координаты
+      if (hitNode.x !== undefined && hitNode.y !== undefined) {
+        dragOffset.x = pt.x - hitNode.x;
+        dragOffset.y = pt.y - hitNode.y;
+      } else {
+        dragOffset.x = 0;
+        dragOffset.y = 0;
+      }
       if (window.DEBUG_MOUSE) {
         console.log('🖱️ DnD начат для:', hitNode._type, hitNode.id);
       }

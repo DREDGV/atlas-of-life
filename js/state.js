@@ -34,17 +34,24 @@ export const days = d => now - d*24*3600*1000;
 
 export function initDemoData(){
   // Принудительно очищаем старые данные для тестирования mood
-  console.log("Initializing demo data with mood test data...");
-  console.log("Current state before init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length });
+  
+  // Принудительно очищаем localStorage для тестирования
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('atlas-state');
+    console.log("Cleared localStorage for fresh test data");
+  }
   
   state.domains = [
     {id:'d1', title:'Дом', color:'var(--home)', createdAt:days(30), updatedAt:days(1)},
-    {id:'d2', title:'Дача', color:'var(--dacha)', createdAt:days(45), updatedAt:days(2)}
+    {id:'d2', title:'Дача', color:'var(--dacha)', createdAt:days(45), updatedAt:days(2)},
+    {id:'d3', title:'Работа', color:'#3b82f6', createdAt:days(20), updatedAt:days(0)}
   ];
   state.projects = [
     {id:'p1', domainId:'d1', title:'Домашние дела', tags:['дом'], priority:2, color:'#ff6b6b', createdAt:days(20), updatedAt:days(1)},
     {id:'p2', domainId:'d2', title:'Дачные планы', tags:['дом','дача'], priority:2, color:'#4ecdc4', createdAt:days(25), updatedAt:days(10)},
-    {id:'p3', domainId:'d2', title:'Сад и огород', tags:['дача'], priority:1, color:'#45b7d1', createdAt:days(18), updatedAt:days(3)}
+    {id:'p3', domainId:'d2', title:'Сад и огород', tags:['дача'], priority:1, color:'#45b7d1', createdAt:days(18), updatedAt:days(3)},
+    {id:'p4', domainId:'d3', title:'Разработка', tags:['работа','код'], priority:1, color:'#8b5cf6', createdAt:days(15), updatedAt:days(0)},
+    {id:'p5', domainId:'d3', title:'Встречи', tags:['работа','встречи'], priority:2, color:'#06b6d4', createdAt:days(10), updatedAt:days(0)}
   ];
   state.tasks = [
     // Домен "Дом" - много приоритетных задач (pressure)
@@ -61,13 +68,52 @@ export function initDemoData(){
     {id:'t9', projectId:'p3', title:'Полить растения', tags:['дача','сад'], status:'doing', estimateMin:30, priority:2, updatedAt:days(3), createdAt:days(9)},
     {id:'t10', projectId:'p3', title:'Настроить полив', tags:['дача','сад','техника'], status:'doing', estimateMin:45, priority:2, updatedAt:days(8), createdAt:days(14)},
     
-    // Недавние задачи для демонстрации growth (если добавим их в один домен)
-    {id:'t11', projectId:'p1', title:'Новая задача 1', tags:['дом','новое'], status:'backlog', estimateMin:30, priority:3, updatedAt:days(0), createdAt:days(0)},
-    {id:'t12', projectId:'p1', title:'Новая задача 2', tags:['дом','новое'], status:'backlog', estimateMin:45, priority:3, updatedAt:days(0), createdAt:days(0)},
-    {id:'t13', projectId:'p1', title:'Новая задача 3', tags:['дом','новое'], status:'backlog', estimateMin:60, priority:3, updatedAt:days(0), createdAt:days(0)},
-    {id:'t14', projectId:'p1', title:'Новая задача 4', tags:['дом','новое'], status:'backlog', estimateMin:90, priority:3, updatedAt:days(0), createdAt:days(0)},
-    {id:'t15', projectId:'p1', title:'Новая задача 5', tags:['дом','новое'], status:'backlog', estimateMin:120, priority:3, updatedAt:days(0), createdAt:days(0)},
-    {id:'t16', projectId:'p1', title:'Новая задача 6', tags:['дом','новое'], status:'backlog', estimateMin:150, priority:3, updatedAt:days(0), createdAt:days(0)}
+    // === ДОПОЛНИТЕЛЬНЫЕ ТЕСТОВЫЕ ЗАДАЧИ ДЛЯ TODAY VIEW ===
+    
+    // Задачи с дедлайнами (для тестирования фильтра "С временем")
+    {id:'t11', projectId:'p1', title:'Утренняя встреча', tags:['дом','встреча'], status:'today', estimateMin:60, priority:1, updatedAt:days(0), createdAt:days(1), scheduledFor: new Date(Date.now() + 30 * 60 * 1000).toISOString()},
+    {id:'t12', projectId:'p1', title:'Обеденный перерыв', tags:['дом','обед'], status:'today', estimateMin:60, priority:4, updatedAt:days(0), createdAt:days(1), scheduledFor: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()},
+    {id:'t13', projectId:'p1', title:'Вечерний звонок', tags:['дом','звонок'], status:'today', estimateMin:30, priority:3, updatedAt:days(0), createdAt:days(1), scheduledFor: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()},
+    
+    // Задачи без дедлайнов (для тестирования фильтра "Без времени")
+    {id:'t14', projectId:'p1', title:'Помыть посуду', tags:['дом','уборка'], status:'today', estimateMin:20, priority:4, updatedAt:days(0), createdAt:days(1)},
+    {id:'t15', projectId:'p1', title:'Проверить почту', tags:['дом','администрация'], status:'today', estimateMin:15, priority:3, updatedAt:days(0), createdAt:days(1)},
+    {id:'t16', projectId:'p1', title:'Записаться к врачу', tags:['дом','здоровье'], status:'today', estimateMin:10, priority:2, updatedAt:days(0), createdAt:days(1)},
+    
+    // Выполненные задачи (для тестирования фильтра "Выполненные")
+    {id:'t17', projectId:'p1', title:'Сделать зарядку', tags:['дом','спорт'], status:'done', estimateMin:30, priority:4, updatedAt:days(0), createdAt:days(2), completedAt: Date.now() - 2 * 60 * 60 * 1000},
+    {id:'t18', projectId:'p1', title:'Прочитать новости', tags:['дом','информация'], status:'done', estimateMin:20, priority:4, updatedAt:days(0), createdAt:days(2), completedAt: Date.now() - 4 * 60 * 60 * 1000},
+    {id:'t19', projectId:'p1', title:'Проверить счета', tags:['дом','финансы'], status:'done', estimateMin:15, priority:3, updatedAt:days(0), createdAt:days(2), completedAt: Date.now() - 6 * 60 * 60 * 1000},
+    
+    // Задачи для домена "Работа" (для тестирования разных доменов)
+    {id:'t20', projectId:'p4', title:'Исправить баги', tags:['работа','код','баги'], status:'today', estimateMin:120, priority:1, updatedAt:days(0), createdAt:days(1)},
+    {id:'t21', projectId:'p4', title:'Написать тесты', tags:['работа','код','тесты'], status:'today', estimateMin:90, priority:2, updatedAt:days(0), createdAt:days(1)},
+    {id:'t22', projectId:'p4', title:'Оптимизировать код', tags:['работа','код','оптимизация'], status:'today', estimateMin:60, priority:2, updatedAt:days(0), createdAt:days(1)},
+    {id:'t23', projectId:'p4', title:'Обновить документацию', tags:['работа','код','документация'], status:'today', estimateMin:45, priority:3, updatedAt:days(0), createdAt:days(1)},
+    {id:'t24', projectId:'p4', title:'Code review', tags:['работа','код','review'], status:'today', estimateMin:30, priority:2, updatedAt:days(0), createdAt:days(1)},
+    
+    // Встречи и планы
+    {id:'t25', projectId:'p5', title:'Планирование спринта', tags:['работа','встречи','планирование'], status:'today', estimateMin:90, priority:1, updatedAt:days(0), createdAt:days(1), scheduledFor: new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString()},
+    {id:'t26', projectId:'p5', title:'Стендап команды', tags:['работа','встречи','стендап'], status:'today', estimateMin:30, priority:2, updatedAt:days(0), createdAt:days(1), scheduledFor: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()},
+    {id:'t27', projectId:'p5', title:'Обсуждение архитектуры', tags:['работа','встречи','архитектура'], status:'today', estimateMin:60, priority:2, updatedAt:days(0), createdAt:days(1)},
+    
+    // Задачи с разными приоритетами для тестирования фильтров
+    {id:'t28', projectId:'p1', title:'КРИТИЧНО: Срочный ремонт', tags:['дом','ремонт','критично'], status:'today', estimateMin:180, priority:1, updatedAt:days(0), createdAt:days(0)},
+    {id:'t29', projectId:'p1', title:'Важно: Оплатить счета', tags:['дом','финансы','важно'], status:'today', estimateMin:30, priority:2, updatedAt:days(0), createdAt:days(0)},
+    {id:'t30', projectId:'p1', title:'Обычно: Полить цветы', tags:['дом','уход','обычно'], status:'today', estimateMin:15, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t31', projectId:'p1', title:'Неважно: Разобрать шкаф', tags:['дом','уборка','неважно'], status:'today', estimateMin:120, priority:4, updatedAt:days(0), createdAt:days(0)},
+    
+    // Просроченные задачи (для тестирования статистики)
+    {id:'t32', projectId:'p2', title:'ПОЗДНО: Посадить рассаду', tags:['дача','сад','поздно'], status:'backlog', estimateMin:90, priority:2, updatedAt:days(0), createdAt:days(5), due: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()},
+    {id:'t33', projectId:'p2', title:'ПОЗДНО: Подготовить теплицу', tags:['дача','сад','поздно'], status:'backlog', estimateMin:120, priority:1, updatedAt:days(0), createdAt:days(4), due: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()},
+    
+    // Дополнительные задачи для роста (growth)
+    {id:'t34', projectId:'p4', title:'Изучить новую технологию', tags:['работа','обучение','технология'], status:'today', estimateMin:180, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t35', projectId:'p4', title:'Написать статью в блог', tags:['работа','контент','статья'], status:'today', estimateMin:120, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t36', projectId:'p4', title:'Создать новый проект', tags:['работа','проект','создание'], status:'today', estimateMin:240, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t37', projectId:'p4', title:'Добавить новые функции', tags:['работа','функции','разработка'], status:'today', estimateMin:150, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t38', projectId:'p4', title:'Улучшить UX', tags:['работа','ux','улучшение'], status:'today', estimateMin:90, priority:3, updatedAt:days(0), createdAt:days(0)},
+    {id:'t39', projectId:'p4', title:'Оптимизировать производительность', tags:['работа','оптимизация','производительность'], status:'today', estimateMin:120, priority:3, updatedAt:days(0), createdAt:days(0)}
   ];
   
   console.log("After init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length });
@@ -156,12 +202,7 @@ export function getDomainMood(domainId) {
     domainProjects.some(p => p.id === t.projectId) || t.domainId === domainId
   );
   
-  console.log(`Calculating mood for domain ${domain.title}:`, {
-    domainId,
-    domainProjects: domainProjects.length,
-    domainTasks: domainTasks.length,
-    tasks: domainTasks.map(t => ({ id: t.id, title: t.title, priority: t.priority, status: t.status, due: t.due, createdAt: t.createdAt }))
-  });
+  // Debug: calculating mood for domain
   
   if (domainTasks.length === 0) return 'balance';
   
@@ -184,19 +225,19 @@ export function getDomainMood(domainId) {
     return 'crisis';
   }
   
-  // 2. Pressure: много незавершенных p1/p2 задач
+  // 2. Pressure: много незавершенных p1/p2 задач (снижаем порог)
   const highPriorityTasks = domainTasks.filter(t => 
     t.status !== 'done' && (t.priority === 1 || t.priority === 2)
   );
   
   console.log(`High priority tasks for ${domain.title}:`, highPriorityTasks.length, highPriorityTasks.map(t => ({ title: t.title, priority: t.priority, status: t.status })));
   
-  if (highPriorityTasks.length >= 5) {
+  if (highPriorityTasks.length >= 2) { // Снижаем с 5 до 2
     console.log(`Domain ${domain.title} is under PRESSURE due to high priority tasks`);
     return 'pressure';
   }
   
-  // 3. Growth: за 7 дней добавлено >5 задач
+  // 3. Growth: за 7 дней добавлено >3 задач (снижаем порог)
   const recentTasks = domainTasks.filter(t => {
     const createdTime = new Date(t.createdAt).getTime();
     return createdTime > sevenDaysAgo;
@@ -204,7 +245,7 @@ export function getDomainMood(domainId) {
   
   console.log(`Recent tasks for ${domain.title}:`, recentTasks.length, recentTasks.map(t => ({ title: t.title, createdAt: t.createdAt })));
   
-  if (recentTasks.length > 5) {
+  if (recentTasks.length > 3) { // Снижаем с 5 до 3
     console.log(`Domain ${domain.title} is in GROWTH due to recent tasks`);
     return 'growth';
   }
