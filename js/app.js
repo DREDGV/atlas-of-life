@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
@@ -12,6 +12,7 @@ import {
   setShowFps,
   undoLastMove,
   getMapNodes,
+  requestDraw,
 } from "./view_map.js";
 import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
@@ -19,6 +20,7 @@ import { openInspectorFor } from "./inspector.js";
 import { logEvent } from "./utils/analytics.js";
 import { initializeHotkeys } from "./hotkeys.js";
 import { initAutocomplete } from "./autocomplete.js";
+import { updateWip } from "./wip.js";
 import { AnalyticsDashboard, analyticsDashboard } from "./analytics.js";
 import { CosmicAnimations } from "./cosmic-effects.js";
 
@@ -93,8 +95,8 @@ function openModal({
     }
   };
   // Не показываем модальное окно при инициализации
-  if (title && title !== "Диалог") {
-    modal.style.display = "flex";
+  if (title && title !== "Диалог" && title !== "") {
+  modal.style.display = "flex";
   }
 }
 
@@ -466,19 +468,71 @@ try { window.openModal = openModal; } catch (_) {}
 try { window.getMapNodes = getMapNodes; } catch (_) {}
 
 // Функции для работы с идеями и заметками
+window.createIdea = function() {
+  const idea = {
+    id: generateId(),
+    title: 'Новая идея',
+    content: '',
+    domainId: state.activeDomain || 'd3',
+    x: Math.random() * 400 - 200,
+    y: Math.random() * 400 - 200,
+    r: 30,
+    color: getRandomIdeaColor(),
+    opacity: 0.4,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  state.ideas.push(idea);
+  saveState();
+  layoutMap();
+  drawMap();
+  return idea;
+};
+
+window.createNote = function() {
+  const note = {
+    id: generateId(),
+    title: 'Новая заметка',
+    content: '',
+    domainId: state.activeDomain || 'd3',
+    x: Math.random() * 400 - 200,
+    y: Math.random() * 400 - 200,
+    r: 8,
+    color: getRandomNoteColor(),
+    opacity: 1.0,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  state.notes.push(note);
+  saveState();
+  layoutMap();
+  drawMap();
+  return note;
+};
+
 window.saveIdea = function(ideaId) {
   const idea = state.ideas.find(i => i.id === ideaId);
   if (!idea) return;
   
   const title = document.getElementById('ideaTitle').value;
   const content = document.getElementById('ideaContent').value;
+  const color = document.getElementById('ideaColor').value;
+  const size = parseInt(document.getElementById('ideaSize').value);
+  const opacity = parseFloat(document.getElementById('ideaOpacity').value);
   
-  idea.title = title;
-  idea.content = content;
-  idea.updatedAt = Date.now();
-  
-  closeModal();
-  drawMap();
+  if (title.trim()) {
+    idea.title = title.trim();
+    idea.content = content.trim();
+    idea.color = color;
+    idea.r = size;
+    idea.opacity = opacity;
+    idea.updatedAt = Date.now();
+    saveState();
+    layoutMap();
+    drawMap();
+    closeModal();
+    showToast(`Идея "${idea.title}" обновлена`, "ok");
+  }
 };
 
 window.saveNote = function(noteId) {
@@ -487,32 +541,512 @@ window.saveNote = function(noteId) {
   
   const title = document.getElementById('noteTitle').value;
   const content = document.getElementById('noteContent').value;
+  const color = document.getElementById('noteColor').value;
+  const size = parseInt(document.getElementById('noteSize').value);
+  const opacity = parseFloat(document.getElementById('noteOpacity').value);
   
-  note.title = title;
-  note.content = content;
-  note.updatedAt = Date.now();
-  
-  closeModal();
-  drawMap();
+  if (title.trim()) {
+    note.title = title.trim();
+    note.content = content.trim();
+    note.color = color;
+    note.r = size;
+    note.opacity = opacity;
+    note.updatedAt = Date.now();
+    saveState();
+    layoutMap();
+    drawMap();
+    closeModal();
+    showToast(`Заметка "${note.title}" обновлена`, "ok");
+  }
 };
 
 window.deleteIdea = function(ideaId) {
   state.ideas = state.ideas.filter(i => i.id !== ideaId);
-  closeModal();
+  saveState();
+  layoutMap();
   drawMap();
+  closeModal();
+  showToast("Идея удалена", "ok");
 };
 
 window.deleteNote = function(noteId) {
   state.notes = state.notes.filter(n => n.id !== noteId);
-  closeModal();
+  saveState();
+  layoutMap();
   drawMap();
+  closeModal();
+  showToast("Заметка удалена", "ok");
+};
+
+// Функции сохранения для новых редакторов
+window.saveTask = function(taskId) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  
+  task.title = document.getElementById('taskTitle').value;
+  task.description = document.getElementById('taskDescription').value;
+  task.status = document.getElementById('taskStatus').value;
+  task.priority = document.getElementById('taskPriority').value;
+  task.tags = document.getElementById('taskTags').value.split(',').map(t => t.trim()).filter(t => t);
+  task.dueDate = document.getElementById('taskDueDate').value ? new Date(document.getElementById('taskDueDate').value).getTime() : null;
+  task.estimatedTime = document.getElementById('taskEstimatedTime').value;
+  task.updatedAt = Date.now();
+  
+  saveState();
+  layoutMap();
+  drawMap();
+  updateWip();
+  closeModal();
+  
+  showToast(`Задача "${task.title}" обновлена`, "ok");
+};
+
+window.saveProject = function(projectId) {
+  const project = state.projects.find(p => p.id === projectId);
+  if (!project) return;
+  
+  project.title = document.getElementById('projectTitle').value;
+  project.description = document.getElementById('projectDescription').value;
+  project.domainId = document.getElementById('projectDomain').value;
+  project.color = document.getElementById('projectColor').value;
+  project.updatedAt = Date.now();
+  
+  saveState();
+  layoutMap();
+  drawMap();
+  closeModal();
+  
+  showToast(`Проект "${project.title}" обновлен`, "ok");
+};
+
+window.deleteTask = function(taskId) {
+  if (confirm('Удалить задачу?')) {
+    state.tasks = state.tasks.filter(t => t.id !== taskId);
+    saveState();
+    layoutMap();
+    drawMap();
+    updateWip();
+    closeModal();
+  }
+};
+
+window.deleteProject = function(projectId) {
+  if (confirm('Удалить проект и все его задачи?')) {
+    state.tasks = state.tasks.filter(t => t.projectId !== projectId);
+    state.projects = state.projects.filter(p => p.id !== projectId);
+    saveState();
+    layoutMap();
+    drawMap();
+    closeModal();
+  }
+};
+
+window.saveDomain = function(domainId) {
+  const domain = state.domains.find(d => d.id === domainId);
+  if (!domain) return;
+  
+  domain.title = document.getElementById('domainTitle').value;
+  domain.description = document.getElementById('domainDescription').value;
+  domain.mood = document.getElementById('domainMood').value;
+  domain.color = document.getElementById('domainColor').value;
+  domain.updatedAt = Date.now();
+  
+  saveState();
+  layoutMap();
+  drawMap();
+  renderSidebar();
+  closeModal();
+  
+  showToast(`Домен "${domain.title}" обновлен`, "ok");
+};
+
+window.deleteDomain = function(domainId) {
+  if (confirm('Удалить домен и все его проекты и задачи?')) {
+    state.tasks = state.tasks.filter(t => {
+      const project = state.projects.find(p => p.id === t.projectId);
+      return project && project.domainId !== domainId;
+    });
+    state.projects = state.projects.filter(p => p.domainId !== domainId);
+    state.domains = state.domains.filter(d => d.id !== domainId);
+    saveState();
+    layoutMap();
+    drawMap();
+    renderSidebar();
+    closeModal();
+  }
 };
 
 window.closeModal = function() {
-  const modal = document.querySelector('.modal');
+  const modal = document.getElementById('modal');
   if (modal) {
-    modal.remove();
+    modal.style.display = 'none';
   }
+};
+
+// Импортируем функции редакторов из view_map.js
+window.showIdeaEditor = function(idea) {
+  // Простая версия для быстрого создания
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  modal.innerHTML = `
+    <div class="box idea-editor">
+      <div class="title">🌌 Редактировать идею</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название идеи:</label>
+          <input type="text" id="ideaTitle" value="${idea.title}" placeholder="Введите название идеи" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <textarea id="ideaContent" placeholder="Опишите вашу идею подробнее..." class="form-textarea">${idea.content}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Цвет:</label>
+          <div class="color-picker">
+            <input type="color" id="ideaColor" value="${idea.color}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#ff6b6b" style="background: #ff6b6b;"></div>
+              <div class="color-preset" data-color="#4ecdc4" style="background: #4ecdc4;"></div>
+              <div class="color-preset" data-color="#45b7d1" style="background: #45b7d1;"></div>
+              <div class="color-preset" data-color="#96ceb4" style="background: #96ceb4;"></div>
+              <div class="color-preset" data-color="#feca57" style="background: #feca57;"></div>
+              <div class="color-preset" data-color="#ff9ff3" style="background: #ff9ff3;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Размер:</label>
+          <input type="range" id="ideaSize" min="20" max="60" value="${idea.r}" class="form-range">
+          <span class="size-value">${idea.r}px</span>
+        </div>
+        <div class="form-group">
+          <label>Прозрачность:</label>
+          <input type="range" id="ideaOpacity" min="0.1" max="1" step="0.1" value="${idea.opacity}" class="form-range">
+          <span class="opacity-value">${Math.round(idea.opacity * 100)}%</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveIdea('${idea.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteIdea('${idea.id}')">🗑️ Удалить</button>
+      </div>
+    </div>
+    <div class="backdrop"></div>
+  `;
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#ideaColor').value = color;
+    });
+  });
+  
+  // Добавляем обработчики для слайдеров с дебаунсингом
+  let sizeTimeout, opacityTimeout;
+  
+  modal.querySelector('#ideaSize').addEventListener('input', (e) => {
+    modal.querySelector('.size-value').textContent = e.target.value + 'px';
+    
+    // Дебаунсинг для обновления размера
+    clearTimeout(sizeTimeout);
+    sizeTimeout = setTimeout(() => {
+      idea.r = parseInt(e.target.value);
+      requestDraw();
+    }, 100);
+  });
+  
+  modal.querySelector('#ideaOpacity').addEventListener('input', (e) => {
+    modal.querySelector('.opacity-value').textContent = Math.round(e.target.value * 100) + '%';
+    
+    // Дебаунсинг для обновления прозрачности
+    clearTimeout(opacityTimeout);
+    opacityTimeout = setTimeout(() => {
+      idea.opacity = parseFloat(e.target.value);
+      requestDraw();
+    }, 100);
+  });
+};
+
+window.showNoteEditor = function(note) {
+  // Простая версия для быстрого создания
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  modal.innerHTML = `
+    <div class="box note-editor">
+      <div class="title">🪨 Редактировать заметку</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название заметки:</label>
+          <input type="text" id="noteTitle" value="${note.title}" placeholder="Введите название заметки" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Содержание:</label>
+          <textarea id="noteContent" placeholder="Опишите содержимое заметки..." class="form-textarea">${note.content}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Цвет:</label>
+          <div class="color-picker">
+            <input type="color" id="noteColor" value="${note.color}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#8b7355" style="background: #8b7355;"></div>
+              <div class="color-preset" data-color="#a0a0a0" style="background: #a0a0a0;"></div>
+              <div class="color-preset" data-color="#6c757d" style="background: #6c757d;"></div>
+              <div class="color-preset" data-color="#495057" style="background: #495057;"></div>
+              <div class="color-preset" data-color="#343a40" style="background: #343a40;"></div>
+              <div class="color-preset" data-color="#212529" style="background: #212529;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Размер:</label>
+          <input type="range" id="noteSize" min="5" max="20" value="${note.r}" class="form-range">
+          <span class="size-value">${note.r}px</span>
+        </div>
+        <div class="form-group">
+          <label>Прозрачность:</label>
+          <input type="range" id="noteOpacity" min="0.1" max="1" step="0.1" value="${note.opacity}" class="form-range">
+          <span class="opacity-value">${Math.round(note.opacity * 100)}%</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveNote('${note.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteNote('${note.id}')">🗑️ Удалить</button>
+      </div>
+    </div>
+    <div class="backdrop"></div>
+  `;
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#noteColor').value = color;
+    });
+  });
+  
+  // Добавляем обработчики для слайдеров с дебаунсингом
+  let sizeTimeout, opacityTimeout;
+  
+  modal.querySelector('#noteSize').addEventListener('input', (e) => {
+    modal.querySelector('.size-value').textContent = e.target.value + 'px';
+    
+    // Дебаунсинг для обновления размера
+    clearTimeout(sizeTimeout);
+    sizeTimeout = setTimeout(() => {
+      note.r = parseInt(e.target.value);
+      requestDraw();
+    }, 100);
+  });
+  
+  modal.querySelector('#noteOpacity').addEventListener('input', (e) => {
+    modal.querySelector('.opacity-value').textContent = Math.round(e.target.value * 100) + '%';
+    
+    // Дебаунсинг для обновления прозрачности
+    clearTimeout(opacityTimeout);
+    opacityTimeout = setTimeout(() => {
+      note.opacity = parseFloat(e.target.value);
+      requestDraw();
+    }, 100);
+  });
+};
+
+// Расширенный редактор задач
+window.showTaskEditor = function(task) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  modal.innerHTML = `
+    <div class="box task-editor">
+      <div class="title">➕ Редактировать задачу</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название задачи:</label>
+          <input type="text" id="taskTitle" value="${task.title}" placeholder="Введите название задачи" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <textarea id="taskDescription" placeholder="Опишите задачу подробнее..." class="form-textarea">${task.description || ''}</textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Статус:</label>
+            <select id="taskStatus" class="form-select">
+              <option value="backlog" ${task.status === 'backlog' ? 'selected' : ''}>Backlog</option>
+              <option value="today" ${task.status === 'today' ? 'selected' : ''}>Сегодня</option>
+              <option value="doing" ${task.status === 'doing' ? 'selected' : ''}>В работе</option>
+              <option value="done" ${task.status === 'done' ? 'selected' : ''}>Готово</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Приоритет:</label>
+            <select id="taskPriority" class="form-select">
+              <option value="p1" ${task.priority === 'p1' ? 'selected' : ''}>P1 - Критический</option>
+              <option value="p2" ${task.priority === 'p2' ? 'selected' : ''}>P2 - Высокий</option>
+              <option value="p3" ${task.priority === 'p3' ? 'selected' : ''}>P3 - Средний</option>
+              <option value="p4" ${task.priority === 'p4' ? 'selected' : ''}>P4 - Низкий</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Теги (через запятую):</label>
+          <input type="text" id="taskTags" value="${(task.tags || []).join(', ')}" placeholder="важное, срочное, проект" class="form-input">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Срок выполнения:</label>
+            <input type="date" id="taskDueDate" value="${task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Оценка времени:</label>
+            <input type="text" id="taskEstimatedTime" value="${task.estimatedTime || ''}" placeholder="2ч, 30м, 1д" class="form-input">
+          </div>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveTask('${task.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteTask('${task.id}')">🗑️ Удалить</button>
+      </div>
+    </div>
+    <div class="backdrop"></div>
+  `;
+  modal.style.display = 'flex';
+};
+
+// Расширенный редактор проектов
+window.showProjectEditor = function(project) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  const domainOptions = state.domains.map(domain => 
+    `<option value="${domain.id}" ${project.domainId === domain.id ? 'selected' : ''}>${domain.title}</option>`
+  ).join('');
+  
+  modal.innerHTML = `
+    <div class="box project-editor">
+      <div class="title">🎯 Редактировать проект</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название проекта:</label>
+          <input type="text" id="projectTitle" value="${project.title}" placeholder="Введите название проекта" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <textarea id="projectDescription" placeholder="Опишите проект подробнее..." class="form-textarea">${project.description || ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Домен:</label>
+          <select id="projectDomain" class="form-select">
+            ${domainOptions}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Цвет проекта:</label>
+          <div class="color-picker">
+            <input type="color" id="projectColor" value="${project.color || '#4CAF50'}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#4CAF50" style="background: #4CAF50;"></div>
+              <div class="color-preset" data-color="#2196F3" style="background: #2196F3;"></div>
+              <div class="color-preset" data-color="#FF9800" style="background: #FF9800;"></div>
+              <div class="color-preset" data-color="#9C27B0" style="background: #9C27B0;"></div>
+              <div class="color-preset" data-color="#F44336" style="background: #F44336;"></div>
+              <div class="color-preset" data-color="#00BCD4" style="background: #00BCD4;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveProject('${project.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteProject('${project.id}')">🗑️ Удалить</button>
+      </div>
+    </div>
+    <div class="backdrop"></div>
+  `;
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#projectColor').value = color;
+    });
+  });
+};
+
+window.showDomainEditor = function(domain) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  const moodOptions = [
+    { value: 'balance', label: 'Баланс', emoji: '⚖️' },
+    { value: 'energy', label: 'Энергия', emoji: '⚡' },
+    { value: 'focus', label: 'Фокус', emoji: '🎯' },
+    { value: 'creativity', label: 'Творчество', emoji: '🎨' },
+    { value: 'growth', label: 'Рост', emoji: '🌱' },
+    { value: 'rest', label: 'Отдых', emoji: '😴' }
+  ];
+  
+  const moodSelect = moodOptions.map(mood => 
+    `<option value="${mood.value}" ${domain.mood === mood.value ? 'selected' : ''}>${mood.emoji} ${mood.label}</option>`
+  ).join('');
+  
+  modal.innerHTML = `
+    <div class="box domain-editor">
+      <div class="title">🌍 Редактировать домен</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название домена:</label>
+          <input type="text" id="domainTitle" value="${domain.title}" placeholder="Введите название домена" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <textarea id="domainDescription" placeholder="Опишите домен подробнее..." class="form-textarea">${domain.description || ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Настроение домена:</label>
+          <select id="domainMood" class="form-select">
+            ${moodSelect}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Цвет домена:</label>
+          <div class="color-picker">
+            <input type="color" id="domainColor" value="${domain.color || '#6366F1'}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#6366F1" style="background: #6366F1;"></div>
+              <div class="color-preset" data-color="#8B5CF6" style="background: #8B5CF6;"></div>
+              <div class="color-preset" data-color="#EC4899" style="background: #EC4899;"></div>
+              <div class="color-preset" data-color="#F59E0B" style="background: #F59E0B;"></div>
+              <div class="color-preset" data-color="#10B981" style="background: #10B981;"></div>
+              <div class="color-preset" data-color="#3B82F6" style="background: #3B82F6;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveDomain('${domain.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteDomain('${domain.id}')">🗑️ Удалить</button>
+      </div>
+    </div>
+    <div class="backdrop"></div>
+  `;
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#domainColor').value = color;
+    });
+  });
 };
 
 // Analytics dashboard will be initialized in init() function
@@ -1334,38 +1868,6 @@ window.openDomainMenuX = openDomainMenuX;
 
 // REMOVED: legacy function domainActions_old (110+ lines of unused code)
 
-function updateWip() {
-  // New WIP logic: count tasks with status=today OR due=today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTimestamp = today.getTime();
-  
-  const wip = state.tasks.filter((t) => {
-    // Status is today
-    if (t.status === "today") return true;
-    
-    // Has deadline today
-    if (t.scheduledFor) {
-      const taskDate = new Date(t.scheduledFor);
-      taskDate.setHours(0, 0, 0, 0);
-      return taskDate.getTime() === todayTimestamp;
-    }
-    
-    return false;
-  }).length;
-  
-  // Get WIP limit from settings, default to 5
-  const wipLimit = state.settings?.wipTodayLimit || 5;
-  
-  const el = document.getElementById("wipInfo");
-  el.textContent = I18N.wip(wip, wipLimit);
-  el.className = "wip" + (wip > wipLimit ? " over" : "");
-  
-  // Show warning if over limit
-  if (wip > wipLimit) {
-    showToast(`Превышен лимит WIP: ${wip}/${wipLimit}`, "warn");
-  }
-}
 
 function setupHeader() {
   $$(".chip").forEach((ch) => {
@@ -1774,6 +2276,7 @@ function setupQuickAdd() {
     });
   }
   
+  
   // Update domain button state
   function updateDomainButton() {
     if (addToDomainBtn) {
@@ -1804,8 +2307,104 @@ function setupQuickAdd() {
   }catch(_){}
 }
 
+// Setup creation panel buttons
+function setupCreationPanel() {
+  // Create Task button
+  const createTaskBtn = document.getElementById('createTaskBtn');
+  if (createTaskBtn) {
+    createTaskBtn.addEventListener('click', () => {
+      const newTask = {
+        id: generateId(),
+        title: 'Новая задача',
+        description: '',
+        projectId: null,
+        status: 'backlog',
+        priority: 'p3',
+        dueDate: null,
+        estimatedTime: null,
+        tags: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      
+      state.tasks.push(newTask);
+      saveState();
+      showTaskEditor(newTask);
+    });
+  }
+  
+  // Create Project button
+  const createProjectBtn = document.getElementById('createProjectBtn');
+  if (createProjectBtn) {
+    createProjectBtn.addEventListener('click', () => {
+      const domainId = state.activeDomain || state.domains[0]?.id || null;
+      if (!domainId) {
+        showToast("Сначала выберите домен", "warn");
+        return;
+      }
+      
+      const newProject = {
+        id: generateId(),
+        domainId: domainId,
+        title: 'Новый проект',
+        description: '',
+        color: getRandomProjectColor(),
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      
+      state.projects.push(newProject);
+      saveState();
+      showProjectEditor(newProject);
+    });
+  }
+  
+  // Create Idea button
+  const createIdeaBtn = document.getElementById('createIdeaBtn');
+  if (createIdeaBtn) {
+    createIdeaBtn.addEventListener('click', () => {
+      const idea = createIdea();
+      showIdeaEditor(idea);
+    });
+  }
+  
+  // Create Note button
+  const createNoteBtn = document.getElementById('createNoteBtn');
+  if (createNoteBtn) {
+    createNoteBtn.addEventListener('click', () => {
+      const note = createNote();
+      showNoteEditor(note);
+    });
+  }
+}
+
 function submitQuick(text) {
   if (!text) return;
+  
+  // Проверяем, не создаем ли мы идею или заметку
+  if (text.startsWith('#идея ') || text.startsWith('#idea ')) {
+    const title = text.replace(/^#(идея|idea)\s+/, '').trim();
+    if (title) {
+      const idea = createIdea();
+      idea.title = title;
+      showIdeaEditor(idea);
+      $("#quickAdd").value = "";
+      $("#qaChips").innerHTML = "";
+      return;
+    }
+  }
+  
+  if (text.startsWith('#заметка ') || text.startsWith('#note ')) {
+    const title = text.replace(/^#(заметка|note)\s+/, '').trim();
+    if (title) {
+      const note = createNote();
+      note.title = title;
+      showNoteEditor(note);
+      $("#quickAdd").value = "";
+      $("#qaChips").innerHTML = "";
+      return;
+    }
+  }
   
   // Simple logic: if text starts with @, create project; otherwise create task
   if (text.startsWith('@')) {
@@ -1986,14 +2585,8 @@ async function init() {
   window.__atlasInitDone = true;
   
   // Normal initialization for all browsers (including Edge)
-  console.log("Loading state...");
   const ok = loadState();
-  console.log("Load state result:", ok);
-  if (!ok) {
-    console.log("Loading demo data...");
-    initDemoData();
-  }
-  console.log("State after init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length });
+  if (!ok) initDemoData();
   
   // Initialize hotkeys
   initializeHotkeys();
@@ -2072,14 +2665,17 @@ async function init() {
   const canvas = document.getElementById("canvas");
   const tooltip = document.getElementById("tooltip");
   if (canvas && tooltip) {
-    initMap(canvas, tooltip);
+  initMap(canvas, tooltip);
   }
   updateWip();
   
+  // Setup creation panel buttons
+  setupCreationPanel();
+  
   // Принудительно скрываем модальное окно при инициализации
-  const modal = document.getElementById("modal");
+  const modal = document.getElementById('modal');
   if (modal) {
-    modal.style.display = "none";
+    modal.style.display = 'none';
   }
 }
 init();

@@ -9,13 +9,13 @@
   <meta name="cache-control" content="no-cache, no-store, must-revalidate, max-age=0" />
   <meta name="expires" content="0" />
   <meta name="pragma" content="no-cache" />
-    <title>Атлас жизни v0.2.18.5-bug-fix</title>
+    <title>Атлас жизни v0.2.18.13-bug-fix</title>
     <link rel="stylesheet" href="styles.css?v=0.2.18.5&t=1757491261137" />
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="brand">Атлас жизни <span class="version">v0.2.18.5</span></div>
+    <div class="brand">Атлас жизни <span class="version">v0.2.18.13-bug-fix</span></div>
     <div class="chip active" data-view="map">Карта</div>
     <div class="chip" data-view="today">Сегодня</div>
     <div class="chip" id="btnCenter" title="Центр (C)">Центр</div>
@@ -48,12 +48,32 @@
 
   <main>
     <aside class="left">
+      <div class="section"><h3>Создать</h3></div>
+      <div class="creation-panel">
+        <button class="create-btn" id="createTaskBtn" title="Создать задачу">
+          <span class="icon">➕</span>
+          <span class="text">Задача</span>
+        </button>
+        <button class="create-btn" id="createProjectBtn" title="Создать проект">
+          <span class="icon">🎯</span>
+          <span class="text">Проект</span>
+        </button>
+        <button class="create-btn" id="createIdeaBtn" title="Создать идею">
+          <span class="icon">🌌</span>
+          <span class="text">Идея</span>
+        </button>
+        <button class="create-btn" id="createNoteBtn" title="Создать заметку">
+          <span class="icon">🪨</span>
+          <span class="text">Заметка</span>
+        </button>
+      </div>
+      
       <div class="section"><h3>Домены</h3></div>
       <div class="domains" id="domainsList"></div>
       <div class="section"><h3>Фильтры</h3></div>
       <div class="filters" id="tagsList"></div>
       <div class="section">
-        <div class="hint">Шорткаты для быстрого ввода: <span class="kbd">#тег</span> <span class="kbd">@проект</span> <span class="kbd">!сегодня 10:00</span> <span class="kbd">~30м</span></div>
+        <div class="hint">Шорткаты: <span class="kbd">#тег</span> <span class="kbd">@проект</span> <span class="kbd">!сегодня 10:00</span> <span class="kbd">~30м</span> <span class="kbd">#идея название</span> <span class="kbd">#заметка название</span><br>Правый клик на карте для создания объектов</div>
       </div>
     </aside>
 
@@ -73,9 +93,8 @@
 
   <footer>
     <div class="input">
-      <input id="quickAdd" autocomplete="off" placeholder="Добавить задачу..." />
-      <button id="addBtn" class="add-btn" title="Добавить">➕</button>
-      <button id="addToDomainBtn" class="add-to-domain-btn" title="Добавить в активный домен">🏠</button>
+      <input id="quickAdd" autocomplete="off" placeholder="Добавить задачу... (или правый клик на карте)" />
+      <button id="addBtn" class="add-btn" title="Добавить задачу">➕</button>
       <button id="clearBtn" class="clear-btn" title="Очистить">✕</button>
       <div class="chips" id="qaChips"></div>
     </div>
@@ -99,11 +118,35 @@
 <!-- toast area -->
 <div id="toast" class="toast"></div>
 
+<!-- Контекстное меню для создания объектов -->
+<div id="contextMenu" class="context-menu" style="display: none;">
+  <div class="context-menu-item" data-action="create-task">
+    <span class="icon">➕</span>
+    <span class="text">Создать задачу</span>
+  </div>
+  <div class="context-menu-item" data-action="create-project">
+    <span class="icon">🎯</span>
+    <span class="text">Создать проект</span>
+  </div>
+  <div class="context-menu-item" data-action="create-idea">
+    <span class="icon">🌌</span>
+    <span class="text">Создать идею</span>
+  </div>
+  <div class="context-menu-item" data-action="create-note">
+    <span class="icon">🪨</span>
+    <span class="text">Создать заметку</span>
+  </div>
+  <div class="context-menu-item" data-action="create-domain">
+    <span class="icon">🌍</span>
+    <span class="text">Создать домен</span>
+  </div>
+</div>
+
     <script>
       // Отладочная информация
       console.log("Atlas of Life loading...");
     </script>
-    <script type="module" src="./js/app.js?v=0.2.18.5&t=1757491261137"></script>
+    <script type="module" src="./js/app.js?v=0.2.18.13&t=1757491261137"></script>
 <!-- Experiments system -->
 <script src="addons/_experiments.js"></script>
 <script src="addons/experiments/exp-2025-09-07-pulse-active-domain.js"></script>

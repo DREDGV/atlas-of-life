@@ -28,6 +28,12 @@ let canvas,
   W = 0,
   H = 0,
   DPR = 1;
+
+let contextMenuState = {
+  isVisible: false,
+  x: 0,
+  y: 0
+};
 let nodes = [],
   edges = [];
 let hoverNodeId = null;
@@ -1223,6 +1229,139 @@ export function initMap(canvasEl, tooltipEl) {
   
   // Start cosmic animation loop
   startCosmicAnimationLoop();
+  
+  // Initialize context menu
+  initContextMenu();
+}
+
+// Context menu functions
+function initContextMenu() {
+  const contextMenu = document.getElementById('contextMenu');
+  if (!contextMenu) return;
+  
+  // Add event listeners to context menu items
+  contextMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.context-menu-item');
+    if (!item) return;
+    
+    const action = item.dataset.action;
+    const worldPos = screenToWorld(contextMenuState.x, contextMenuState.y);
+    
+    switch (action) {
+      case 'create-task':
+        createTaskAtPosition(worldPos.x, worldPos.y);
+        break;
+      case 'create-project':
+        createProjectAtPosition(worldPos.x, worldPos.y);
+        break;
+      case 'create-idea':
+        createIdeaAtPosition(worldPos.x, worldPos.y);
+        break;
+      case 'create-note':
+        createNoteAtPosition(worldPos.x, worldPos.y);
+        break;
+      case 'create-domain':
+        createDomainAtPosition(worldPos.x, worldPos.y);
+        break;
+    }
+    
+    hideContextMenu();
+  });
+  
+  // Hide context menu when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!contextMenu.contains(e.target)) {
+      hideContextMenu();
+    }
+  });
+}
+
+function showContextMenu(x, y) {
+  const contextMenu = document.getElementById('contextMenu');
+  if (!contextMenu) return;
+  
+  contextMenuState.x = x;
+  contextMenuState.y = y;
+  contextMenuState.isVisible = true;
+  
+  contextMenu.style.left = x + 'px';
+  contextMenu.style.top = y + 'px';
+  contextMenu.style.display = 'block';
+}
+
+function hideContextMenu() {
+  const contextMenu = document.getElementById('contextMenu');
+  if (!contextMenu) return;
+  
+  contextMenuState.isVisible = false;
+  contextMenu.style.display = 'none';
+}
+
+// Creation functions for different object types
+function createTaskAtPosition(x, y) {
+  const newTask = {
+    id: generateId(),
+    title: 'Новая задача',
+    description: '',
+    projectId: null,
+    status: 'backlog',
+    priority: 'p3',
+    dueDate: null,
+    estimatedTime: null,
+    tags: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  state.tasks.push(newTask);
+  saveState();
+  showTaskEditor(newTask);
+}
+
+function createProjectAtPosition(x, y) {
+  const domainId = state.activeDomain || state.domains[0]?.id || null;
+  if (!domainId) {
+    showToast("Сначала выберите домен", "warn");
+    return;
+  }
+  
+  const newProject = {
+    id: generateId(),
+    domainId: domainId,
+    title: 'Новый проект',
+    description: '',
+    color: getRandomProjectColor(),
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  state.projects.push(newProject);
+  saveState();
+  showProjectEditor(newProject);
+}
+
+function createIdeaAtPosition(x, y) {
+  const idea = createIdea();
+  showIdeaEditor(idea);
+}
+
+function createNoteAtPosition(x, y) {
+  const note = createNote();
+  showNoteEditor(note);
+}
+
+function createDomainAtPosition(x, y) {
+  const newDomain = {
+    id: generateId(),
+    title: 'Новый домен',
+    mood: 'balance',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  state.domains.push(newDomain);
+  saveState();
+  showDomainEditor(newDomain);
 }
 
 // Global flags to prevent multiple initialization and loops
@@ -2471,12 +2610,12 @@ export function drawMap() {
       ctx.fillStyle = baseColor;
       ctx.fill();
       ctx.shadowBlur = 0;
-        if (n.status === "today") {
-          ctx.beginPath();
-          ctx.strokeStyle = "#f59e0b";
-          ctx.lineWidth = 1 * DPR;
-          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
-          ctx.stroke();
+      if (n.status === "today") {
+        ctx.beginPath();
+        ctx.strokeStyle = "#f59e0b";
+        ctx.lineWidth = 1 * DPR;
+        ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
         }
       } else if (projectVisualStyle === 'neon') {
         drawNeonStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
@@ -2966,7 +3105,7 @@ function onPointerDown(e) {
   const worldPos = screenToWorld(x, y);
   
   const hitNode = hit(worldPos.x, worldPos.y);
-  if (hitNode && (hitNode._type === "task" || hitNode._type === "project")) {
+  if (hitNode && (hitNode._type === "task" || hitNode._type === "project" || hitNode._type === "idea" || hitNode._type === "note")) {
     dndState = DnDState.PRESSED;
     dndData = {
       type: hitNode._type,
@@ -3083,6 +3222,10 @@ function handleDrop() {
     handleProjectDrop(draggedNode, dropTarget);
   } else if (draggedNode._type === "task") {
     handleTaskDrop(draggedNode, dropTarget);
+  } else if (draggedNode._type === "idea") {
+    handleIdeaDrop(draggedNode, dropTarget);
+  } else if (draggedNode._type === "note") {
+    handleNoteDrop(draggedNode, dropTarget);
   }
 }
 
@@ -3148,6 +3291,46 @@ function handleTaskDrop(taskNode, dropTarget) {
       showToast("Позиция задачи обновлена", "ok");
     }
   }
+}
+
+function handleIdeaDrop(ideaNode, dropTarget) {
+  const idea = state.ideas.find(i => i.id === ideaNode.id);
+  if (!idea) return;
+  
+  console.log("Idea drop - target:", dropTarget, "current domain:", idea.domainId);
+  
+  // Update position
+  idea.x = ideaNode.x;
+  idea.y = ideaNode.y;
+  idea.updatedAt = Date.now();
+  
+  // Update domain if dropped on a domain
+  if (dropTarget && dropTarget.type === 'domain') {
+    idea.domainId = dropTarget.id;
+  }
+  
+  saveState();
+  showToast("Позиция идеи обновлена", "ok");
+}
+
+function handleNoteDrop(noteNode, dropTarget) {
+  const note = state.notes.find(n => n.id === noteNode.id);
+  if (!note) return;
+  
+  console.log("Note drop - target:", dropTarget, "current domain:", note.domainId);
+  
+  // Update position
+  note.x = noteNode.x;
+  note.y = noteNode.y;
+  note.updatedAt = Date.now();
+  
+  // Update domain if dropped on a domain
+  if (dropTarget && dropTarget.type === 'domain') {
+    note.domainId = dropTarget.id;
+  }
+  
+  saveState();
+  showToast("Позиция заметки обновлена", "ok");
 }
 
 // Toast helper function
@@ -3933,6 +4116,9 @@ window.addEventListener("mouseup", (e) => {
   }
 });
 
+// Export requestDraw function
+export { requestDraw };
+
 // expose undo function
 export function undoLastMove() {
   const item = undoStack.pop();
@@ -4247,8 +4433,8 @@ function openModalLocal({
     }
   };
   // Не показываем модальное окно при инициализации
-  if (title && title !== "Диалог") {
-    modal.style.display = "flex";
+  if (title && title !== "Диалог" && title !== "") {
+  modal.style.display = "flex";
   }
 }
 
@@ -4378,6 +4564,167 @@ function onDblClick(e) {
 }
 
 function onContextMenu(e) {
+  e.preventDefault(); // Prevent default browser context menu
+  
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  const n = hit(pt.x, pt.y);
+  
+  // If clicking on an object, show object-specific menu
+  if (n) {
+    showObjectContextMenu(e.clientX, e.clientY, n);
+  } else {
+    // If clicking on empty space, show creation menu
+    showContextMenu(e.clientX, e.clientY);
+  }
+}
+
+function showObjectContextMenu(x, y, node) {
+  const contextMenu = document.getElementById('contextMenu');
+  if (!contextMenu) return;
+  
+  // Update menu content based on object type
+  let menuContent = '';
+  
+  if (node._type === 'task') {
+    menuContent = `
+      <div class="context-menu-item" data-action="edit-task">
+        <span class="icon">✏️</span>
+        <span class="text">Редактировать задачу</span>
+      </div>
+      <div class="context-menu-item" data-action="delete-task">
+        <span class="icon">🗑️</span>
+        <span class="text">Удалить задачу</span>
+      </div>
+    `;
+  } else if (node._type === 'project') {
+    menuContent = `
+      <div class="context-menu-item" data-action="edit-project">
+        <span class="icon">✏️</span>
+        <span class="text">Редактировать проект</span>
+      </div>
+      <div class="context-menu-item" data-action="delete-project">
+        <span class="icon">🗑️</span>
+        <span class="text">Удалить проект</span>
+      </div>
+    `;
+  } else if (node._type === 'domain') {
+    menuContent = `
+      <div class="context-menu-item" data-action="edit-domain">
+        <span class="icon">✏️</span>
+        <span class="text">Редактировать домен</span>
+      </div>
+      <div class="context-menu-item" data-action="delete-domain">
+        <span class="icon">🗑️</span>
+        <span class="text">Удалить домен</span>
+      </div>
+    `;
+  } else if (node._type === 'idea') {
+    menuContent = `
+      <div class="context-menu-item" data-action="edit-idea">
+        <span class="icon">✏️</span>
+        <span class="text">Редактировать идею</span>
+      </div>
+      <div class="context-menu-item" data-action="delete-idea">
+        <span class="icon">🗑️</span>
+        <span class="text">Удалить идею</span>
+      </div>
+    `;
+  } else if (node._type === 'note') {
+    menuContent = `
+      <div class="context-menu-item" data-action="edit-note">
+        <span class="icon">✏️</span>
+        <span class="text">Редактировать заметку</span>
+      </div>
+      <div class="context-menu-item" data-action="delete-note">
+        <span class="icon">🗑️</span>
+        <span class="text">Удалить заметку</span>
+      </div>
+    `;
+  }
+  
+  contextMenu.innerHTML = menuContent;
+  contextMenuState.x = x;
+  contextMenuState.y = y;
+  contextMenuState.isVisible = true;
+  contextMenuState.currentNode = node;
+  
+  contextMenu.style.left = x + 'px';
+  contextMenu.style.top = y + 'px';
+  contextMenu.style.display = 'block';
+  
+  // Add event listeners for object actions
+  contextMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.context-menu-item');
+    if (!item) return;
+    
+    const action = item.dataset.action;
+    const node = contextMenuState.currentNode;
+    
+    switch (action) {
+      case 'edit-task':
+        showTaskEditor(node);
+        break;
+      case 'edit-project':
+        showProjectEditor(node);
+        break;
+      case 'edit-domain':
+        openInspectorFor(node);
+        break;
+      case 'edit-idea':
+        showIdeaEditor(node);
+        break;
+      case 'edit-note':
+        showNoteEditor(node);
+        break;
+      case 'delete-task':
+        if (confirm(`Удалить задачу "${node.title}"?`)) {
+          state.tasks = state.tasks.filter(t => t.id !== node.id);
+          saveState();
+          layoutMap();
+          drawMap();
+          updateWip();
+        }
+        break;
+      case 'delete-project':
+        if (confirm(`Удалить проект "${node.title}"?`)) {
+          state.projects = state.projects.filter(p => p.id !== node.id);
+          saveState();
+          layoutMap();
+          drawMap();
+        }
+        break;
+      case 'delete-domain':
+        if (confirm(`Удалить домен "${node.title}"?`)) {
+          state.domains = state.domains.filter(d => d.id !== node.id);
+          saveState();
+          layoutMap();
+          drawMap();
+        }
+        break;
+      case 'delete-idea':
+        if (confirm(`Удалить идею "${node.title}"?`)) {
+          state.ideas = state.ideas.filter(i => i.id !== node.id);
+          saveState();
+          layoutMap();
+          drawMap();
+        }
+        break;
+      case 'delete-note':
+        if (confirm(`Удалить заметку "${node.title}"?`)) {
+          state.notes = state.notes.filter(n => n.id !== node.id);
+          saveState();
+          layoutMap();
+          drawMap();
+        }
+        break;
+    }
+    
+    hideContextMenu();
+  });
+}
+
+// Old function - will be removed
+function onContextMenuOld(e) {
   e.preventDefault(); // Prevent default browser context menu
   
   const pt = screenToWorld(e.offsetX, e.offsetY);
@@ -4574,12 +4921,12 @@ function onClick(e) {
     
     openInspectorFor(obj);
   } else if (n._type === 'idea') {
-    // Обработка клика по идее
-    handleIdeaClick(n);
+    // Левый клик по идее - только выделение, редактирование по правому клику
+    hoverNodeId = n.id;
     return;
   } else if (n._type === 'note') {
-    // Обработка клика по заметке
-    handleNoteClick(n);
+    // Левый клик по заметке - только выделение, редактирование по правому клику
+    hoverNodeId = n.id;
     return;
   } else {
     const obj = state.domains.find((d) => d.id === n.id);
@@ -5032,25 +5379,40 @@ function drawIdeas() {
     const y = idea.y * DPR;
     const r = idea.r * DPR;
     
-    // Рисуем туманность (облако)
+    // Рисуем туманность (облако) - улучшенный дизайн
     ctx.save();
     ctx.globalAlpha = idea.opacity;
-    ctx.fillStyle = idea.color;
+    
+    // Создаем градиент для более красивого эффекта
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gradient.addColorStop(0, idea.color + 'ff');
+    gradient.addColorStop(0.5, idea.color + 'aa');
+    gradient.addColorStop(1, idea.color + '44');
+    
+    ctx.fillStyle = gradient;
     
     // Создаем размытый эффект
     ctx.shadowColor = idea.color;
-    ctx.shadowBlur = 20 * DPR;
+    ctx.shadowBlur = 15 * DPR;
     
-    // Рисуем несколько кругов для облачного эффекта
-    for (let i = 0; i < 3; i++) {
-      const offsetX = (Math.random() - 0.5) * 20 * DPR;
-      const offsetY = (Math.random() - 0.5) * 20 * DPR;
-      const radius = r * (0.8 + Math.random() * 0.4);
-      
-      ctx.beginPath();
-      ctx.arc(x + offsetX, y + offsetY, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Рисуем основной круг
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Добавляем внутренние слои для объема
+    ctx.globalAlpha = idea.opacity * 0.6;
+    ctx.fillStyle = idea.color + 'cc';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Добавляем блик
+    ctx.globalAlpha = idea.opacity * 0.8;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
     
     ctx.restore();
   });
@@ -5077,29 +5439,52 @@ function drawNotes() {
     const y = note.y * DPR;
     const r = note.r * DPR;
     
-    // Рисуем астероид (камушек)
+    // Рисуем астероид (камушек) - улучшенный дизайн
     ctx.save();
-    ctx.fillStyle = note.color;
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1 * DPR;
     
-    // Создаем неровную форму астероида
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2;
-      const radius = r * (0.8 + Math.random() * 0.4);
+    // Создаем градиент для объема
+    const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.3, note.color + 'ff');
+    gradient.addColorStop(0.7, note.color + 'cc');
+    gradient.addColorStop(1, note.color + '88');
+    
+    ctx.fillStyle = gradient;
+    ctx.strokeStyle = note.color + 'aa';
+    ctx.lineWidth = 2 * DPR;
+    
+    // Создаем неровную форму астероида (более стабильную)
+    const points = [];
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const radius = r * (0.85 + Math.sin(angle * 3) * 0.15);
       const px = x + Math.cos(angle) * radius;
       const py = y + Math.sin(angle) * radius;
-      
-      if (i === 0) {
-        ctx.moveTo(px, py);
-      } else {
-        ctx.lineTo(px, py);
-      }
+      points.push({ x: px, y: py });
+    }
+    
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    
+    // Добавляем блик для объема
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(x - r * 0.4, y - r * 0.4, r * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Добавляем тень
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(x + r * 0.2, y + r * 0.2, r * 0.8, 0, Math.PI * 2);
+    ctx.fill();
     
     ctx.restore();
   });
@@ -5117,39 +5502,173 @@ function handleNoteClick(note) {
 }
 
 function showIdeaEditor(idea) {
-  // Создаем модальное окно для редактирования идеи
-  const modal = document.createElement('div');
-  modal.className = 'modal';
+  // Используем существующее модальное окно
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
   modal.innerHTML = `
-    <div class="modal-content">
-      <h3> Редактировать идею</h3>
-      <input type="text" id="ideaTitle" value="${idea.title}" placeholder="Название идеи">
-      <textarea id="ideaContent" placeholder="Описание идеи">${idea.content}</textarea>
-      <div class="modal-actions">
-        <button onclick="saveIdea('${idea.id}')">Сохранить</button>
-        <button onclick="deleteIdea('${idea.id}')">Удалить</button>
-        <button onclick="closeModal()">Отмена</button>
+    <div class="box idea-editor">
+      <div class="title">🌌 Редактировать идею</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название идеи:</label>
+          <input type="text" id="ideaTitle" value="${idea.title}" placeholder="Введите название идеи" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <textarea id="ideaContent" placeholder="Опишите вашу идею подробнее..." class="form-textarea">${idea.content}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Цвет:</label>
+          <div class="color-picker">
+            <input type="color" id="ideaColor" value="${idea.color}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#ff6b6b" style="background: #ff6b6b;"></div>
+              <div class="color-preset" data-color="#4ecdc4" style="background: #4ecdc4;"></div>
+              <div class="color-preset" data-color="#45b7d1" style="background: #45b7d1;"></div>
+              <div class="color-preset" data-color="#96ceb4" style="background: #96ceb4;"></div>
+              <div class="color-preset" data-color="#feca57" style="background: #feca57;"></div>
+              <div class="color-preset" data-color="#ff9ff3" style="background: #ff9ff3;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Размер:</label>
+          <input type="range" id="ideaSize" min="20" max="60" value="${idea.r}" class="form-range">
+          <span class="size-value">${idea.r}px</span>
+        </div>
+        <div class="form-group">
+          <label>Прозрачность:</label>
+          <input type="range" id="ideaOpacity" min="0.1" max="1" step="0.1" value="${idea.opacity}" class="form-range">
+          <span class="opacity-value">${Math.round(idea.opacity * 100)}%</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveIdea('${idea.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteIdea('${idea.id}')">🗑️ Удалить</button>
       </div>
     </div>
+    <div class="backdrop"></div>
   `;
-  document.body.appendChild(modal);
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#ideaColor').value = color;
+    });
+  });
+  
+  // Добавляем обработчики для слайдеров с дебаунсингом
+  let sizeTimeout, opacityTimeout;
+  
+  modal.querySelector('#ideaSize').addEventListener('input', (e) => {
+    modal.querySelector('.size-value').textContent = e.target.value + 'px';
+    
+    // Дебаунсинг для обновления размера
+    clearTimeout(sizeTimeout);
+    sizeTimeout = setTimeout(() => {
+      idea.r = parseInt(e.target.value);
+      requestDraw();
+    }, 100);
+  });
+  
+  modal.querySelector('#ideaOpacity').addEventListener('input', (e) => {
+    modal.querySelector('.opacity-value').textContent = Math.round(e.target.value * 100) + '%';
+    
+    // Дебаунсинг для обновления прозрачности
+    clearTimeout(opacityTimeout);
+    opacityTimeout = setTimeout(() => {
+      idea.opacity = parseFloat(e.target.value);
+      requestDraw();
+    }, 100);
+  });
 }
 
 function showNoteEditor(note) {
-  // Создаем модальное окно для редактирования заметки
-  const modal = document.createElement('div');
-  modal.className = 'modal';
+  // Используем существующее модальное окно
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
   modal.innerHTML = `
-    <div class="modal-content">
-      <h3> Редактировать заметку</h3>
-      <input type="text" id="noteTitle" value="${note.title}" placeholder="Название заметки">
-      <textarea id="noteContent" placeholder="Содержание заметки">${note.content}</textarea>
-      <div class="modal-actions">
-        <button onclick="saveNote('${note.id}')">Сохранить</button>
-        <button onclick="deleteNote('${note.id}')">Удалить</button>
-        <button onclick="closeModal()">Отмена</button>
+    <div class="box note-editor">
+      <div class="title">🪨 Редактировать заметку</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название заметки:</label>
+          <input type="text" id="noteTitle" value="${note.title}" placeholder="Введите название заметки" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Содержание:</label>
+          <textarea id="noteContent" placeholder="Опишите содержимое заметки..." class="form-textarea">${note.content}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Цвет:</label>
+          <div class="color-picker">
+            <input type="color" id="noteColor" value="${note.color}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#8b7355" style="background: #8b7355;"></div>
+              <div class="color-preset" data-color="#a0a0a0" style="background: #a0a0a0;"></div>
+              <div class="color-preset" data-color="#6c757d" style="background: #6c757d;"></div>
+              <div class="color-preset" data-color="#495057" style="background: #495057;"></div>
+              <div class="color-preset" data-color="#343a40" style="background: #343a40;"></div>
+              <div class="color-preset" data-color="#212529" style="background: #212529;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Размер:</label>
+          <input type="range" id="noteSize" min="5" max="20" value="${note.r}" class="form-range">
+          <span class="size-value">${note.r}px</span>
+        </div>
+        <div class="form-group">
+          <label>Прозрачность:</label>
+          <input type="range" id="noteOpacity" min="0.3" max="1" step="0.1" value="${note.opacity}" class="form-range">
+          <span class="opacity-value">${Math.round(note.opacity * 100)}%</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveNote('${note.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteNote('${note.id}')">🗑️ Удалить</button>
       </div>
     </div>
+    <div class="backdrop"></div>
   `;
-  document.body.appendChild(modal);
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#noteColor').value = color;
+    });
+  });
+  
+  // Добавляем обработчики для слайдеров с дебаунсингом
+  let sizeTimeout, opacityTimeout;
+  
+  modal.querySelector('#noteSize').addEventListener('input', (e) => {
+    modal.querySelector('.size-value').textContent = e.target.value + 'px';
+    
+    // Дебаунсинг для обновления размера
+    clearTimeout(sizeTimeout);
+    sizeTimeout = setTimeout(() => {
+      note.r = parseInt(e.target.value);
+      requestDraw();
+    }, 100);
+  });
+  
+  modal.querySelector('#noteOpacity').addEventListener('input', (e) => {
+    modal.querySelector('.opacity-value').textContent = Math.round(e.target.value * 100) + '%';
+    
+    // Дебаунсинг для обновления прозрачности
+    clearTimeout(opacityTimeout);
+    opacityTimeout = setTimeout(() => {
+      note.opacity = parseFloat(e.target.value);
+      requestDraw();
+    }, 100);
+  });
 }
