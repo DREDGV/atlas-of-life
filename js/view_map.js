@@ -98,6 +98,95 @@ let dropTargetDomainId = null;
 // drag threshold (px, screen space before scale/DPR)
 let pendingDragNode = null;
 
+// GPT-5 mouse system
+const mouse = {
+  phase: 'idle',            // 'idle' | 'press' | 'drag-object' | 'pan'
+  startX: 0, startY: 0,     // экранные координаты старта
+  lastX: 0, lastY: 0,       // экранные координаты предыдущего move
+  threshold: 10,
+  target: null,             // объект под курсором в момент mousedown
+  dragOffsetX: 0,           // смещение хвата внутри объекта (в мировых координатах)
+  dragOffsetY: 0
+};
+
+// GPT-5 utilities
+function distance2(x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  return dx*dx + dy*dy;
+}
+
+function setCursor(type) {
+  canvas.style.cursor = type;
+}
+
+function selectObject(obj) {
+  if (obj) {
+    clickedNodeId = obj.id;
+    console.log('🖱️ Object selected:', obj._type, obj.id);
+  } else {
+    clickedNodeId = null;
+    console.log('🖱️ Selection cleared');
+  }
+  requestDraw();
+}
+
+function commitObjectPosition(obj) {
+  if (!obj) return;
+  
+  console.log('🖱️ Object position committed:', obj._type, obj.id, 'at:', obj.x, obj.y);
+  
+  // Сохраняем текущий зум перед изменениями
+  const currentScale = viewState.scale;
+  const currentTx = viewState.tx;
+  const currentTy = viewState.ty;
+  
+  // Сохраняем позицию в зависимости от типа объекта
+  if (obj._type === "task") {
+    const task = state.tasks.find(t => t.id === obj.id);
+    if (task) {
+      task._pos = { x: obj.x, y: obj.y };
+      task.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция задачи обновлена", "ok");
+    }
+  } else if (obj._type === "project") {
+    const project = state.projects.find(p => p.id === obj.id);
+    if (project) {
+      project._pos = { x: obj.x, y: obj.y };
+      project.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция проекта обновлена", "ok");
+    }
+  } else if (obj._type === "idea") {
+    const idea = state.ideas.find(i => i.id === obj.id);
+    if (idea) {
+      idea.x = obj.x;
+      idea.y = obj.y;
+      idea.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция идеи обновлена", "ok");
+    }
+  } else if (obj._type === "note") {
+    const note = state.notes.find(n => n.id === obj.id);
+    if (note) {
+      note.x = obj.x;
+      note.y = obj.y;
+      note.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция заметки обновлена", "ok");
+    }
+  }
+  
+  // Восстанавливаем зум после сохранения
+  if (viewState.scale !== currentScale || viewState.tx !== currentTx || viewState.ty !== currentTy) {
+    console.log('🖱️ Zoom was reset, restoring:', currentScale, currentTx, currentTy);
+    viewState.scale = currentScale;
+    viewState.tx = currentTx;
+    viewState.ty = currentTy;
+    requestDraw();
+  }
+}
+
 // Visualization style settings
 let projectVisualStyle = 'original'; // 'galaxy', 'simple', 'planet', 'modern', 'original' - default to original style
 
@@ -1190,7 +1279,7 @@ export function initMap(canvasEl, tooltipEl) {
   canvas = canvasEl;
   tooltip = tooltipEl;
   resize();
-  initStarField();
+  // initStarField(); // TEMPORARILY DISABLED
   
   // Initialize cosmic animations
   if (window.cosmicAnimations) {
@@ -1203,14 +1292,14 @@ export function initMap(canvasEl, tooltipEl) {
   
   window.addEventListener("resize", () => {
     resize();
-    initStarField();
+    // initStarField(); // TEMPORARILY DISABLED
     try { fitAll(); } catch(_) {}
   });
-  // Use pointer events for better DnD handling
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointerleave", onPointerLeave);
+  // DISABLED: Use pointer events for better DnD handling - CONFLICTS WITH NEW MOUSE SYSTEM
+  // canvas.addEventListener("pointermove", onPointerMove);
+  // canvas.addEventListener("pointerdown", onPointerDown);
+  // canvas.addEventListener("pointerup", onPointerUp);
+  // canvas.addEventListener("pointerleave", onPointerLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
@@ -2070,8 +2159,8 @@ export function drawMap() {
     viewState.ty
   );
 
-  // Cosmic starfield with twinkling stars
-  drawStarfield(ctx, W, H, viewState);
+  // Cosmic starfield with twinkling stars - TEMPORARILY DISABLED
+  // drawStarfield(ctx, W, H, viewState);
   
   // Render cosmic effects (particles, animations)
   if (window.cosmicAnimations) {
@@ -2865,6 +2954,74 @@ function onMouseMove(e) {
     offsetX: e.offsetX,
     offsetY: e.offsetY,
   };
+  
+  // Любые действия только если ЛКМ реально зажата
+  if (!(e.buttons & 1)) {
+    // если кнопку «потеряли» (вышли из окна и т.п.) — корректно завершить
+    onMouseUp(e);
+    return;
+  }
+
+  if (mouse.phase === 'idle') return; // без нажатия — никаких движений
+
+  const sx = e.clientX, sy = e.clientY;
+
+  // PRESS: ждём превышения порога, чтобы решить, что именно делать
+  if (mouse.phase === 'press') {
+    const moved2 = distance2(mouse.startX, mouse.startY, sx, sy);
+    console.log('🖱️ Mouse moved2:', moved2, 'threshold2:', mouse.threshold * mouse.threshold);
+    
+    if (moved2 >= mouse.threshold * mouse.threshold) {
+      // превысили порог — выбираем режим
+      const { x: wx, y: wy } = screenToWorld(mouse.startX, mouse.startY);
+
+      if (mouse.target) {
+        // стартуем drag объекта — фиксируем смещение хвата
+        mouse.phase = 'drag-object';
+        // предполагаем у объекта поля x,y (мировые координаты центра/якоря)
+        mouse.dragOffsetX = wx - mouse.target.x;
+        mouse.dragOffsetY = wy - mouse.target.y;
+        setCursor('grabbing');
+        console.log('🖱️ Phase: drag-object, offset:', mouse.dragOffsetX, mouse.dragOffsetY);
+      } else {
+        // стартуем панорамирование
+        mouse.phase = 'pan';
+        setCursor('grabbing');
+        console.log('🖱️ Phase: pan');
+      }
+    }
+    mouse.lastX = sx; mouse.lastY = sy;
+    return;
+  }
+
+  // DRAG-OBJECT: двигаем объект в мировых координатах,
+  // используя текущее положение курсора минус зафиксированный оффсет.
+  if (mouse.phase === 'drag-object') {
+    const { x: wx, y: wy } = screenToWorld(sx, sy);
+    // перемещаем объект без «дрожи»
+    mouse.target.x = wx - mouse.dragOffsetX;
+    mouse.target.y = wy - mouse.dragOffsetY;
+    mouse.lastX = sx; mouse.lastY = sy;
+    requestDraw();
+    return;
+  }
+
+  // PAN: двигаем камеру относительно последнего положения мыши.
+  if (mouse.phase === 'pan') {
+    const dxScreen = sx - mouse.lastX;
+    const dyScreen = sy - mouse.lastY;
+    if (dxScreen !== 0 || dyScreen !== 0) {
+      const dpr = window.devicePixelRatio || 1;
+      viewState.tx += (dxScreen * dpr) / viewState.scale;
+      viewState.ty += (dyScreen * dpr) / viewState.scale;
+      mouse.lastX = sx; mouse.lastY = sy;
+      requestDraw();
+      console.log('🖱️ Panning delta:', dxScreen, dyScreen);
+    }
+    return;
+  }
+  
+  // Legacy panning (middle button)
   if (viewState.dragging) {
     const dx = e.clientX - viewState.lastX,
       dy = e.clientY - viewState.lastY;
@@ -2876,13 +3033,17 @@ function onMouseMove(e) {
     requestDraw();
     return;
   }
+  
   // promote pending drag after threshold (4-6px)
-  if (pendingDragNode) {
+  if (pendingDragNode && pendingDragNode.x !== undefined && pendingDragNode.y !== undefined) {
     const dx = e.clientX - pendingDragStart.x;
     const dy = e.clientY - pendingDragStart.y;
     const dist = Math.hypot(dx, dy);
     const threshold = 5; // px
     if (dist >= threshold) {
+      // Cancel click timer and start drag
+      cancelClickTimer();
+      
       // start actual drag
       const pt = screenToWorld(
         pendingDragStart.x - (e.clientX - e.offsetX),
@@ -3002,78 +3163,55 @@ function onMouseLeave() {
 }
 
 function onMouseUp(e) {
-  // Обработка отпускания средней кнопки мыши для панорамирования
-  if (viewState.dragging) {
-    viewState.dragging = false;
-    canvas.style.cursor = "";
-    return;
+  // Разрешаем вызывать повторно (если уже idle — просто выходим)
+  if (mouse.phase === 'idle') return;
+
+  const sx = e.clientX, sy = e.clientY;
+
+  if (mouse.phase === 'press') {
+    // Порог не превышен — это КЛИК
+    const { x: wx, y: wy } = screenToWorld(sx, sy);
+    const clicked = hit(wx, wy);
+    // Селектим объект (или снимаем выделение)
+    selectObject(clicked || null);
+    setCursor('default');
+    console.log('🖱️ Click processed');
+  } else if (mouse.phase === 'drag-object') {
+    // Завершили перетаскивание
+    commitObjectPosition(mouse.target);
+    setCursor('default');
+    console.log('🖱️ Object drag completed');
+  } else if (mouse.phase === 'pan') {
+    // Завершили панорамирование
+    setCursor('default');
+    console.log('🖱️ Panning completed');
   }
+
+  // Сброс состояния
+  mouse.phase = 'idle';
+  mouse.target = null;
+  mouse.dragOffsetX = 0;
+  mouse.dragOffsetY = 0;
   
-  // Обработка отпускания левой кнопки для DnD
-  if (e.button === 0 && pendingDragNode) {
-    // Если не было движения - это клик, а не перетаскивание
-    pendingDragNode = null;
-  }
-  
-  // Обработка отпускания средней кнопки мыши
-  if (e.button === 1) {
-    canvas.style.cursor = "";
-  }
+  console.log('🖱️ Mouse state reset to idle');
 }
 
 function onMouseDown(e) {
-  // Проверяем, что клик был на пустом месте, а не на объекте
-  const pt = screenToWorld(e.offsetX, e.offsetY);
-  const hitNode = hit(pt.x, pt.y);
+  if (e.button !== 0) return;                 // только ЛКМ
+  if (e.buttons !== 1) return;                // только ЛКМ зажата
+  e.preventDefault();
+
+  const sx = e.clientX, sy = e.clientY;
+  mouse.startX = mouse.lastX = sx;
+  mouse.startY = mouse.lastY = sy;
+
+  const { x: wx, y: wy } = screenToWorld(e.offsetX, e.offsetY);
+  mouse.target = hit(wx, wy);
+
+  mouse.phase = 'press';
+  setCursor(mouse.target ? 'grab' : 'grab');  // визуальная подсказка одинаковая на press
   
-  // Средняя кнопка мыши или Alt + левая кнопка - только для панорамирования
-  if (e.button === 1 || (e.button === 0 && e.altKey)) {
-    // Панорамирование работает только при клике на пустое место
-    if (!hitNode) {
-    viewState.dragging = true;
-    viewState.lastX = e.clientX;
-    viewState.lastY = e.clientY;
-      canvas.style.cursor = "grabbing";
-      if (window.DEBUG_MOUSE) {
-        console.log('🖱️ Панорамирование начато (клик на пустом месте)');
-      }
-    } else {
-      if (window.DEBUG_MOUSE) {
-        console.log('🖱️ Панорамирование заблокировано (клик на объект):', hitNode._type, hitNode.id);
-      }
-    }
-    return;
-  }
-  
-  // DnD: захват задачи или проекта (ТОЛЬКО левая кнопка без Alt)
-  // Средняя кнопка мыши НЕ должна запускать DnD
-  if (e.button === 0 && !e.altKey) {
-    if (hitNode && (hitNode._type === "task" || hitNode._type === "project")) {
-      pendingDragNode = hitNode;
-      pendingDragStart.x = e.clientX;
-      pendingDragStart.y = e.clientY;
-      // Проверяем что hitNode существует и имеет координаты
-      if (hitNode.x !== undefined && hitNode.y !== undefined) {
-        dragOffset.x = pt.x - hitNode.x;
-        dragOffset.y = pt.y - hitNode.y;
-      } else {
-        dragOffset.x = 0;
-        dragOffset.y = 0;
-      }
-      if (window.DEBUG_MOUSE) {
-        console.log('🖱️ DnD начат для:', hitNode._type, hitNode.id);
-      }
-      return;
-    }
-  }
-  
-  // Блокируем любые другие действия средней кнопкой мыши
-  if (e.button === 1) {
-    if (window.DEBUG_MOUSE) {
-      console.log('🖱️ Средняя кнопка заблокирована для DnD');
-    }
-    return;
-  }
+  console.log('🖱️ Mouse down, phase: press, target:', mouse.target ? `${mouse.target._type}:${mouse.target.id}` : 'none');
 }
 // Helper function to properly hide toast and clean up handlers
 function hideToast() {
@@ -3558,7 +3696,8 @@ function confirmTaskDetach() {
   pendingDetach = null;
 }
 
-// Legacy mouseup handler (keep for compatibility)
+// DISABLED: Legacy mouseup handler - CONFLICTS WITH NEW GPT-5 SYSTEM
+/*
 window.addEventListener("mouseup", (e) => {
   // Block canvas events when modal is open
   if (isModalOpen) {
@@ -4115,6 +4254,7 @@ window.addEventListener("mouseup", (e) => {
     }
   }
 });
+*/
 
 // Export requestDraw function
 export { requestDraw };
