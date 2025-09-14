@@ -47,6 +47,9 @@ export function loadState(){
     state.domains = data.domains;
     state.projects = data.projects;
     state.tasks = data.tasks;
+    // Загружаем новые поля
+    if(Array.isArray(data.ideas)) state.ideas = data.ideas;
+    if(Array.isArray(data.notes)) state.notes = data.notes;
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -80,6 +83,8 @@ export function saveState(){
       domains: state.domains,
       projects: state.projects,
       tasks: state.tasks,
+      ideas: state.ideas || [],
+      notes: state.notes || [],
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,

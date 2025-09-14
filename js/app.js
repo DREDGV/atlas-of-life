@@ -44,7 +44,7 @@ window.I18N = I18N;
 try { window.state = state; } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.18.2-cursor-fix";
+let APP_VERSION = "Atlas_of_life_v0.2.18.5-bug-fix";
 
 // ephemeral UI state
 const ui = {
@@ -92,7 +92,10 @@ function openModal({
       close();
     }
   };
-  modal.style.display = "flex";
+  // Не показываем модальное окно при инициализации
+  if (title && title !== "Диалог") {
+    modal.style.display = "flex";
+  }
 }
 
 // toast helper
@@ -461,6 +464,56 @@ try { window.showToast = showToast; } catch (_) {}
 try { window.clearHotkey = clearHotkey; } catch (_) {}
 try { window.openModal = openModal; } catch (_) {}
 try { window.getMapNodes = getMapNodes; } catch (_) {}
+
+// Функции для работы с идеями и заметками
+window.saveIdea = function(ideaId) {
+  const idea = state.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+  
+  const title = document.getElementById('ideaTitle').value;
+  const content = document.getElementById('ideaContent').value;
+  
+  idea.title = title;
+  idea.content = content;
+  idea.updatedAt = Date.now();
+  
+  closeModal();
+  drawMap();
+};
+
+window.saveNote = function(noteId) {
+  const note = state.notes.find(n => n.id === noteId);
+  if (!note) return;
+  
+  const title = document.getElementById('noteTitle').value;
+  const content = document.getElementById('noteContent').value;
+  
+  note.title = title;
+  note.content = content;
+  note.updatedAt = Date.now();
+  
+  closeModal();
+  drawMap();
+};
+
+window.deleteIdea = function(ideaId) {
+  state.ideas = state.ideas.filter(i => i.id !== ideaId);
+  closeModal();
+  drawMap();
+};
+
+window.deleteNote = function(noteId) {
+  state.notes = state.notes.filter(n => n.id !== noteId);
+  closeModal();
+  drawMap();
+};
+
+window.closeModal = function() {
+  const modal = document.querySelector('.modal');
+  if (modal) {
+    modal.remove();
+  }
+};
 
 // Analytics dashboard will be initialized in init() function
 
@@ -1327,7 +1380,7 @@ function setupHeader() {
       } else if (state.view === "today") {
         // Принудительно вызываем renderToday при переключении на today
         setTimeout(() => {
-          renderToday();
+        renderToday();
         }, 10);
       }
     };
@@ -1933,8 +1986,14 @@ async function init() {
   window.__atlasInitDone = true;
   
   // Normal initialization for all browsers (including Edge)
+  console.log("Loading state...");
   const ok = loadState();
-  if (!ok) initDemoData();
+  console.log("Load state result:", ok);
+  if (!ok) {
+    console.log("Loading demo data...");
+    initDemoData();
+  }
+  console.log("State after init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length });
   
   // Initialize hotkeys
   initializeHotkeys();
@@ -2012,8 +2071,16 @@ async function init() {
   });
   const canvas = document.getElementById("canvas");
   const tooltip = document.getElementById("tooltip");
-  initMap(canvas, tooltip);
+  if (canvas && tooltip) {
+    initMap(canvas, tooltip);
+  }
   updateWip();
+  
+  // Принудительно скрываем модальное окно при инициализации
+  const modal = document.getElementById("modal");
+  if (modal) {
+    modal.style.display = "none";
+  }
 }
 init();
 

@@ -26,6 +26,8 @@ export const state = {
   domains:[],
   projects:[],
   tasks:[],
+  ideas:[],
+  notes:[],
   maxEdges:300
 };
 
@@ -33,13 +35,8 @@ export const now = Date.now();
 export const days = d => now - d*24*3600*1000;
 
 export function initDemoData(){
-  // Принудительно очищаем старые данные для тестирования mood
-  
-  // Принудительно очищаем localStorage для тестирования
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem('atlas-state');
-    console.log("Cleared localStorage for fresh test data");
-  }
+  // Инициализация демо-данных (убрана принудительная очистка для стабильности)
+  console.log("Initializing demo data...");
   
   state.domains = [
     {id:'d1', title:'Дом', color:'var(--home)', createdAt:days(30), updatedAt:days(1)},
@@ -116,7 +113,20 @@ export function initDemoData(){
     {id:'t39', projectId:'p4', title:'Оптимизировать производительность', tags:['работа','оптимизация','производительность'], status:'today', estimateMin:120, priority:3, updatedAt:days(0), createdAt:days(0)}
   ];
   
-  console.log("After init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length });
+  // Добавляем тестовые идеи и заметки
+  state.ideas = [
+    {id:'idea1', title:'Новая функция', content:'Добавить возможность создания идей прямо на карте', domainId:'d3', x: 200, y: 150, r: 35, color:'#ff6b6b', opacity: 0.4, createdAt:days(1), updatedAt:days(1)},
+    {id:'idea2', title:'Улучшение UI', content:'Сделать интерфейс более интуитивным', domainId:'d3', x: -300, y: 100, r: 25, color:'#4ecdc4', opacity: 0.5, createdAt:days(2), updatedAt:days(2)},
+    {id:'idea3', title:'Мобильная версия', content:'Адаптировать приложение для мобильных устройств', domainId:'d3', x: 100, y: -200, r: 40, color:'#45b7d1', opacity: 0.3, createdAt:days(3), updatedAt:days(3)}
+  ];
+  
+  state.notes = [
+    {id:'note1', title:'Важная заметка', content:'Не забыть про тестирование в Edge', domainId:'d3', x: 150, y: 300, r: 8, color:'#8b7355', opacity: 1.0, createdAt:days(1), updatedAt:days(1)},
+    {id:'note2', title:'Идея для будущего', content:'Добавить синхронизацию с облаком', domainId:'d3', x: -250, y: -150, r: 6, color:'#a0a0a0', opacity: 1.0, createdAt:days(2), updatedAt:days(2)},
+    {id:'note3', title:'Техническая заметка', content:'Оптимизировать рендеринг больших карт', domainId:'d3', x: 400, y: -100, r: 10, color:'#6c757d', opacity: 1.0, createdAt:days(3), updatedAt:days(3)}
+  ];
+  
+  console.log("After init:", { domains: state.domains.length, projects: state.projects.length, tasks: state.tasks.length, ideas: state.ideas.length, notes: state.notes.length });
   console.log("Tasks for Дача domain:", state.tasks.filter(t => {
     const project = state.projects.find(p => p.id === t.projectId);
     return project && project.domainId === 'd2';
@@ -131,6 +141,11 @@ export function initDemoData(){
 export const $ = s => document.querySelector(s);
 export const $$ = s => [...document.querySelectorAll(s)];
 export const byId = (arr,id) => arr.find(x=>x.id===id);
+
+// Генератор уникальных ID
+export function generateId() {
+  return 'id_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+}
 export const project = id => byId(state.projects,id);
 export const domainOf = prj => prj.domainId ? byId(state.domains, prj.domainId) : null;
 export const tasksOfProject = pid => state.tasks.filter(t=>t.projectId===pid);
@@ -275,4 +290,53 @@ export function getMoodDescription(mood) {
     balance: 'Баланс: стабильное состояние'
   };
   return descriptions[mood] || descriptions.balance;
+}
+
+// Функции для работы с идеями
+export function createIdea(title, content = '', domainId = null) {
+  const idea = {
+    id: generateId(),
+    title: title || 'Новая идея',
+    content: content,
+    domainId: domainId,
+    x: Math.random() * 2000 - 1000,
+    y: Math.random() * 2000 - 1000,
+    r: 20 + Math.random() * 30, // 20-50px радиус
+    color: getRandomIdeaColor(),
+    opacity: 0.3 + Math.random() * 0.3, // 0.3-0.6
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  state.ideas.push(idea);
+  return idea;
+}
+
+// Функции для работы с заметками
+export function createNote(title, content = '', domainId = null) {
+  const note = {
+    id: generateId(),
+    title: title || 'Новая заметка',
+    content: content,
+    domainId: domainId,
+    x: Math.random() * 2000 - 1000,
+    y: Math.random() * 2000 - 1000,
+    r: 4 + Math.random() * 8, // 4-12px радиус
+    color: getRandomNoteColor(),
+    opacity: 1.0,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  state.notes.push(note);
+  return note;
+}
+
+// Цветовые палитры
+export function getRandomIdeaColor() {
+  const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
+export function getRandomNoteColor() {
+  const colors = ['#8b7355', '#a0a0a0', '#6c757d', '#495057', '#343a40'];
+  return colors[Math.floor(Math.random() * colors.length)];
 }

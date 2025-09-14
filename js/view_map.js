@@ -14,6 +14,7 @@ import {
   getDomainMood,
   getMoodColor,
   getMoodDescription,
+  generateId
 } from "./state.js";
 
 // Mood functions imported
@@ -1817,6 +1818,41 @@ export function layoutMap() {
     /* ignore */
   }
 
+  // Добавляем идеи и заметки в nodes
+  if (state.ideas && state.ideas.length > 0) {
+    state.ideas.forEach(idea => {
+      nodes.push({
+        _type: "idea",
+        id: idea.id,
+        title: idea.title,
+        x: idea.x,
+        y: idea.y,
+        r: idea.r,
+        color: idea.color,
+        opacity: idea.opacity,
+        content: idea.content,
+        domainId: idea.domainId
+      });
+    });
+  }
+
+  if (state.notes && state.notes.length > 0) {
+    state.notes.forEach(note => {
+      nodes.push({
+        _type: "note",
+        id: note.id,
+        title: note.title,
+        x: note.x,
+        y: note.y,
+        r: note.r,
+        color: note.color,
+        opacity: note.opacity,
+        content: note.content,
+        domainId: note.domainId
+      });
+    });
+  }
+
   if (state.showLinks) {
     const tasks = nodes.filter((n) => n._type === "task");
     const dataTasks = taskList;
@@ -1901,6 +1937,12 @@ export function drawMap() {
   // Render cosmic effects (particles, animations)
   if (window.cosmicAnimations) {
     window.cosmicAnimations.render();
+  }
+  
+  // Draw new cosmic objects
+  if (W > 0 && H > 0) {
+    drawIdeas();
+    drawNotes();
   }
 
   // compute viewport in world coords for culling
@@ -2640,6 +2682,10 @@ function hit(x, y) {
         ? n.r + 6 * DPR
         : n._type === "project"
         ? n.r + 10 * DPR
+        : n._type === "idea"
+        ? n.r + 15 * DPR
+        : n._type === "note"
+        ? n.r + 8 * DPR
         : n.r;
     if (dx * dx + dy * dy <= rr * rr) {
       return n;
@@ -2660,6 +2706,10 @@ function hitExcluding(x, y, ignoreId) {
         ? n.r + 6 * DPR
         : n._type === "project"
         ? n.r + 10 * DPR
+        : n._type === "idea"
+        ? n.r + 15 * DPR
+        : n._type === "note"
+        ? n.r + 8 * DPR
         : n.r;
     if (dx * dx + dy * dy <= rr * rr) {
       return n;
@@ -4196,7 +4246,10 @@ function openModalLocal({
       close();
     }
   };
-  modal.style.display = "flex";
+  // Не показываем модальное окно при инициализации
+  if (title && title !== "Диалог") {
+    modal.style.display = "flex";
+  }
 }
 
 function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
@@ -4520,6 +4573,14 @@ function onClick(e) {
     clickEffectTime = 1.0;
     
     openInspectorFor(obj);
+  } else if (n._type === 'idea') {
+    // Обработка клика по идее
+    handleIdeaClick(n);
+    return;
+  } else if (n._type === 'note') {
+    // Обработка клика по заметке
+    handleNoteClick(n);
+    return;
   } else {
     const obj = state.domains.find((d) => d.id === n.id);
     obj._type = "domain";
@@ -4947,4 +5008,148 @@ function drawTaskModern(ctx, x, y, radius, color, status) {
   ctx.fill();
   
   ctx.restore();
+}
+
+// Функции рендеринга новых космических объектов
+function drawIdeas() {
+  if (!state.ideas || state.ideas.length === 0) return;
+  if (W <= 0 || H <= 0) return; // Проверяем инициализацию canvas
+  
+  // Получаем функцию inView из контекста drawMap
+  const inv = 1 / Math.max(0.0001, viewState.scale);
+  const pad = 120 * inv;
+  const vx0 = -viewState.tx * inv - pad;
+  const vy0 = -viewState.ty * inv - pad;
+  const vx1 = (W - viewState.tx) * inv + pad;
+  const vy1 = (H - viewState.ty) * inv + pad;
+  const inView = (x, y, r = 0) =>
+    x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
+  
+  state.ideas.forEach(idea => {
+    if (!inView(idea.x, idea.y, idea.r + 20 * DPR)) return;
+    
+    const x = idea.x * DPR;
+    const y = idea.y * DPR;
+    const r = idea.r * DPR;
+    
+    // Рисуем туманность (облако)
+    ctx.save();
+    ctx.globalAlpha = idea.opacity;
+    ctx.fillStyle = idea.color;
+    
+    // Создаем размытый эффект
+    ctx.shadowColor = idea.color;
+    ctx.shadowBlur = 20 * DPR;
+    
+    // Рисуем несколько кругов для облачного эффекта
+    for (let i = 0; i < 3; i++) {
+      const offsetX = (Math.random() - 0.5) * 20 * DPR;
+      const offsetY = (Math.random() - 0.5) * 20 * DPR;
+      const radius = r * (0.8 + Math.random() * 0.4);
+      
+      ctx.beginPath();
+      ctx.arc(x + offsetX, y + offsetY, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    ctx.restore();
+  });
+}
+
+function drawNotes() {
+  if (!state.notes || state.notes.length === 0) return;
+  if (W <= 0 || H <= 0) return; // Проверяем инициализацию canvas
+  
+  // Получаем функцию inView из контекста drawMap
+  const inv = 1 / Math.max(0.0001, viewState.scale);
+  const pad = 120 * inv;
+  const vx0 = -viewState.tx * inv - pad;
+  const vy0 = -viewState.ty * inv - pad;
+  const vx1 = (W - viewState.tx) * inv + pad;
+  const vy1 = (H - viewState.ty) * inv + pad;
+  const inView = (x, y, r = 0) =>
+    x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
+  
+  state.notes.forEach(note => {
+    if (!inView(note.x, note.y, note.r + 20 * DPR)) return;
+    
+    const x = note.x * DPR;
+    const y = note.y * DPR;
+    const r = note.r * DPR;
+    
+    // Рисуем астероид (камушек)
+    ctx.save();
+    ctx.fillStyle = note.color;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1 * DPR;
+    
+    // Создаем неровную форму астероида
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const radius = r * (0.8 + Math.random() * 0.4);
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      
+      if (i === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    ctx.restore();
+  });
+}
+
+// Функции обработки кликов по новым объектам
+function handleIdeaClick(idea) {
+  // Показываем модальное окно для редактирования идеи
+  showIdeaEditor(idea);
+}
+
+function handleNoteClick(note) {
+  // Показываем модальное окно для редактирования заметки
+  showNoteEditor(note);
+}
+
+function showIdeaEditor(idea) {
+  // Создаем модальное окно для редактирования идеи
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h3> Редактировать идею</h3>
+      <input type="text" id="ideaTitle" value="${idea.title}" placeholder="Название идеи">
+      <textarea id="ideaContent" placeholder="Описание идеи">${idea.content}</textarea>
+      <div class="modal-actions">
+        <button onclick="saveIdea('${idea.id}')">Сохранить</button>
+        <button onclick="deleteIdea('${idea.id}')">Удалить</button>
+        <button onclick="closeModal()">Отмена</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function showNoteEditor(note) {
+  // Создаем модальное окно для редактирования заметки
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h3> Редактировать заметку</h3>
+      <input type="text" id="noteTitle" value="${note.title}" placeholder="Название заметки">
+      <textarea id="noteContent" placeholder="Содержание заметки">${note.content}</textarea>
+      <div class="modal-actions">
+        <button onclick="saveNote('${note.id}')">Сохранить</button>
+        <button onclick="deleteNote('${note.id}')">Удалить</button>
+        <button onclick="closeModal()">Отмена</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 }
