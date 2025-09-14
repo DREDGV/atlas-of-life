@@ -1186,7 +1186,7 @@ let isModalOpen = false; // Flag to block canvas events when toast is shown
 // DnD State Machine
 const DnDState = {
   IDLE: 'idle',
-  PRESSED: 'pressed', 
+  PRESSED: 'pressed',
   DRAGGING: 'dragging',
   DROPPED: 'dropped',
   CANCELED: 'canceled'
@@ -1194,6 +1194,47 @@ const DnDState = {
 
 let dndState = DnDState.IDLE;
 let dndData = null; // { type: 'task'|'project', id: string, startPos: {x,y} }
+
+// Navigation model: left-drag pans everywhere; click selects; drag node requires Alt or long-press
+const NAV = {
+  mode: 'idle', // 'idle'|'pending'|'pan'|'drag'
+  downCX: 0,
+  downCY: 0,
+  lastCX: 0,
+  lastCY: 0,
+  downTime: 0,
+  pointerId: null,
+  hitNode: null,
+  dragOffset: { x: 0, y: 0 },
+};
+const CLICK_MS = 220;
+const HOLD_MS = 320; // reserved (long-press currently disabled)
+const MOVE_SLOP = 10; // px (screen) — меньше ложных срабатываний
+
+function startPan() {
+  NAV.mode = 'pan';
+  canvas.style.cursor = 'grabbing';
+}
+function updatePan(e) {
+  const dx = e.clientX - NAV.lastCX;
+  const dy = e.clientY - NAV.lastCY;
+  NAV.lastCX = e.clientX;
+  NAV.lastCY = e.clientY;
+  const dpr = window.devicePixelRatio || 1;
+  viewState.tx += dx * dpr;
+  viewState.ty += dy * dpr;
+  requestDraw();
+}
+function endPan() {
+  NAV.mode = 'idle';
+  canvas.style.cursor = '';
+}
+function triggerClickAt(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const offsetX = clientX - rect.left;
+  const offsetY = clientY - rect.top;
+  try { onClick({ offsetX, offsetY }); } catch(_) {}
+}
 
 // Function to position toast near user action
 function positionToastNearAction(worldX, worldY, toast) {
@@ -3197,6 +3238,8 @@ function onMouseUp(e) {
 }
 
 function onMouseDown(e) {
+  // Disabled: navigation uses pointer events; prevent legacy mouse drag path
+  return;
   if (e.button !== 0) return;                 // только ЛКМ
   if (e.buttons !== 1) return;                // только ЛКМ зажата
   e.preventDefault();
@@ -3233,73 +3276,86 @@ function hideToast() {
   }
 }
 
-// New pointer event handlers with state machine
+// New pointer event handlers with robust navigation model
 function onPointerDown(e) {
+  try { e.preventDefault(); } catch(_) {}
   if (isModalOpen) return;
-  
+  if (e.button === 2) return; // context menu handled separately
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
   const worldPos = screenToWorld(x, y);
-  
   const hitNode = hit(worldPos.x, worldPos.y);
-  if (hitNode && (hitNode._type === "task" || hitNode._type === "project" || hitNode._type === "idea" || hitNode._type === "note")) {
-    dndState = DnDState.PRESSED;
-    dndData = {
-      type: hitNode._type,
-      id: hitNode.id,
-      startPos: { x: worldPos.x, y: worldPos.y },
-      pointerId: e.pointerId
-    };
-    
-    // Capture pointer to prevent losing events
-    canvas.setPointerCapture(e.pointerId);
-    
-    // Set initial drag state
-    draggedNode = hitNode;
-    dragOffset = { x: worldPos.x - hitNode.x, y: worldPos.y - hitNode.y };
-    
-    console.log("Pointer down - hit:", hitNode._type, hitNode.id, "state:", dndState);
+  NAV.mode = 'pending';
+  NAV.downCX = NAV.lastCX = e.clientX;
+  NAV.downCY = NAV.lastCY = e.clientY;
+  NAV.downTime = performance.now();
+  NAV.pointerId = e.pointerId;
+  NAV.hitNode = hitNode || null;
+  NAV.dragOffset = hitNode ? { x: worldPos.x - hitNode.x, y: worldPos.y - hitNode.y } : { x: 0, y: 0 };
+  try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+  if (window.DEBUG_MOUSE) {
+    console.log('[NAV] down pending; hit:', hitNode? hitNode._type+':'+hitNode.id : 'none');
   }
 }
 
 function onPointerMove(e) {
+  try { e.preventDefault(); } catch(_) {}
   if (isModalOpen) return;
-  
+  if (NAV.mode === 'idle') return;
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
   const worldPos = screenToWorld(x, y);
-  
-  if (dndState === DnDState.PRESSED || dndState === DnDState.DRAGGING) {
-    dndState = DnDState.DRAGGING;
-    
-    if (draggedNode) {
-      draggedNode.x = worldPos.x - dragOffset.x;
-      draggedNode.y = worldPos.y - dragOffset.y;
-      requestDraw();
+  const moved = Math.hypot(e.clientX - NAV.downCX, e.clientY - NAV.downCY);
+  if (NAV.mode === 'pending') {
+    if (moved > MOVE_SLOP) {
+      // Start object drag ONLY with Alt pressed; otherwise pan
+      if (NAV.hitNode && e.altKey) {
+        NAV.mode = 'drag';
+        draggedNode = NAV.hitNode;
+        dragOffset = { x: NAV.dragOffset.x, y: NAV.dragOffset.y };
+        if (window.DEBUG_MOUSE) console.log('[NAV] start drag (alt+move)');
+      } else {
+        startPan();
+        if (window.DEBUG_MOUSE) console.log('[NAV] start pan');
+      }
     }
-  } else {
-    // Handle panning when not dragging
-    onMouseMove(e);
+    return;
+  }
+  if (NAV.mode === 'pan') {
+    updatePan(e);
+    if (window.DEBUG_MOUSE) console.log('[NAV] pan move');
+    return;
+  }
+  if (NAV.mode === 'drag' && draggedNode) {
+    draggedNode.x = worldPos.x - dragOffset.x;
+    draggedNode.y = worldPos.y - dragOffset.y;
+    requestDraw();
+    if (window.DEBUG_MOUSE) console.log('[NAV] drag move');
+    return;
   }
 }
 
 function onPointerUp(e) {
+  try { e.preventDefault(); } catch(_) {}
   if (isModalOpen) return;
-  
-  // Release pointer capture
-  canvas.releasePointerCapture(e.pointerId);
-  
-  if (dndState === DnDState.DRAGGING && draggedNode) {
+  try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+  const elapsed = performance.now() - NAV.downTime;
+  const moved = Math.hypot(e.clientX - NAV.downCX, e.clientY - NAV.downCY);
+  if (NAV.mode === 'drag' && draggedNode) {
     handleDrop();
+    if (window.DEBUG_MOUSE) console.log('[NAV] end drag');
+  } else if (NAV.mode === 'pan') {
+    endPan();
+    if (window.DEBUG_MOUSE) console.log('[NAV] end pan');
+  } else if (NAV.mode === 'pending' && elapsed <= CLICK_MS && moved <= MOVE_SLOP) {
+    triggerClickAt(e.clientX, e.clientY);
+    if (window.DEBUG_MOUSE) console.log('[NAV] click');
   }
-  
-  // Reset state
-  dndState = DnDState.IDLE;
-  dndData = null;
+  NAV.mode = 'idle';
+  NAV.pointerId = null;
   draggedNode = null;
-  dragOffset = null;
 }
 
 function onPointerLeave(e) {
