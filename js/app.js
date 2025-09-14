@@ -651,35 +651,11 @@ function updateStatistics() {
     }
   }
   
-  // Update status filters
+  // Update status filters - СКРЫТЫ (не используются)
   const statusWrap = document.getElementById("tagsList");
   if (statusWrap) {
-    const statusFilters = [
-      { key: 'all', label: 'Все', count: stats.totalTasks, color: 'var(--muted)' },
-      { key: 'backlog', label: 'План', count: stats.backlog, color: 'var(--muted)' },
-      { key: 'today', label: 'Сегодня', count: stats.today, color: 'var(--warn)' },
-      { key: 'doing', label: 'В работе', count: stats.doing, color: 'var(--accent)' },
-      { key: 'done', label: 'Готово', count: stats.done, color: 'var(--ok)' }
-    ];
-    
-    statusWrap.innerHTML = statusFilters.map(status => 
-      `<div class="tag ${state.filterStatus === status.key ? "active" : ""}" 
-            data-status="${status.key}" 
-            style="border-color:${status.color};color:${status.color}">
-        ${status.label} (${status.count})
-      </div>`
-    ).join("");
-    
-    // Re-attach status filter handlers
-    statusWrap.querySelectorAll(".tag[data-status]").forEach((el) => {
-      el.onclick = () => {
-        const val = el.dataset.status === 'all' ? null : el.dataset.status;
-        state.filterStatus = val;
-        renderSidebar(); // Full re-render when filter changes
-        if (window.layoutMap) window.layoutMap();
-        if (window.drawMap) window.drawMap();
-      };
-    });
+    // Фильтры статусов временно скрыты
+    statusWrap.innerHTML = '';
   }
 }
 
@@ -1016,38 +992,10 @@ function renderSidebar() {
   });
 
   // Tags section
-  const allTags = [
-    ...new Set(
-      state.tasks
-        .flatMap((t) => t.tags)
-        .concat(state.projects.flatMap((p) => p.tags))
-    ),
-  ].sort();
+  // Tags section - СКРЫТЫ (не используются)
+  // Теги временно скрыты, так как не используются
   
-  if (allTags.length > 0) {
-    statusWrap.innerHTML += `<div style="margin-top:8px;font-size:11px;color:var(--muted);font-weight:600">ТЕГИ</div>`;
-    statusWrap.innerHTML += allTags
-      .map(
-        (t) =>
-          `<div class="tag ${
-            state.filterTag === t ? "active" : ""
-          }" data-tag="${t}">#${t}</div>`
-      )
-      .join("");
-  }
-  
-  // Tag handlers
-  if (allTags.length > 0) {
-    statusWrap.querySelectorAll(".tag[data-tag]").forEach((el) => {
-    el.onclick = () => {
-      const val = el.dataset.tag || null;
-      state.filterTag = val;
-      renderSidebar();
-      layoutMap();
-      drawMap();
-    };
-  });
-  }
+  // Tag handlers - СКРЫТЫ (не используются)
   
   // Search functionality
   const searchInput = document.getElementById("sidebarSearch");
@@ -2074,3 +2022,9 @@ init();
 try { window.renderSidebar = renderSidebar; } catch(_) {}
 try { window.renderToday = renderToday; } catch(_) {}
 try { window.openInspectorFor = openInspectorFor; } catch(_) {}
+
+// Toggle all tags visibility
+window.toggleAllTags = function() {
+  state.showAllTags = !state.showAllTags;
+  renderSidebar();
+};
