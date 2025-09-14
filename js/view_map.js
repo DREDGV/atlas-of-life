@@ -1336,20 +1336,20 @@ export function initMap(canvasEl, tooltipEl) {
     // initStarField(); // TEMPORARILY DISABLED
     try { fitAll(); } catch(_) {}
   });
-  // DISABLED: Use pointer events for better DnD handling - CONFLICTS WITH NEW MOUSE SYSTEM
-  // canvas.addEventListener("pointermove", onPointerMove);
-  // canvas.addEventListener("pointerdown", onPointerDown);
-  // canvas.addEventListener("pointerup", onPointerUp);
-  // canvas.addEventListener("pointerleave", onPointerLeave);
+  // Use pointer events for better DnD handling - FIXED BY GPT-5
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointerleave", onPointerLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
   canvas.addEventListener("contextmenu", onContextMenu);
   
-  // Добавляем обработчик mousedown для средней кнопки мыши
-  canvas.addEventListener("mousedown", onMouseDown);
-  canvas.addEventListener("mousemove", onMouseMove);
-  canvas.addEventListener("mouseup", onMouseUp);
+  // DISABLED: Mouse events - using pointer events instead
+  // canvas.addEventListener("mousedown", onMouseDown);
+  // canvas.addEventListener("mousemove", onMouseMove);
+  // canvas.addEventListener("mouseup", onMouseUp);
   layoutMap();
   drawMap();
   // Автоматически подгоняем вид под все объекты при инициализации
