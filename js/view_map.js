@@ -140,41 +140,50 @@ function commitObjectPosition(obj) {
   const currentTx = viewState.tx;
   const currentTy = viewState.ty;
   
-  // Сохраняем позицию в зависимости от типа объекта
-  if (obj._type === "task") {
-    const task = state.tasks.find(t => t.id === obj.id);
-    if (task) {
-      task._pos = { x: obj.x, y: obj.y };
-      task.updatedAt = Date.now();
-      saveState();
-      showToast("Позиция задачи обновлена", "ok");
+  // Временно отключаем mapApi чтобы saveState не вызывал layoutMap
+  const tempMapApi = window.mapApi;
+  window.mapApi = null;
+  
+  try {
+    // Сохраняем позицию в зависимости от типа объекта
+    if (obj._type === "task") {
+      const task = state.tasks.find(t => t.id === obj.id);
+      if (task) {
+        task._pos = { x: obj.x, y: obj.y };
+        task.updatedAt = Date.now();
+        saveState();
+        showToast("Позиция задачи обновлена", "ok");
+      }
+    } else if (obj._type === "project") {
+      const project = state.projects.find(p => p.id === obj.id);
+      if (project) {
+        project._pos = { x: obj.x, y: obj.y };
+        project.updatedAt = Date.now();
+        saveState();
+        showToast("Позиция проекта обновлена", "ok");
+      }
+    } else if (obj._type === "idea") {
+      const idea = state.ideas.find(i => i.id === obj.id);
+      if (idea) {
+        idea.x = obj.x;
+        idea.y = obj.y;
+        idea.updatedAt = Date.now();
+        saveState();
+        showToast("Позиция идеи обновлена", "ok");
+      }
+    } else if (obj._type === "note") {
+      const note = state.notes.find(n => n.id === obj.id);
+      if (note) {
+        note.x = obj.x;
+        note.y = obj.y;
+        note.updatedAt = Date.now();
+        saveState();
+        showToast("Позиция заметки обновлена", "ok");
+      }
     }
-  } else if (obj._type === "project") {
-    const project = state.projects.find(p => p.id === obj.id);
-    if (project) {
-      project._pos = { x: obj.x, y: obj.y };
-      project.updatedAt = Date.now();
-      saveState();
-      showToast("Позиция проекта обновлена", "ok");
-    }
-  } else if (obj._type === "idea") {
-    const idea = state.ideas.find(i => i.id === obj.id);
-    if (idea) {
-      idea.x = obj.x;
-      idea.y = obj.y;
-      idea.updatedAt = Date.now();
-      saveState();
-      showToast("Позиция идеи обновлена", "ok");
-    }
-  } else if (obj._type === "note") {
-    const note = state.notes.find(n => n.id === obj.id);
-    if (note) {
-      note.x = obj.x;
-      note.y = obj.y;
-      note.updatedAt = Date.now();
-      saveState();
-      showToast("Позиция заметки обновлена", "ok");
-    }
+  } finally {
+    // Восстанавливаем mapApi
+    window.mapApi = tempMapApi;
   }
   
   // Восстанавливаем зум после сохранения
@@ -1194,6 +1203,8 @@ const DnDState = {
 
 let dndState = DnDState.IDLE;
 let dndData = null; // { type: 'task'|'project', id: string, startPos: {x,y} }
+// Suppress synthetic click after pan/drag
+let suppressClickUntil = 0;
 
 // Navigation model: left-drag pans everywhere; click selects; drag node requires Alt or long-press
 const NAV = {
@@ -3346,9 +3357,11 @@ function onPointerUp(e) {
   if (NAV.mode === 'drag' && draggedNode) {
     handleDrop();
     if (window.DEBUG_MOUSE) console.log('[NAV] end drag');
+    suppressClickUntil = performance.now() + 260;
   } else if (NAV.mode === 'pan') {
     endPan();
     if (window.DEBUG_MOUSE) console.log('[NAV] end pan');
+    suppressClickUntil = performance.now() + 260;
   } else if (NAV.mode === 'pending' && elapsed <= CLICK_MS && moved <= MOVE_SLOP) {
     triggerClickAt(e.clientX, e.clientY);
     if (window.DEBUG_MOUSE) console.log('[NAV] click');
@@ -5092,6 +5105,10 @@ function onContextMenuOld(e) {
 }
 
 function onClick(e) {
+  // Ignore click generated right after a pan/drag
+  try {
+    if (performance.now() < suppressClickUntil) return;
+  } catch (_) {}
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
   if (!n) {
