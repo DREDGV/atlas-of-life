@@ -1352,6 +1352,7 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
   padding: 8px 0;
   z-index: 1000;
   min-width: 200px;
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   animation: contextMenuAppear 0.2s ease-out;
@@ -1816,6 +1817,7 @@ kbd {
   box-shadow: 0 6px 20px rgba(0,0,0,0.7) !important;
   opacity: 1 !important;
   visibility: visible !important;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 

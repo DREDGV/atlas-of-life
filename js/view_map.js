@@ -1866,7 +1866,7 @@ export function layoutMap() {
   
   // Отладка для Edge
   if (window.DEBUG_EDGE_TASKS) {
-    console.log('=== LAYOUT MAP ===');
+    // console.log('=== LAYOUT MAP ===');
     console.log('layoutMap called, state.tasks:', state.tasks.length, state.tasks);
     console.log('state.projects:', state.projects.length, state.projects);
     console.log('state.domains:', state.domains.length, state.domains);
@@ -1934,7 +1934,7 @@ export function layoutMap() {
       : d.color || "#2dd4bf";
     
     // Добавляем mood для домена
-    console.log(`=== CALCULATING MOOD FOR DOMAIN: ${d.title} (${d.id}) ===`);
+    // console.log(`=== CALCULATING MOOD FOR DOMAIN: ${d.title} (${d.id}) ===`);
     
     // Объявляем переменные вне try блока
     let mood, moodColor, moodDescription;
@@ -2211,7 +2211,7 @@ export function layoutMap() {
 
   // Добавляем идеи и заметки в nodes
   if (state.ideas && state.ideas.length > 0) {
-    console.log('🎨 Adding ideas to nodes:', state.ideas.length);
+    // console.log('🎨 Adding ideas to nodes:', state.ideas.length);
     state.ideas.forEach(idea => {
       if (idea.x !== undefined && idea.y !== undefined && idea.r !== undefined) {
         nodes.push({
@@ -2233,7 +2233,7 @@ export function layoutMap() {
   }
 
   if (state.notes && state.notes.length > 0) {
-    console.log('📝 Adding notes to nodes:', state.notes.length);
+    // console.log('📝 Adding notes to nodes:', state.notes.length);
     state.notes.forEach(note => {
       if (note.x !== undefined && note.y !== undefined && note.r !== undefined) {
         nodes.push({
@@ -2282,12 +2282,12 @@ export function layoutMap() {
   
   // Отладка для Edge - показываем результат layoutMap
   if (window.DEBUG_EDGE_TASKS) {
-    console.log('=== LAYOUT RESULT ===');
-    console.log('Total nodes created:', nodes.length);
-    console.log('Node types:', nodes.map(n => n._type));
-    console.log('Task nodes:', nodes.filter(n => n._type === 'task').length);
-    console.log('Project nodes:', nodes.filter(n => n._type === 'project').length);
-    console.log('Domain nodes:', nodes.filter(n => n._type === 'domain').length);
+    // console.log('=== LAYOUT RESULT ===');
+    // console.log('Total nodes created:', nodes.length);
+    // console.log('Node types:', nodes.map(n => n._type));
+    // console.log('Task nodes:', nodes.filter(n => n._type === 'task').length);
+    // console.log('Project nodes:', nodes.filter(n => n._type === 'project').length);
+    // console.log('Domain nodes:', nodes.filter(n => n._type === 'domain').length);
   }
   
   // Reset layouting flag
