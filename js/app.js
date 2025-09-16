@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.2-ux-improved";
+let APP_VERSION = "Atlas_of_life_v0.5.3-checklist-fixed";
 
 // ephemeral UI state
 const ui = {
@@ -3416,7 +3416,7 @@ function showChecklistEditor(checklist) {
       <div class="form-group">
         <label>Элементы чек-листа:</label>
         <div class="checklist-items" id="checklistItems">
-          ${itemsHTML}
+          ${itemsHTML || '<div class="checklist-empty">Нет элементов. Добавьте первый элемент.</div>'}
         </div>
         <button class="btn" id="addChecklistItem">+ Добавить элемент</button>
       </div>
@@ -3481,14 +3481,36 @@ function showChecklistEditor(checklist) {
     const newItem = addChecklistItem(checklist.id, 'Новый элемент');
     if (newItem) {
       const itemsContainer = document.getElementById('checklistItems');
+      
+      // Убираем сообщение о пустом состоянии
+      const emptyMessage = itemsContainer.querySelector('.checklist-empty');
+      if (emptyMessage) {
+        emptyMessage.remove();
+      }
+      
       const itemHTML = `
         <div class="checklist-item" data-item-id="${newItem.id}">
           <input type="checkbox" class="checklist-checkbox">
-          <input type="text" value="${newItem.text}" class="checklist-text">
+          <input type="text" value="${newItem.text}" class="checklist-text" placeholder="Введите элемент списка">
           <button class="btn-small danger" onclick="removeChecklistItemFromEditor('${newItem.id}')">×</button>
         </div>
       `;
       itemsContainer.insertAdjacentHTML('beforeend', itemHTML);
+      
+      // Фокусируемся на новом поле ввода
+      const newTextInput = itemsContainer.querySelector(`[data-item-id="${newItem.id}"] .checklist-text`);
+      if (newTextInput) {
+        newTextInput.focus();
+        newTextInput.select();
+        
+        // Добавляем обработчик Enter для быстрого добавления следующего элемента
+        newTextInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('addChecklistItem').click();
+          }
+        });
+      }
     }
   };
   
@@ -3496,6 +3518,15 @@ function showChecklistEditor(checklist) {
   window.removeChecklistItemFromEditor = (itemId) => {
     if (removeChecklistItem(checklist.id, itemId)) {
       document.querySelector(`[data-item-id="${itemId}"]`).remove();
+      
+      // Проверяем, остались ли элементы
+      const itemsContainer = document.getElementById('checklistItems');
+      const remainingItems = itemsContainer.querySelectorAll('.checklist-item');
+      
+      if (remainingItems.length === 0) {
+        // Показываем сообщение о пустом состоянии
+        itemsContainer.innerHTML = '<div class="checklist-empty">Нет элементов. Добавьте первый элемент.</div>';
+      }
     }
   };
 }

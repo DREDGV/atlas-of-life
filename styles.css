@@ -2378,6 +2378,16 @@ kbd {
   font-weight: 500;
 }
 
+.checklist-empty {
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  padding: 20px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  border: 2px dashed var(--border);
+}
+
 /* Checklist styles in inspector */
 .checklist-card {
   border-left: 3px solid var(--accent);

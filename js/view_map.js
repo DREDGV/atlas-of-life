@@ -6910,6 +6910,40 @@ function drawChecklists() {
     ctx.textAlign = "center";
     ctx.fillText(checklist.title, x, y - height/2 - 8 * DPR);
     
+    // Отображение элементов списка (первые 3 элемента)
+    if (checklist.items && checklist.items.length > 0) {
+      const maxItems = Math.min(3, checklist.items.length);
+      const itemHeight = 8 * DPR;
+      const startY = y - height/2 + 20 * DPR;
+      
+      ctx.font = `${8 * DPR}px system-ui`;
+      ctx.textAlign = "left";
+      
+      for (let i = 0; i < maxItems; i++) {
+        const item = checklist.items[i];
+        const itemY = startY + i * itemHeight;
+        const checkboxX = x - width/2 + 8 * DPR;
+        const textX = checkboxX + 12 * DPR;
+        
+        // Чекбокс
+        ctx.fillStyle = item.completed ? baseColor : '#cccccc';
+        ctx.fillText(item.completed ? '☑' : '☐', checkboxX, itemY);
+        
+        // Текст элемента
+        ctx.fillStyle = item.completed ? '#888888' : '#333333';
+        const text = item.text.length > 15 ? item.text.substring(0, 15) + '...' : item.text;
+        ctx.fillText(text, textX, itemY);
+      }
+      
+      // Показать количество элементов, если их больше 3
+      if (checklist.items.length > 3) {
+        ctx.fillStyle = baseColor;
+        ctx.font = `${7 * DPR}px system-ui`;
+        ctx.textAlign = "center";
+        ctx.fillText(`+${checklist.items.length - 3} еще`, x, startY + maxItems * itemHeight + 4 * DPR);
+      }
+    }
+    
     ctx.restore();
   });
 }
