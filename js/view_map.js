@@ -35,6 +35,7 @@ import {
   generateId,
   isObjectLocked,
   canMoveObject,
+  getChecklistProgress,
   canChangeHierarchy
 } from "./state.js";
 
@@ -2450,6 +2451,7 @@ export function drawMap() {
   if (W > 0 && H > 0) {
     drawIdeas();
     drawNotes();
+    drawChecklists();
   }
 
   // compute viewport in world coords for culling
@@ -6701,5 +6703,148 @@ function showNoteEditor(note) {
       note.opacity = parseFloat(e.target.value);
       requestDraw();
     }, 100);
+  });
+}
+
+function drawChecklists() {
+  if (!state.checklists) {
+    state.checklists = [];
+  }
+  
+  if (W <= 0 || H <= 0) return;
+  
+  // Получаем функцию inView из контекста drawMap
+  const inv = 1 / Math.max(0.0001, viewState.scale);
+  const pad = 120 * inv;
+  const vx0 = -viewState.tx * inv - pad;
+  const vy0 = -viewState.ty * inv - pad;
+  const vx1 = (W - viewState.tx) * inv + pad;
+  const vy1 = (H - viewState.ty) * inv + pad;
+  const inView = (x, y, r = 0) =>
+    x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
+  
+  state.checklists.forEach((checklist, index) => {
+    if (!inView(checklist.x, checklist.y, checklist.r + 20 * DPR)) {
+      return;
+    }
+    
+    const x = checklist.x * DPR;
+    const y = checklist.y * DPR;
+    const r = checklist.r * DPR;
+    
+    // Анимация пульсации
+    const time = performance.now() * 0.002;
+    const pulse = 1 + Math.sin(time + checklist.x * 0.01) * 0.1;
+    const pulseRadius = r * pulse;
+    
+    // Рисуем чек-лист - современный дизайн с прогресс-баром
+    ctx.save();
+    
+    const baseColor = checklist.color || '#3b82f6';
+    const alpha = Math.max(0.9, checklist.opacity || 1.0);
+    
+    // Создаем форму чек-листа (прямоугольник с закругленными углами)
+    const width = pulseRadius * 2.5;
+    const height = pulseRadius * 1.8;
+    const cornerRadius = pulseRadius * 0.3;
+    
+    // Тень
+    ctx.globalAlpha = alpha * 0.4;
+    ctx.fillStyle = '#000000';
+    ctx.shadowColor = '#000000';
+    ctx.shadowBlur = 12 * DPR;
+    ctx.shadowOffsetX = 4 * DPR;
+    ctx.shadowOffsetY = 4 * DPR;
+    
+    // Рисуем тень
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2 + 3, y - height/2 + 3, width, height, cornerRadius);
+    ctx.fill();
+    
+    // Основная форма чек-листа
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.globalAlpha = alpha;
+    
+    // Градиент фона
+    const gradient = ctx.createLinearGradient(x - width/2, y - height/2, x + width/2, y + height/2);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.1, '#f8f9fa');
+    gradient.addColorStop(0.3, baseColor + '20');
+    gradient.addColorStop(0.7, baseColor + '15');
+    gradient.addColorStop(0.9, '#e9ecef');
+    gradient.addColorStop(1, '#dee2e6');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
+    ctx.fill();
+    
+    // Акцентная полоса сверху
+    ctx.fillStyle = baseColor + '80';
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, pulseRadius * 0.15, cornerRadius, cornerRadius, 0, 0);
+    ctx.fill();
+    
+    // Обводка
+    const borderGradient = ctx.createLinearGradient(x - width/2, y, x + width/2, y);
+    borderGradient.addColorStop(0, baseColor + '60');
+    borderGradient.addColorStop(0.5, baseColor + 'CC');
+    borderGradient.addColorStop(1, baseColor + '60');
+    
+    ctx.strokeStyle = borderGradient;
+    ctx.lineWidth = 2.5 * DPR;
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
+    ctx.stroke();
+    
+    // Прогресс-бар
+    const progress = getChecklistProgress(checklist.id);
+    if (progress > 0) {
+      const progressBarWidth = width * 0.8;
+      const progressBarHeight = 4 * DPR;
+      const progressBarX = x - progressBarWidth / 2;
+      const progressBarY = y + height/2 - 12 * DPR;
+      
+      // Фон прогресс-бара
+      ctx.fillStyle = baseColor + '30';
+      ctx.beginPath();
+      drawRoundedRect(ctx, progressBarX, progressBarY, progressBarWidth, progressBarHeight, progressBarHeight/2);
+      ctx.fill();
+      
+      // Заполнение прогресс-бара
+      const fillWidth = (progressBarWidth * progress) / 100;
+      if (fillWidth > 0) {
+        const progressGradient = ctx.createLinearGradient(progressBarX, progressBarY, progressBarX + fillWidth, progressBarY);
+        progressGradient.addColorStop(0, baseColor);
+        progressGradient.addColorStop(1, baseColor + 'CC');
+        
+        ctx.fillStyle = progressGradient;
+        ctx.beginPath();
+        drawRoundedRect(ctx, progressBarX, progressBarY, fillWidth, progressBarHeight, progressBarHeight/2);
+        ctx.fill();
+      }
+      
+      // Текст прогресса
+      ctx.fillStyle = baseColor;
+      ctx.font = `${8 * DPR}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.fillText(`${progress}%`, x, progressBarY - 4 * DPR);
+    }
+    
+    // Иконка чек-листа
+    ctx.fillStyle = baseColor;
+    ctx.font = `${12 * DPR}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.fillText('✓', x, y - 2 * DPR);
+    
+    // Название чек-листа
+    ctx.fillStyle = baseColor;
+    ctx.font = `${10 * DPR}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.fillText(checklist.title, x, y - height/2 - 8 * DPR);
+    
+    ctx.restore();
   });
 }

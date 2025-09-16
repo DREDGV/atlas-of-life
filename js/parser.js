@@ -3,6 +3,9 @@
 // Parse quick-add text like: "Сделать обзор #дом @Проект !сегодня 10:00 ~30м p2"
 export function parseQuick(text){
   const out = {title:text};
+  // checklist
+  const mChecklist = text.match(/✓([^\s#@!~p][^#@!~p]*)/i);
+  if(mChecklist){ out.checklist=mChecklist[1].trim(); out.title=out.title.replace(mChecklist[0],'').trim(); }
   // tag
   const mTag = text.match(/#([^\s#@!~p]+)/i);
   if(mTag){ out.tag=mTag[1].trim(); out.title=out.title.replace(mTag[0],'').trim(); }

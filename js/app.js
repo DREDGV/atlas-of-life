@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, createChecklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, getChecklistProgress, getChecklistsOfProject } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.4.5-roadmap";
+let APP_VERSION = "Atlas_of_life_v0.5.0-checklists";
 
 // ephemeral UI state
 const ui = {
@@ -3392,6 +3392,113 @@ function showNoteEditor(note) {
   };
 }
 
+function showChecklistEditor(checklist) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  // Генерируем HTML для элементов чек-листа
+  const itemsHTML = checklist.items.map(item => `
+    <div class="checklist-item" data-item-id="${item.id}">
+      <input type="checkbox" ${item.completed ? 'checked' : ''} class="checklist-checkbox">
+      <input type="text" value="${item.text}" class="checklist-text">
+      <button class="btn-small danger" onclick="removeChecklistItemFromEditor('${item.id}')">×</button>
+    </div>
+  `).join('');
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h2>Редактировать чек-лист</h2>
+      <div class="form-group">
+        <label for="checklistTitle">Название:</label>
+        <input type="text" id="checklistTitle" value="${checklist.title}" placeholder="Название чек-листа">
+      </div>
+      <div class="form-group">
+        <label>Элементы чек-листа:</label>
+        <div class="checklist-items" id="checklistItems">
+          ${itemsHTML}
+        </div>
+        <button class="btn" id="addChecklistItem">+ Добавить элемент</button>
+      </div>
+      <div class="form-group">
+        <label for="checklistColor">Цвет:</label>
+        <input type="color" id="checklistColor" value="${checklist.color || '#3b82f6'}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn primary" id="saveChecklist">Сохранить</button>
+        <button class="btn" id="cancelChecklist">Отмена</button>
+        <button class="btn danger" id="deleteChecklist">Удалить</button>
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'flex';
+  
+  // Event handlers
+  document.getElementById('saveChecklist').onclick = () => {
+    checklist.title = document.getElementById('checklistTitle').value;
+    checklist.color = document.getElementById('checklistColor').value;
+    checklist.updatedAt = Date.now();
+    
+    // Обновляем элементы чек-листа
+    const items = document.querySelectorAll('.checklist-item');
+    checklist.items = Array.from(items).map(itemEl => {
+      const itemId = itemEl.dataset.itemId;
+      const checkbox = itemEl.querySelector('.checklist-checkbox');
+      const textInput = itemEl.querySelector('.checklist-text');
+      
+      return {
+        id: itemId,
+        text: textInput.value,
+        completed: checkbox.checked,
+        createdAt: checklist.items.find(i => i.id === itemId)?.createdAt || Date.now()
+      };
+    });
+    
+    saveState();
+    if (window.layoutMap) window.layoutMap();
+    if (window.drawMap) window.drawMap();
+    closeModal();
+    showToast('Чек-лист сохранен', 'ok');
+  };
+  
+  document.getElementById('cancelChecklist').onclick = () => {
+    closeModal();
+  };
+  
+  document.getElementById('deleteChecklist').onclick = () => {
+    if (confirm('Удалить чек-лист?')) {
+      state.checklists = state.checklists.filter(c => c.id !== checklist.id);
+      saveState();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
+      closeModal();
+      showToast('Чек-лист удален', 'ok');
+    }
+  };
+  
+  document.getElementById('addChecklistItem').onclick = () => {
+    const newItem = addChecklistItem(checklist.id, 'Новый элемент');
+    if (newItem) {
+      const itemsContainer = document.getElementById('checklistItems');
+      const itemHTML = `
+        <div class="checklist-item" data-item-id="${newItem.id}">
+          <input type="checkbox" class="checklist-checkbox">
+          <input type="text" value="${newItem.text}" class="checklist-text">
+          <button class="btn-small danger" onclick="removeChecklistItemFromEditor('${newItem.id}')">×</button>
+        </div>
+      `;
+      itemsContainer.insertAdjacentHTML('beforeend', itemHTML);
+    }
+  };
+  
+  // Добавляем функцию для удаления элементов в глобальную область
+  window.removeChecklistItemFromEditor = (itemId) => {
+    if (removeChecklistItem(checklist.id, itemId)) {
+      document.querySelector(`[data-item-id="${itemId}"]`).remove();
+    }
+  };
+}
+
 // Setup creation panel buttons
 function setupCreationPanel() {
   // Create Task button
@@ -3485,6 +3592,18 @@ function submitQuick(text) {
       const note = createNote();
       note.title = title;
       showNoteEditor(note);
+      $("#quickAdd").value = "";
+      $("#qaChips").innerHTML = "";
+      return;
+    }
+  }
+  
+  if (text.startsWith('✓')) {
+    const title = text.substring(1).trim();
+    if (title) {
+      const checklist = createChecklist();
+      checklist.title = title;
+      showChecklistEditor(checklist);
       $("#quickAdd").value = "";
       $("#qaChips").innerHTML = "";
       return;

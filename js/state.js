@@ -43,6 +43,7 @@ export const state = {
   tasks:[],
   ideas:[],
   notes:[],
+  checklists:[],
   maxEdges:300
 };
 
@@ -920,4 +921,76 @@ export function createNote(title, text = '', domainId = null) {
   };
   state.notes.push(note);
   return note;
+}
+
+export function createChecklist(title, projectId = null, domainId = null) {
+  const checklist = {
+    id: 'c' + generateId(),
+    title: title,
+    projectId: projectId,
+    domainId: domainId,
+    x: Math.random() * 2000 - 1000,
+    y: Math.random() * 2000 - 1000,
+    r: 16,
+    color: getRandomProjectColor(),
+    opacity: 0.9,
+    items: [], // Массив элементов чек-листа
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  state.checklists.push(checklist);
+  return checklist;
+}
+
+// Функции для работы с элементами чек-листа
+export function addChecklistItem(checklistId, text) {
+  const checklist = byId(checklistId);
+  if (!checklist) return null;
+  
+  const item = {
+    id: generateId(),
+    text: text,
+    completed: false,
+    createdAt: Date.now()
+  };
+  
+  checklist.items.push(item);
+  checklist.updatedAt = Date.now();
+  return item;
+}
+
+export function toggleChecklistItem(checklistId, itemId) {
+  const checklist = byId(checklistId);
+  if (!checklist) return false;
+  
+  const item = checklist.items.find(i => i.id === itemId);
+  if (!item) return false;
+  
+  item.completed = !item.completed;
+  checklist.updatedAt = Date.now();
+  return item.completed;
+}
+
+export function removeChecklistItem(checklistId, itemId) {
+  const checklist = byId(checklistId);
+  if (!checklist) return false;
+  
+  const index = checklist.items.findIndex(i => i.id === itemId);
+  if (index === -1) return false;
+  
+  checklist.items.splice(index, 1);
+  checklist.updatedAt = Date.now();
+  return true;
+}
+
+export function getChecklistProgress(checklistId) {
+  const checklist = byId(checklistId);
+  if (!checklist || !checklist.items.length) return 0;
+  
+  const completed = checklist.items.filter(item => item.completed).length;
+  return Math.round((completed / checklist.items.length) * 100);
+}
+
+export function getChecklistsOfProject(projectId) {
+  return state.checklists.filter(c => c.projectId === projectId);
 }

@@ -100,6 +100,7 @@ export function initializeHotkeys() {
       newDomain: 'ctrl+shift+d',
       newIdea: 'ctrl+i',
       newNote: 'ctrl+shift+i',
+      newChecklist: 'ctrl+shift+c',
       search: 'ctrl+f',
       closeInspector: 'escape',
       statusPlan: '1',
@@ -193,6 +194,20 @@ export function initializeHotkeys() {
       console.error('Error in newNote hotkey:', error);
     }
   }, 'Создать новую заметку');
+  
+  // New checklist
+  registerHotkey(hotkeys.newChecklist, () => {
+    try {
+      const quickAdd = document.getElementById('quickAdd');
+      if (quickAdd) {
+        quickAdd.value = '✓';
+        quickAdd.focus();
+        quickAdd.setSelectionRange(1, 1);
+      }
+    } catch (error) {
+      console.error('Error in newChecklist hotkey:', error);
+    }
+  }, 'Создать новый чек-лист');
   
   // Search
   registerHotkey(hotkeys.search, () => {
