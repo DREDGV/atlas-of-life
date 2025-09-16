@@ -3431,27 +3431,7 @@ export function drawMap() {
       ctx.fillText(n.title, n.x, n.y - n.r - 8 * DPR);
     });
 
-  // Рисуем заметки
-  nodes
-    .filter((n) => n._type === "note")
-    .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
-      
-      // Рисуем заметку как квадрат
-      ctx.fillStyle = n.color || "#10b981";
-      ctx.fillRect(n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
-      
-      // Обводка
-      ctx.strokeStyle = "#059669";
-      ctx.lineWidth = 1 * DPR;
-      ctx.strokeRect(n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
-      
-      // Название заметки
-      ctx.fillStyle = "#ecfdf5";
-      ctx.font = `${9 * DPR}px system-ui`;
-      ctx.textAlign = "center";
-      ctx.fillText(n.title, n.x, n.y + 3 * DPR);
-    });
+  // Заметки теперь рисуются в функции drawNotes() - удален дублирующий код
 
   // FPS overlay
   if (showFps) {
