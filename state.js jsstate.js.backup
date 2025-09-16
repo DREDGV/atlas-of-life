@@ -1,0 +1,50 @@
+[33medb638d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m feat(backup): save current state before rollback to v0.2.18.13
+[33m99d8386[m[33m ([m[1;31morigin/main[m[33m)[m fix: fix screen
+[33ma5742f4[m fix: clean up imports - remove default exports, simplify hierarchy modules
+[33m66ad7d6[m feat: fix zoom
+[33m39cc965[m feat: добавлены CSS исправления и восстановлены pointer events
+[33m78726c5[m feat: DEBUG_MOUSE
+[33m0126bd0[m feat: попытки исправления системы навигации по карте
+[33m0a85bb7[m feat: исправлены критические баги и улучшен дизайн объектов
+[33m7f945ce[m fix(ui): update version number and implement ideas and notes functionality
+[33mb622f87[m fix(ui): update version number and hide unused status and tag filters
+[33mf586351[m fix(ui): update version number and enhance user interaction
+[33ma3d3c7a[m fix(ui): update version number and enhance user interaction
+[33m5282a3c[m feat(ui): update version number and enhance Today View functionality
+[33mb8c2f68[m fix(ui): update version number and adjust layout styles
+[33me9f805d[m fix(ui): update version number and adjust layout styles
+[33md17994d[m feat(state): add debug logging for demo data initialization
+[33m63f615e[m feat(state): add debug logging for demo data initialization
+[33mf8bc836[m feat(view_map): enhance mood calculation with error handling and logging
+[33m5ab1300[m feat(view_map): enhance mood calculation with error handling and logging
+[33m8f80cad[m feat(view_map): add debug logging for mood and domain rendering
+[33m89b35c9[m feat(view_map): add debug logging for mood and domain rendering
+[33m8be82d2[m feat: add chat history backup and remove outdated documents
+[33mee71ae1[m feat: add chat history backup and remove outdated documents
+[33mea2be87[m feat: some changes to map view and bugs fixed
+[33m553f074[m feat(drag-drop): implement drag and drop functionality for tasks and projects
+[33me27b9ac[m feat(chronos): add CHRONOS_ENGINE v0.3 concept
+[33m766ecee[m feat(ideas): add cosmic concepts section
+[33mfced66b[m docs: add PRD_v0.3_Vision and update documentation structure
+[33m5efa53a[m feat: добавить roadmap идей в IDEAS.md
+[33mffca27e[m feat: v0.2.16.0 - полное исправление Drag&Drop системы
+[33m86f96de[m feat: v0.2.16.0 - полное исправление Drag&Drop системы
+[33mb71977b[m feat: prepare version for AI analysis of project issues
+[33mb792123[m refactor: remove legacy code and unused files
+[33m212186d[m feat(autocomplete): implement advanced autocomplete system v0.2.10
+[33mdc73b08[m[33m ([m[1;33mtag: [m[1;33mv0.2.9[m[33m)[m feat: add hotkeys system and centralized settings menu
+[33mb9f796d[m feat(tasks): improve task creation and inspector UI
+[33m20769c6[m fix: Исправлен поиск в левой панели
+[33m3efb044[m feat: новая функция - создан автоматический генератор коммитов
+[33m90ade65[m fix: исправлены критические ошибки JavaScript v0.2.7.8
+[33mfbd2a14[m feat: улучшена панель слева v0.2.7.7
+[33m4c6ecfe[m Merge pull request #3 from DREDGV/repo-flatten
+[33m1847f77[m[33m ([m[1;33mtag: [m[1;33mv0.2.7.5[m[33m, [m[1;31morigin/repo-flatten[m[33m, [m[1;32mrepo-flatten[m[33m)[m feat: версия 0.2.7.5 с компактным интерфейсом
+[33m6330526[m fix: исправлены проблемы с отображением v0.2.7.5
+[33mf42fbd0[m feat: версия 0.2.7.5 с заметными улучшениями
+[33mc794855[m feat: добавлены скрипты для принудительного обновления кэша
+[33mf50ad1f[m fix: исправлены критические проблемы отображения
+[33m4e562f2[m fix: исправлены оставшиеся проблемы отображения
+[33m52fc7de[m fix: отключены конфликтующие аддоны fix-ui.css и fixes-v0.2.6.js
+[33m76fae7c[m fix: принудительное обновление кэша браузера v0.2.7.3
+[33mb259448[m fix: исправлены проблемы с отображением и адаптивностью

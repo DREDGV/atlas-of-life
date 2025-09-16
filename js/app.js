@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.3.1-clean-imports";
+let APP_VERSION = "Atlas_of_life_v0.3.1-stable-working";
 
 // ephemeral UI state
 const ui = {
@@ -3684,14 +3684,14 @@ async function init() {
   if (brandEl) brandEl.textContent = APP_VERSION;
   document.title = APP_VERSION + " (modular)";
   
-  // Проверяем флаг системы иерархии v2
-  if (isHierarchyV2Enabled()) {
-    console.log('✅ Система иерархии v2 включена');
-    // Здесь будет инициализация системы иерархии v2
-  } else {
+  // Проверяем флаг системы иерархии v2 (отключено для стабильности)
+  // if (isHierarchyV2Enabled()) {
+  //   console.log('✅ Система иерархии v2 включена');
+  //   // Здесь будет инициализация системы иерархии v2
+  // } else {
     console.log('🚫 Система иерархии v2 отключена (по умолчанию)');
     console.log('✅ Приложение работает в режиме совместимости');
-  }
+  // }
   
   renderSidebar();
   setupHeader();

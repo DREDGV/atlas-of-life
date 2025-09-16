@@ -255,35 +255,10 @@ export function setHierarchyV2Enabled(enabled) {
   state.hierarchyV2Enabled = enabled;
 }
 
-export function getHierarchyStatistics() {
-  const stats = {
-    totalObjects: state.domains.length + state.projects.length + state.tasks.length + state.ideas.length + state.notes.length,
-    withParents: 0,
-    withChildren: 0,
-    locked: 0
-  };
-  
-  [...state.domains, ...state.projects, ...state.tasks, ...state.ideas, ...state.notes].forEach(obj => {
-    if (obj.parentId) stats.withParents++;
-    if (obj.children && Object.values(obj.children).some(arr => arr.length > 0)) stats.withChildren++;
-    if (obj.locks && (obj.locks.move || obj.locks.hierarchy)) stats.locked++;
-  });
-  
-  return stats;
-}
+// Дублированная функция удалена - используется версия ниже
 
 
-export function rollbackHierarchyMigration() {
-  // Откат миграции - удаление полей иерархии
-  [...state.domains, ...state.projects, ...state.tasks, ...state.ideas, ...state.notes].forEach(obj => {
-    delete obj.parentId;
-    delete obj.children;
-    delete obj.locks;
-  });
-  
-  state.hierarchyV2Enabled = false;
-  return { success: true };
-}
+// Дублированная функция удалена - используется версия ниже
 
 export const now = Date.now();
 
