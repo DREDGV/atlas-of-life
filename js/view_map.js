@@ -1,4 +1,20 @@
 // js/view_map.js
+
+// Helper function for rounded rectangles (compatibility)
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
 import {
   state,
   byId,
@@ -10,17 +26,24 @@ import {
   daysSince,
   getProjectColor,
   getRandomProjectColor,
+  getRandomIdeaColor,
+  getRandomNoteColor,
   getContrastColor,
   getDomainMood,
   getMoodColor,
   getMoodDescription,
-  generateId
+  generateId,
+  isObjectLocked,
+  canMoveObject,
+  canChangeHierarchy
 } from "./state.js";
 
 // Mood functions imported
 import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
+
+// showToast is defined globally in app.js
 
 let canvas,
   tooltip,
@@ -49,6 +72,13 @@ const viewState = {
 };
 // remember last mouse client position for mouseup fallback
 let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
+
+// Focus mode "Black Hole" - hide all except selected domain
+let focusMode = {
+  active: false,
+  domainId: null,
+  originalOpacity: {}
+};
 
 // wheel/zoom handler
 let pendingFrame = false;
@@ -1220,11 +1250,13 @@ const NAV = {
 };
 const CLICK_MS = 220;
 const HOLD_MS = 320; // reserved (long-press currently disabled)
-const MOVE_SLOP = 10; // px (screen) — меньше ложных срабатываний
+const MOVE_SLOP = 5; // px (screen) — более чувствительное управление
 
 function startPan() {
   NAV.mode = 'pan';
   canvas.style.cursor = 'grabbing';
+  // Показываем подсказку о панорамировании
+  if (window.DEBUG_MOUSE) console.log('[NAV] Pan mode activated - LMB drag to pan');
 }
 function updatePan(e) {
   const dx = e.clientX - NAV.lastCX;
@@ -1482,12 +1514,46 @@ function createProjectAtPosition(x, y) {
 }
 
 function createIdeaAtPosition(x, y) {
-  const idea = createIdea();
+  const idea = {
+    id: generateId(),
+    title: 'Новая идея',
+    content: '',
+    domainId: state.activeDomain || state.domains[0]?.id || null,
+    x: x,
+    y: y,
+    r: 20,
+    color: getRandomIdeaColor(),
+    opacity: 0.8,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  state.ideas.push(idea);
+  saveState();
+  layoutMap();
+  drawMap();
   showIdeaEditor(idea);
 }
 
 function createNoteAtPosition(x, y) {
-  const note = createNote();
+  const note = {
+    id: generateId(),
+    title: 'Новая заметка',
+    content: '',
+    domainId: state.activeDomain || state.domains[0]?.id || null,
+    x: x,
+    y: y,
+    r: 18,
+    color: getRandomNoteColor(),
+    opacity: 0.9,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  state.notes.push(note);
+  saveState();
+  layoutMap();
+  drawMap();
   showNoteEditor(note);
 }
 
@@ -1594,6 +1660,43 @@ export function resetView() {
   viewState.tx = 0;
   viewState.ty = 0;
   drawMap();
+}
+
+// Focus mode "Black Hole" functions
+export function toggleFocusMode(domainId = null) {
+  if (focusMode.active) {
+    // Exit focus mode
+    focusMode.active = false;
+    focusMode.domainId = null;
+    focusMode.originalOpacity = {};
+    showToast("Режим фокуса выключен", "ok");
+  } else {
+    // Enter focus mode
+    if (!domainId) {
+      // If no domain specified, use active domain
+      domainId = state.activeDomain;
+    }
+    if (!domainId) {
+      showToast("Выберите домен для фокуса", "warn");
+      return;
+    }
+    
+    focusMode.active = true;
+    focusMode.domainId = domainId;
+    showToast(`Режим фокуса: ${state.domains.find(d => d.id === domainId)?.title}`, "ok");
+  }
+  
+  // Recalculate layout and redraw
+  layoutMap();
+  drawMap();
+}
+
+export function isFocusModeActive() {
+  return focusMode.active;
+}
+
+export function getFocusedDomainId() {
+  return focusMode.domainId;
 }
 
 function animateTo(target, ms = 230) {
@@ -1771,9 +1874,17 @@ export function layoutMap() {
   
   nodes = [];
   edges = [];
-  const domains = state.activeDomain
+  // Filter domains based on focus mode
+  let domains;
+  if (focusMode.active) {
+    // In focus mode, show only the focused domain
+    domains = state.domains.filter((d) => d.id === focusMode.domainId);
+  } else {
+    // Normal mode - show active domain or all domains
+    domains = state.activeDomain
     ? state.domains.filter((d) => d.id === state.activeDomain)
     : state.domains.slice();
+  }
   const domainCount = domains.length;
   // Радиусы доменов (можно сделать динамическими, если потребуется)
   const domainRadius = 220 * DPR;
@@ -2100,36 +2211,46 @@ export function layoutMap() {
 
   // Добавляем идеи и заметки в nodes
   if (state.ideas && state.ideas.length > 0) {
+    console.log('🎨 Adding ideas to nodes:', state.ideas.length);
     state.ideas.forEach(idea => {
-      nodes.push({
-        _type: "idea",
-        id: idea.id,
-        title: idea.title,
-        x: idea.x,
-        y: idea.y,
-        r: idea.r,
-        color: idea.color,
-        opacity: idea.opacity,
-        content: idea.content,
-        domainId: idea.domainId
-      });
+      if (idea.x !== undefined && idea.y !== undefined && idea.r !== undefined) {
+        nodes.push({
+          _type: "idea",
+          id: idea.id,
+          title: idea.title,
+          x: idea.x,
+          y: idea.y,
+          r: idea.r,
+          color: idea.color,
+          opacity: idea.opacity,
+          content: idea.content,
+          domainId: idea.domainId
+        });
+      } else {
+        console.warn('⚠️ Idea missing coordinates:', idea);
+      }
     });
   }
 
   if (state.notes && state.notes.length > 0) {
+    console.log('📝 Adding notes to nodes:', state.notes.length);
     state.notes.forEach(note => {
-      nodes.push({
-        _type: "note",
-        id: note.id,
-        title: note.title,
-        x: note.x,
-        y: note.y,
-        r: note.r,
-        color: note.color,
-        opacity: note.opacity,
-        content: note.content,
-        domainId: note.domainId
-      });
+      if (note.x !== undefined && note.y !== undefined && note.r !== undefined) {
+        nodes.push({
+          _type: "note",
+          id: note.id,
+          title: note.title,
+          x: note.x,
+          y: note.y,
+          r: note.r,
+          color: note.color,
+          opacity: note.opacity,
+          content: note.content,
+          domainId: note.domainId
+        });
+      } else {
+        console.warn('⚠️ Note missing coordinates:', note);
+      }
     });
   }
 
@@ -2201,6 +2322,34 @@ export function drawMap() {
   
   ctx.save();
   ctx.clearRect(0, 0, W, H);
+  
+  // Focus mode "Black Hole" effect
+  if (focusMode.active) {
+    // Create dark overlay with gradient effect
+    const gradient = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H)/2);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0.3)');
+    gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.7)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+    
+    // Add "event horizon" effect around focused domain
+    const focusedDomain = nodes.find(n => n._type === 'domain' && n.id === focusMode.domainId);
+    if (focusedDomain) {
+      const gradient2 = ctx.createRadialGradient(
+        focusedDomain.x, focusedDomain.y, focusedDomain.r,
+        focusedDomain.x, focusedDomain.y, focusedDomain.r + 100
+      );
+      gradient2.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      gradient2.addColorStop(0.8, 'rgba(0, 0, 0, 0.5)');
+      gradient2.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
+      
+      ctx.fillStyle = gradient2;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+  
   // single transform matrix: scale + translate
   ctx.setTransform(
     viewState.scale,
@@ -2340,23 +2489,45 @@ export function drawMap() {
       // Используем mood цвет вместо обычного цвета домена
       const domainColor = n.moodColor || n.color;
       
-      // Draw nebula with style support
+      // Draw nebula with mood-based effects
       if (projectVisualStyle === 'original') {
-        // Original domain drawing from v0.2.7.5
+        // Original domain drawing with mood enhancements
       const grad = ctx.createRadialGradient(n.x, n.y, n.r * 0.3, n.x, n.y, n.r);
-      grad.addColorStop(0, domainColor + "33");
+        grad.addColorStop(0, domainColor + "33");
       grad.addColorStop(1, "#0000");
       ctx.beginPath();
       ctx.fillStyle = grad;
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
+        
+        // Mood-based border effects
         ctx.beginPath();
         ctx.strokeStyle = domainColor;
         ctx.lineWidth = 1.2 * DPR;
-        ctx.setLineDash([4 * DPR, 4 * DPR]);
+        
+        // Different dash patterns based on mood
+        if (n.mood === 'crisis') {
+          ctx.setLineDash([2 * DPR, 2 * DPR]); // Fast blinking for crisis
+        } else if (n.mood === 'pressure') {
+          ctx.setLineDash([4 * DPR, 2 * DPR]); // Uneven pattern for pressure
+        } else if (n.mood === 'growth') {
+          ctx.setLineDash([6 * DPR, 2 * DPR]); // Growing pattern for growth
+        } else {
+          ctx.setLineDash([4 * DPR, 4 * DPR]); // Steady pattern for balance
+        }
+        
         ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
+        
+        // Add mood indicator ring
+        if (n.mood !== 'balance') {
+          ctx.beginPath();
+          ctx.strokeStyle = domainColor + "80";
+          ctx.lineWidth = 3 * DPR;
+          ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       } else if (projectVisualStyle === 'neon') {
         drawNeonStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else if (projectVisualStyle === 'tech') {
@@ -2405,6 +2576,26 @@ export function drawMap() {
       ctx.font = `${14 * DPR}px system-ui`;
       ctx.textAlign = "center";
       ctx.fillText(n.title, n.x, n.y - n.r - 8 * DPR);
+      
+      // Визуальные индикаторы блокировок
+      const domain = state.domains.find(d => d.id === n.id);
+      if (domain && domain.locks) {
+        // Иконка замка для блокировки перемещения
+        if (domain.locks.move) {
+          ctx.fillStyle = "#ff6b6b";
+          ctx.font = `${12 * DPR}px system-ui`;
+          ctx.textAlign = "center";
+          ctx.fillText("🔒", n.x + n.r - 15 * DPR, n.y - n.r + 20 * DPR);
+        }
+        
+        // Иконка цепи для блокировки смены связей
+        if (domain.locks.hierarchy) {
+          ctx.fillStyle = "#ffa500";
+          ctx.font = `${12 * DPR}px system-ui`;
+          ctx.textAlign = "center";
+          ctx.fillText("⛓️", n.x + n.r - 15 * DPR, n.y - n.r + 35 * DPR);
+        }
+      }
     });
 
   // projects as planets
@@ -2563,6 +2754,26 @@ export function drawMap() {
       ctx.font = `${12 * DPR}px system-ui`;
       ctx.textAlign = "center";
       ctx.fillText(n.title, n.x, n.y - (n.r + 28 * DPR));
+      
+      // Визуальные индикаторы блокировок для проектов
+      const projectData = state.projects.find(p => p.id === n.id);
+      if (projectData && projectData.locks) {
+        // Иконка замка для блокировки перемещения
+        if (projectData.locks.move) {
+          ctx.fillStyle = "#ff6b6b";
+          ctx.font = `${10 * DPR}px system-ui`;
+          ctx.textAlign = "center";
+          ctx.fillText("🔒", n.x + n.r - 10 * DPR, n.y - n.r + 15 * DPR);
+        }
+        
+        // Иконка цепи для блокировки смены связей
+        if (projectData.locks.hierarchy) {
+          ctx.fillStyle = "#ffa500";
+          ctx.font = `${10 * DPR}px system-ui`;
+          ctx.textAlign = "center";
+          ctx.fillText("⛓️", n.x + n.r - 10 * DPR, n.y - n.r + 30 * DPR);
+        }
+      }
     });
 
   // Enhanced drag feedback: improved visual indicators for all drag operations
@@ -2846,6 +3057,56 @@ export function drawMap() {
       // defensive: ignore drawing errors
     }
   }
+
+  // Рисуем идеи
+  nodes
+    .filter((n) => n._type === "idea")
+    .forEach((n) => {
+      if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
+      
+      // Рисуем идею как полупрозрачный круг
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = (n.color || "#8b5cf6") + "80"; // 50% прозрачности
+      ctx.fill();
+      
+      // Обводка
+      ctx.beginPath();
+      ctx.strokeStyle = n.color || "#8b5cf6";
+      ctx.lineWidth = 2 * DPR;
+      ctx.setLineDash([4 * DPR, 4 * DPR]);
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      // Название идеи
+      ctx.fillStyle = "#e0e7ff";
+      ctx.font = `${10 * DPR}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.fillText(n.title, n.x, n.y - n.r - 8 * DPR);
+    });
+
+  // Рисуем заметки
+  nodes
+    .filter((n) => n._type === "note")
+    .forEach((n) => {
+      if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
+      
+      // Рисуем заметку как квадрат
+      ctx.fillStyle = n.color || "#10b981";
+      ctx.fillRect(n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
+      
+      // Обводка
+      ctx.strokeStyle = "#059669";
+      ctx.lineWidth = 1 * DPR;
+      ctx.strokeRect(n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
+      
+      // Название заметки
+      ctx.fillStyle = "#ecfdf5";
+      ctx.font = `${9 * DPR}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.fillText(n.title, n.x, n.y + 3 * DPR);
+    });
 
   // FPS overlay
   if (showFps) {
@@ -3250,7 +3511,7 @@ function onMouseUp(e) {
 
 function onMouseDown(e) {
   // Disabled: navigation uses pointer events; prevent legacy mouse drag path
-  return;
+    return;
   if (e.button !== 0) return;                 // только ЛКМ
   if (e.buttons !== 1) return;                // только ЛКМ зажата
   e.preventDefault();
@@ -3323,17 +3584,27 @@ function onPointerMove(e) {
     if (moved > MOVE_SLOP) {
       // Start object drag ONLY with Alt pressed; otherwise pan
       if (NAV.hitNode && e.altKey) {
-        NAV.mode = 'drag';
-        draggedNode = NAV.hitNode;
-        dragOffset = { x: NAV.dragOffset.x, y: NAV.dragOffset.y };
-        if (window.DEBUG_MOUSE) console.log('[NAV] start drag (alt+move)');
+        // Проверяем блокировку перемещения
+        if (!canMoveObject(NAV.hitNode)) {
+          console.log('🚫 Объект заблокирован для перемещения:', NAV.hitNode._type, NAV.hitNode.id);
+          showToast('Объект заблокирован для перемещения', 'warn');
+          startPan(); // Переключаемся на панорамирование
+          if (window.DEBUG_MOUSE) console.log('[NAV] blocked drag, switching to pan');
+        } else {
+          NAV.mode = 'drag';
+          draggedNode = NAV.hitNode;
+          dragOffset = { x: NAV.dragOffset.x, y: NAV.dragOffset.y };
+          canvas.style.cursor = 'grabbing';
+          if (window.DEBUG_MOUSE) console.log('[NAV] start drag (alt+move)');
+        }
       } else {
+        // По умолчанию - панорамирование (даже если есть объект под курсором)
         startPan();
-        if (window.DEBUG_MOUSE) console.log('[NAV] start pan');
+        if (window.DEBUG_MOUSE) console.log('[NAV] start pan (default behavior)');
       }
     }
-    return;
-  }
+      return;
+    }
   if (NAV.mode === 'pan') {
     updatePan(e);
     if (window.DEBUG_MOUSE) console.log('[NAV] pan move');
@@ -4600,11 +4871,17 @@ function setZoom(percent) {
 }
 window.mapApi.getScale = getScale;
 window.mapApi.setZoom = setZoom;
+window.mapApi.toggleFocusMode = toggleFocusMode;
+window.mapApi.isFocusModeActive = isFocusModeActive;
+window.mapApi.getFocusedDomainId = getFocusedDomainId;
 
 // Back-compat aliases for modules that call global functions directly
 try {
   window.layoutMap = layoutMap;
   window.drawMap = drawMap;
+  window.toggleFocusMode = toggleFocusMode;
+  window.isFocusModeActive = isFocusModeActive;
+  window.getFocusedDomainId = getFocusedDomainId;
   window.fitAll = fitAll;
   window.fitActiveDomain = fitActiveDomain;
   window.fitActiveProject = fitActiveProject;
@@ -5134,12 +5411,26 @@ function onClick(e) {
     
     openInspectorFor(obj);
   } else if (n._type === 'idea') {
-    // Левый клик по идее - только выделение, редактирование по правому клику
-    hoverNodeId = n.id;
+    // Левый клик по идее - открываем инспектор
+    const idea = state.ideas.find(i => i.id === n.id);
+    if (idea) {
+      // Запускаем эффект клика
+      clickedNodeId = n.id;
+      clickEffectTime = 1.0;
+      
+      openInspectorFor({...idea, _type: 'idea'});
+    }
     return;
   } else if (n._type === 'note') {
-    // Левый клик по заметке - только выделение, редактирование по правому клику
-    hoverNodeId = n.id;
+    // Левый клик по заметке - открываем инспектор
+    const note = state.notes.find(note => note.id === n.id);
+    if (note) {
+      // Запускаем эффект клика
+      clickedNodeId = n.id;
+      clickEffectTime = 1.0;
+      
+      openInspectorFor({...note, _type: 'note'});
+    }
     return;
   } else {
     const obj = state.domains.find((d) => d.id === n.id);
@@ -5573,7 +5864,7 @@ function drawTaskModern(ctx, x, y, radius, color, status) {
 // Функции рендеринга новых космических объектов
 function drawIdeas() {
   if (!state.ideas || state.ideas.length === 0) return;
-  if (W <= 0 || H <= 0) return; // Проверяем инициализацию canvas
+  if (W <= 0 || H <= 0) return;
   
   // Получаем функцию inView из контекста drawMap
   const inv = 1 / Math.max(0.0001, viewState.scale);
@@ -5592,48 +5883,74 @@ function drawIdeas() {
     const y = idea.y * DPR;
     const r = idea.r * DPR;
     
-    // Рисуем туманность (облако) - улучшенный дизайн
+    // Очень медленная и плавная анимация пульсации
+    const time = performance.now() * 0.0005; // Замедлено в 6 раз
+    const pulse = 1 + Math.sin(time + idea.x * 0.01) * 0.08; // Очень слабая пульсация
+    const pulseRadius = r * pulse;
+    
+    // Рисуем идею - упрощенный и надежный дизайн
     ctx.save();
-    ctx.globalAlpha = idea.opacity;
     
-    // Создаем градиент для более красивого эффекта
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
-    gradient.addColorStop(0, idea.color + 'ff');
-    gradient.addColorStop(0.5, idea.color + 'aa');
-    gradient.addColorStop(1, idea.color + '44');
+    const baseColor = idea.color || '#8b5cf6';
+    const alpha = Math.max(0.6, idea.opacity || 0.8);
     
+    // Основной круг с градиентом
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, pulseRadius);
+    gradient.addColorStop(0, baseColor + 'ff');
+    gradient.addColorStop(0.5, baseColor + 'aa');
+    gradient.addColorStop(1, baseColor + '66');
+    
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = gradient;
-    
-    // Создаем размытый эффект
-    ctx.shadowColor = idea.color;
+    ctx.shadowColor = baseColor;
     ctx.shadowBlur = 15 * DPR;
     
-    // Рисуем основной круг
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
     ctx.fill();
     
-    // Добавляем внутренние слои для объема
-    ctx.globalAlpha = idea.opacity * 0.6;
-    ctx.fillStyle = idea.color + 'cc';
+    // Внутренний круг
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fillStyle = baseColor + 'cc';
+    ctx.shadowBlur = 0;
     ctx.beginPath();
-    ctx.arc(x, y, r * 0.7, 0, Math.PI * 2);
+    ctx.arc(x, y, pulseRadius * 0.7, 0, Math.PI * 2);
     ctx.fill();
     
-    // Добавляем блик
-    ctx.globalAlpha = idea.opacity * 0.8;
+    // Иконка
+    ctx.globalAlpha = 1.0;
     ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.2, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.font = `${pulseRadius * 0.8}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💡', x, y);
     
     ctx.restore();
   });
 }
 
 function drawNotes() {
-  if (!state.notes || state.notes.length === 0) return;
-  if (W <= 0 || H <= 0) return; // Проверяем инициализацию canvas
+  if (!state.notes) {
+    state.notes = [];
+  }
+  
+  // Добавляем тестовую заметку если нет заметок
+  if (state.notes.length === 0) {
+    state.notes.push({
+      id: 'test-note',
+      title: 'Тестовая заметка',
+      content: 'Тест',
+      x: 0,
+      y: 0,
+      r: 20,
+      color: '#6c757d',
+      opacity: 1.0,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  }
+  
+  if (W <= 0 || H <= 0) return;
   
   // Получаем функцию inView из контекста drawMap
   const inv = 1 / Math.max(0.0001, viewState.scale);
@@ -5645,58 +5962,98 @@ function drawNotes() {
   const inView = (x, y, r = 0) =>
     x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
   
-  state.notes.forEach(note => {
-    if (!inView(note.x, note.y, note.r + 20 * DPR)) return;
+  state.notes.forEach((note, index) => {
+    if (!inView(note.x, note.y, note.r + 20 * DPR)) {
+      return;
+    }
     
     const x = note.x * DPR;
     const y = note.y * DPR;
     const r = note.r * DPR;
     
-    // Рисуем астероид (камушек) - улучшенный дизайн
+    // Очень медленная и плавная анимация вращения
+    const time = performance.now() * 0.0003; // Замедлено в 10 раз
+    const rotation = time + note.x * 0.005; // Медленное вращение
+    const pulse = 1 + Math.sin(time + note.y * 0.01) * 0.05; // Очень слабая пульсация
+    const pulseRadius = r * pulse;
+    
+    // Рисуем заметку - красивый дизайн в стиле бумаги
     ctx.save();
     
-    // Создаем градиент для объема
-    const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r);
+    const baseColor = note.color || '#6c757d';
+    const alpha = Math.max(0.8, note.opacity || 0.9);
+    
+    // Создаем форму заметки (слегка неровный прямоугольник)
+    const width = pulseRadius * 1.8;
+    const height = pulseRadius * 1.2;
+    const cornerRadius = pulseRadius * 0.2;
+    
+    // Тень
+    ctx.globalAlpha = alpha * 0.3;
+    ctx.fillStyle = '#000000';
+    ctx.shadowColor = '#000000';
+    ctx.shadowBlur = 8 * DPR;
+    ctx.shadowOffsetX = 3 * DPR;
+    ctx.shadowOffsetY = 3 * DPR;
+    
+    // Рисуем тень
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2 + 2, y - height/2 + 2, width, height, cornerRadius);
+    ctx.fill();
+    
+    // Основная форма заметки
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.globalAlpha = alpha;
+    
+    // Градиент для бумаги
+    const gradient = ctx.createLinearGradient(x - width/2, y - height/2, x + width/2, y + height/2);
     gradient.addColorStop(0, '#ffffff');
-    gradient.addColorStop(0.3, note.color + 'ff');
-    gradient.addColorStop(0.7, note.color + 'cc');
-    gradient.addColorStop(1, note.color + '88');
+    gradient.addColorStop(0.1, '#f8f9fa');
+    gradient.addColorStop(0.9, '#e9ecef');
+    gradient.addColorStop(1, '#dee2e6');
     
     ctx.fillStyle = gradient;
-    ctx.strokeStyle = note.color + 'aa';
-    ctx.lineWidth = 2 * DPR;
-    
-    // Создаем неровную форму астероида (более стабильную)
-    const points = [];
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      const radius = r * (0.85 + Math.sin(angle * 3) * 0.15);
-      const px = x + Math.cos(angle) * radius;
-      const py = y + Math.sin(angle) * radius;
-      points.push({ x: px, y: py });
-    }
-    
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.closePath();
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
     ctx.fill();
+    
+    // Обводка
+    ctx.strokeStyle = baseColor + 'cc';
+    ctx.lineWidth = 2 * DPR;
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
     ctx.stroke();
     
-    // Добавляем блик для объема
-    ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    ctx.arc(x - r * 0.4, y - r * 0.4, r * 0.3, 0, Math.PI * 2);
-    ctx.fill();
+    // Линии на бумаге
+    ctx.globalAlpha = alpha * 0.3;
+    ctx.strokeStyle = baseColor + '44';
+    ctx.lineWidth = 1 * DPR;
+    for (let i = 1; i < 3; i++) {
+      const lineY = y - height/2 + (height * i / 4);
+      ctx.beginPath();
+      ctx.moveTo(x - width/2 + 8 * DPR, lineY);
+      ctx.lineTo(x + width/2 - 8 * DPR, lineY);
+      ctx.stroke();
+    }
     
-    // Добавляем тень
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = '#000000';
+    // Иконка заметки
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = baseColor;
+    ctx.font = `${pulseRadius * 0.6}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📝', x, y);
+    
+    // Маленький уголок загнутый
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.fillStyle = baseColor + '66';
     ctx.beginPath();
-    ctx.arc(x + r * 0.2, y + r * 0.2, r * 0.8, 0, Math.PI * 2);
+    ctx.moveTo(x + width/2 - 8 * DPR, y - height/2 + 8 * DPR);
+    ctx.lineTo(x + width/2 - 2 * DPR, y - height/2 + 2 * DPR);
+    ctx.lineTo(x + width/2 - 2 * DPR, y - height/2 + 8 * DPR);
+    ctx.closePath();
     ctx.fill();
     
     ctx.restore();

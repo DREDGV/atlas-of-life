@@ -20,11 +20,12 @@ const MIGRATIONS = [
   },
   // 1 -> 2
   (data) => {
-    // add default color to existing projects (не добавляем цвет, оставляем единый по умолчанию)
+    // add enableHierarchyV2 flag to settings
     const out = { ...data };
-    if (Array.isArray(out.projects)) {
-      // Не добавляем цвет - пусть используется единый по умолчанию из getProjectColor()
-      // out.projects = out.projects.map(project => ({ ...project }));
+    if (out.settings) {
+      out.settings.enableHierarchyV2 = out.settings.enableHierarchyV2 || false;
+    } else {
+      out.settings = { layoutMode: 'auto', enableHierarchyV2: false };
     }
     return out;
   },
@@ -55,11 +56,21 @@ export function loadState(){
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
     if(typeof data.showGlow === 'boolean') state.showGlow = data.showGlow;
     if(typeof data.view === 'string') state.view = data.view;
-    // settings (v0.2.6)
+    // settings (v0.2.6+)
     if(data.settings && typeof data.settings.layoutMode==='string'){
-      state.settings = { layoutMode: data.settings.layoutMode==='manual'?'manual':'auto' };
+      state.settings = { 
+        layoutMode: data.settings.layoutMode==='manual'?'manual':'auto',
+        wipTodayLimit: data.settings.wipTodayLimit || 5,
+        enableHierarchyV2: data.settings.enableHierarchyV2 || false,
+        hotkeys: data.settings.hotkeys || state.settings.hotkeys
+      };
     }else{
-      state.settings = { layoutMode:'auto' };
+      state.settings = { 
+        layoutMode:'auto',
+        wipTodayLimit: 5,
+        enableHierarchyV2: false,
+        hotkeys: state.settings.hotkeys
+      };
     }
     // migration: ensure independent tasks (projectId null/undefined) have domainId
     const firstDom = state.domains[0]?.id || null;
@@ -78,7 +89,7 @@ export function loadState(){
 export function saveState(){
   try{
     const data = {
-      schema:1,
+      schema: 2, // Обновляем версию схемы для поддержки enableHierarchyV2
       exportedAt: Date.now(),
       domains: state.domains,
       projects: state.projects,
@@ -90,7 +101,7 @@ export function saveState(){
       showAging: !!state.showAging,
       showGlow: !!state.showGlow,
       view: state.view,
-      settings: state.settings || { layoutMode:'auto' }
+      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false }
     };
     const text = JSON.stringify(data);
     if (!text) {

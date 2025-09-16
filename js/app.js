@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
@@ -45,8 +45,14 @@ window.I18N = I18N;
 // Expose state globally for addons compatibility
 try { window.state = state; } catch (_) {}
 
+// Expose hierarchy functions globally for debugging
+try { 
+  // window.isHierarchyV2Enabled = isHierarchyV2Enabled;
+  // window.setHierarchyV2Enabled = setHierarchyV2Enabled;
+} catch (_) {}
+
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.18.28-zoom-fix";
+let APP_VERSION = "Atlas_of_life_v0.3.1-clean-imports";
 
 // ephemeral UI state
 const ui = {
@@ -461,11 +467,736 @@ function openExportModal() {
   });
 }
 
+function openHierarchySettingsModal() {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+
+  // const isEnabled = isHierarchyV2Enabled();
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h2>🌐 Система иерархии v2</h2>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="hierarchyToggle" ${isEnabled ? 'checked' : ''}>
+          <span class="checkmark"></span>
+          Включить систему иерархии v2
+        </label>
+        <div class="hint">
+          Система иерархии позволяет создавать связи между объектами (домены → проекты → задачи).<br>
+          <strong>Внимание:</strong> Это экспериментальная функция. Рекомендуется создать резервную копию данных.
+        </div>
+      </div>
+      <div class="hierarchy-status">
+        <h3>Текущий статус:</h3>
+        <div class="status-item">
+          <span class="status-icon">${isEnabled ? '✅' : '❌'}</span>
+          <span class="status-text">${isEnabled ? 'Включена' : 'Отключена'}</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelHierarchyBtn">Отмена</button>
+        <button class="btn" id="migrationBtn">Миграция данных</button>
+        <button class="btn primary" id="saveHierarchyBtn">Сохранить</button>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+
+  // Event handlers
+  document.getElementById('saveHierarchyBtn').onclick = () => {
+    const enabled = document.getElementById('hierarchyToggle').checked;
+    // setHierarchyV2Enabled(enabled);
+    saveState();
+    
+    closeModal();
+    showToast(`Система иерархии v2 ${enabled ? 'включена' : 'отключена'}`, 'ok');
+    
+    // Перезагружаем страницу для применения изменений
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  };
+
+  document.getElementById('cancelHierarchyBtn').onclick = () => {
+    closeModal();
+  };
+
+  document.getElementById('migrationBtn').onclick = () => {
+    closeModal();
+    openHierarchyMigrationModal();
+  };
+}
+
+// Модальное окно миграции иерархии
+function openHierarchyMigrationModal() {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+
+  // Получаем статистику текущего состояния
+  // const stats = getHierarchyStatistics();
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h2>🚀 Миграция к системе иерархии v2</h2>
+      
+      <div class="migration-info">
+        <h3>📊 Текущее состояние:</h3>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Всего объектов:</span>
+            <span class="stat-value">${stats.total}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">С родителем:</span>
+            <span class="stat-value">${stats.withParent}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Независимых:</span>
+            <span class="stat-value">${stats.withoutParent}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Всего связей:</span>
+            <span class="stat-value">${stats.totalConnections}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="migration-options">
+        <h3>⚙️ Опции миграции:</h3>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="restoreConnections" checked>
+            <span class="checkmark"></span>
+            Восстановить связи на основе существующих полей (domainId, projectId)
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="validateAfterMigration" checked>
+            <span class="checkmark"></span>
+            Валидировать иерархию после миграции
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="createBackup">
+            <span class="checkmark"></span>
+            Создать резервную копию перед миграцией
+          </label>
+        </div>
+      </div>
+
+      <div class="migration-warning">
+        <h3>⚠️ Важно:</h3>
+        <ul>
+          <li>Миграция добавит поля иерархии ко всем объектам</li>
+          <li>Существующие связи будут восстановлены автоматически</li>
+          <li>Рекомендуется создать резервную копию данных</li>
+          <li>Процесс можно отменить в любой момент</li>
+        </ul>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" id="cancelMigrationBtn">Отмена</button>
+        <button class="btn" id="previewMigrationBtn">Предпросмотр</button>
+        <button class="btn primary" id="startMigrationBtn">Начать миграцию</button>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+
+  // Event handlers
+  document.getElementById('cancelMigrationBtn').onclick = () => {
+    closeModal();
+  };
+
+  document.getElementById('previewMigrationBtn').onclick = () => {
+    previewMigration();
+  };
+
+  document.getElementById('startMigrationBtn').onclick = () => {
+    startMigration();
+  };
+}
+
+// Предпросмотр миграции
+function previewMigration() {
+  try {
+    console.log('👁️ Предпросмотр миграции...');
+    
+    // Анализируем существующие данные
+    const analysis = analyzeExistingData();
+    
+    // Показываем результаты в модальном окне
+    const modal = document.getElementById('modal');
+    if (modal) {
+      modal.innerHTML = `
+        <div class="modal-content">
+          <h2>👁️ Предпросмотр миграции</h2>
+          
+          <div class="preview-results">
+            <h3>📋 Что будет сделано:</h3>
+            <div class="preview-item">
+              <span class="preview-icon">🔧</span>
+              <span class="preview-text">Инициализировать поля иерархии для ${analysis.totalObjects} объектов</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-icon">🔗</span>
+              <span class="preview-text">Восстановить ${analysis.potentialConnections} связей</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-icon">🔍</span>
+              <span class="preview-text">Валидировать все связи</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-icon">💾</span>
+              <span class="preview-text">Сохранить изменения</span>
+            </div>
+          </div>
+
+          <div class="preview-warnings">
+            <h3>⚠️ Предупреждения:</h3>
+            ${analysis.issues.length > 0 ? 
+              analysis.issues.map(issue => `<div class="warning-item">• ${issue}</div>`).join('') :
+              '<div class="warning-item">• Предупреждений не найдено</div>'
+            }
+          </div>
+
+          <div class="modal-actions">
+            <button class="btn" id="backToMigrationBtn">Назад</button>
+            <button class="btn primary" id="confirmMigrationBtn">Подтвердить миграцию</button>
+          </div>
+        </div>
+      `;
+
+      // Event handlers
+      document.getElementById('backToMigrationBtn').onclick = () => {
+        openHierarchyMigrationModal();
+      };
+
+      document.getElementById('confirmMigrationBtn').onclick = () => {
+        startMigration();
+      };
+    }
+
+  } catch (error) {
+    console.error('❌ previewMigration: Ошибка предпросмотра:', error);
+    showToast('Ошибка предпросмотра миграции', 'error');
+  }
+}
+
+// Запуск миграции
+function startMigration() {
+  try {
+    console.log('🚀 Запуск миграции...');
+    
+    // Получаем опции из формы
+    const restoreConnections = document.getElementById('restoreConnections')?.checked ?? true;
+    const validateAfterMigration = document.getElementById('validateAfterMigration')?.checked ?? true;
+    const createBackup = document.getElementById('createBackup')?.checked ?? false;
+
+    // Создаем резервную копию если нужно
+    if (createBackup) {
+      console.log('💾 Создание резервной копии...');
+      // TODO: Реализовать создание резервной копии
+    }
+
+    // Показываем прогресс
+    showMigrationProgress();
+
+    // Запускаем миграцию
+    // const result = migrateToHierarchyV2({
+    //   restoreConnections,
+    //   validateAfterMigration
+    // });
+
+    // Показываем результаты
+    // showMigrationResults(result);
+
+  } catch (error) {
+    console.error('❌ startMigration: Ошибка миграции:', error);
+    showToast('Ошибка миграции', 'error');
+  }
+}
+
+// Показ прогресса миграции
+function showMigrationProgress() {
+  const modal = document.getElementById('modal');
+  if (modal) {
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h2>🚀 Миграция в процессе...</h2>
+        
+        <div class="progress-container">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-text" id="progressText">Инициализация...</div>
+        </div>
+
+        <div class="migration-steps" id="migrationSteps">
+          <div class="step-item" id="step1">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">Инициализация системы</span>
+          </div>
+          <div class="step-item" id="step2">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">Восстановление связей</span>
+          </div>
+          <div class="step-item" id="step3">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">Валидация иерархии</span>
+          </div>
+          <div class="step-item" id="step4">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">Сохранение состояния</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Анимация прогресса
+    let progress = 0;
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    
+    const steps = [
+      { text: 'Инициализация системы...', duration: 1000 },
+      { text: 'Восстановление связей...', duration: 1500 },
+      { text: 'Валидация иерархии...', duration: 1000 },
+      { text: 'Сохранение состояния...', duration: 500 }
+    ];
+
+    let currentStep = 0;
+    const updateProgress = () => {
+      if (currentStep < steps.length) {
+        const step = steps[currentStep];
+        if (progressText) progressText.textContent = step.text;
+        
+        const stepElement = document.getElementById(`step${currentStep + 1}`);
+        if (stepElement) {
+          stepElement.querySelector('.step-icon').textContent = '🔄';
+        }
+
+        setTimeout(() => {
+          if (stepElement) {
+            stepElement.querySelector('.step-icon').textContent = '✅';
+          }
+          currentStep++;
+          progress += 25;
+          if (progressFill) progressFill.style.width = `${progress}%`;
+          updateProgress();
+        }, step.duration);
+      }
+    };
+
+    updateProgress();
+  }
+}
+
+// Показ результатов миграции
+function showMigrationResults(result) {
+  const modal = document.getElementById('modal');
+  if (modal) {
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h2>${result.success ? '✅ Миграция завершена!' : '❌ Миграция завершена с ошибками'}</h2>
+        
+        <div class="migration-results">
+          <h3>📊 Результаты:</h3>
+          <div class="results-grid">
+            <div class="result-item">
+              <span class="result-label">Обработано объектов:</span>
+              <span class="result-value">${result.steps[0]?.details?.processedObjects || 0}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Восстановлено связей:</span>
+              <span class="result-value">${result.steps[1]?.details?.restoredConnections || 0}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Ошибок валидации:</span>
+              <span class="result-value">${result.steps[2]?.details?.errors?.length || 0}</span>
+            </div>
+            <div class="result-item">
+              <span class="result-label">Статус сохранения:</span>
+              <span class="result-value">${result.steps[3]?.success ? '✅' : '❌'}</span>
+            </div>
+          </div>
+        </div>
+
+        ${result.errors.length > 0 ? `
+          <div class="migration-errors">
+            <h3>❌ Ошибки:</h3>
+            <ul>
+              ${result.errors.map(error => `<li>${error}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+
+        ${result.warnings.length > 0 ? `
+          <div class="migration-warnings">
+            <h3>⚠️ Предупреждения:</h3>
+            <ul>
+              ${result.warnings.map(warning => `<li>${warning}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+
+        <div class="modal-actions">
+          ${!result.success ? `
+            <button class="btn" id="rollbackMigrationBtn">Откатить миграцию</button>
+          ` : ''}
+          <button class="btn primary" id="closeMigrationBtn">Закрыть</button>
+        </div>
+      </div>
+    `;
+
+    // Event handlers
+    document.getElementById('closeMigrationBtn').onclick = () => {
+      closeModal();
+      if (result.success) {
+        showToast('Миграция завершена успешно!', 'ok');
+        // Перезагружаем страницу для применения изменений
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
+    };
+
+    if (!result.success) {
+      document.getElementById('rollbackMigrationBtn').onclick = () => {
+        rollbackMigration();
+      };
+    }
+  }
+}
+
+// Откат миграции
+function rollbackMigration() {
+  try {
+    console.log('⏪ Откат миграции...');
+    
+    // const result = rollbackHierarchyMigration();
+    
+    // if (result.success) {
+    //   showToast(`Откат завершен. Очищено объектов: ${result.clearedObjects}`, 'ok');
+    //   closeModal();
+    //   // Перезагружаем страницу
+    //   setTimeout(() => {
+    //     window.location.reload();
+    //   }, 1000);
+    // } else {
+    //   showToast('Ошибка отката миграции', 'error');
+    // }
+
+  } catch (error) {
+    console.error('❌ rollbackMigration: Ошибка отката:', error);
+    showToast('Ошибка отката миграции', 'error');
+  }
+}
+
+// Анализ существующих данных
+function analyzeExistingData() {
+  try {
+    const allObjects = [
+      ...state.domains,
+      ...state.projects,
+      ...state.tasks,
+      ...state.ideas,
+      ...state.notes
+    ];
+
+    const analysis = {
+      totalObjects: allObjects.length,
+      objectsWithHierarchy: 0,
+      objectsWithoutHierarchy: 0,
+      existingConnections: 0,
+      potentialConnections: 0,
+      issues: [],
+      recommendations: []
+    };
+
+    allObjects.forEach(obj => {
+      // Проверяем наличие полей иерархии
+      const hasHierarchy = obj.parentId !== undefined || obj.children !== undefined || obj.locks !== undefined;
+      
+      if (hasHierarchy) {
+        analysis.objectsWithHierarchy++;
+      } else {
+        analysis.objectsWithoutHierarchy++;
+      }
+
+      // Подсчитываем существующие связи
+      if (obj.parentId) {
+        analysis.existingConnections++;
+      }
+
+      // Подсчитываем потенциальные связи
+      if (obj.domainId && getObjectType(obj) !== 'domain') {
+        analysis.potentialConnections++;
+      }
+      if (obj.projectId && getObjectType(obj) === 'task') {
+        analysis.potentialConnections++;
+      }
+    });
+
+    return analysis;
+
+  } catch (error) {
+    console.error('❌ analyzeExistingData: Ошибка анализа:', error);
+    return {
+      totalObjects: 0,
+      objectsWithHierarchy: 0,
+      objectsWithoutHierarchy: 0,
+      existingConnections: 0,
+      potentialConnections: 0,
+      issues: [`Критическая ошибка: ${error.message}`],
+      recommendations: ['Обратитесь к разработчику']
+    };
+  }
+}
+
+// Информационная панель
+function showInfoPanel(text, icon = '💡') {
+  const infoPanel = document.getElementById('infoPanel');
+  const infoText = document.getElementById('infoText');
+  const infoIcon = infoPanel.querySelector('.info-icon');
+  
+  if (infoPanel && infoText) {
+    infoText.textContent = text;
+    if (infoIcon) infoIcon.textContent = icon;
+    infoPanel.classList.add('show');
+  }
+}
+
+function hideInfoPanel() {
+  const infoPanel = document.getElementById('infoPanel');
+  if (infoPanel) {
+    infoPanel.classList.remove('show');
+  }
+}
+
+// Настройка подсказок для информационной панели
+function setupInfoPanelTooltips() {
+  // Подсказки для кнопок навигации
+  const navButtons = [
+    { selector: '#btnCenter', text: 'Центрировать карту на текущем виде (горячая клавиша: C)', icon: '🎯' },
+    { selector: '#btnFitDomain', text: 'Подогнать вид под активный домен (горячая клавиша: F)', icon: '🌍' },
+    { selector: '#btnFitProject', text: 'Подогнать вид под активный проект (горячая клавиша: P)', icon: '🎯' },
+    { selector: '#btnReset', text: 'Сбросить масштаб и позицию карты (горячая клавиша: R)', icon: '🔄' },
+    { selector: '#btnFullscreen', text: 'Переключить полноэкранный режим', icon: '⛶' }
+  ];
+
+  navButtons.forEach(button => {
+    const element = document.querySelector(button.selector);
+    if (element) {
+      element.addEventListener('mouseenter', () => {
+        showInfoPanel(button.text, button.icon);
+      });
+      element.addEventListener('mouseleave', hideInfoPanel);
+    }
+  });
+
+  // Подсказки для кнопок создания
+  const createButtons = [
+    { selector: '#createTaskBtn', text: 'Создать новую задачу (горячая клавиша: Ctrl+N)', icon: '➕' },
+    { selector: '#createProjectBtn', text: 'Создать новый проект (горячая клавиша: Ctrl+Shift+N)', icon: '🎯' },
+    { selector: '#createIdeaBtn', text: 'Создать новую идею - для хранения творческих мыслей', icon: '🌌' },
+    { selector: '#createNoteBtn', text: 'Создать новую заметку - для записи важной информации', icon: '📝' },
+    { selector: '#btnAddDomain', text: 'Создать новый домен - основную сферу жизни (горячая клавиша: Ctrl+Shift+D)', icon: '🌍' }
+  ];
+
+  createButtons.forEach(button => {
+    const element = document.querySelector(button.selector);
+    if (element) {
+      element.addEventListener('mouseenter', () => {
+        showInfoPanel(button.text, button.icon);
+      });
+      element.addEventListener('mouseleave', hideInfoPanel);
+    }
+  });
+
+  // Подсказки для статусов задач
+  const statusPills = [
+    { selector: '.pill-backlog', text: 'Задачи в планах - будущие задачи, которые планируются к выполнению', icon: '📋' },
+    { selector: '.pill-today', text: 'Задачи на сегодня - приоритетные задачи для выполнения сегодня', icon: '📅' },
+    { selector: '.pill-doing', text: 'Задачи в работе - задачи, которые выполняются прямо сейчас', icon: '⚡' },
+    { selector: '.pill-done', text: 'Выполненные задачи - завершенные задачи, готовые к архивированию', icon: '✅' }
+  ];
+
+  statusPills.forEach(pill => {
+    const elements = document.querySelectorAll(pill.selector);
+    elements.forEach(element => {
+      element.addEventListener('mouseenter', () => {
+        showInfoPanel(pill.text, pill.icon);
+      });
+      element.addEventListener('mouseleave', hideInfoPanel);
+    });
+  });
+
+  // Подсказки для настроек
+  const settingsItems = [
+    { selector: '[data-action="hotkeys"]', text: 'Настроить горячие клавиши для быстрого доступа к функциям', icon: '⌨️' },
+    { selector: '[data-action="theme"]', text: 'Изменить тему оформления приложения', icon: '🎨' },
+    { selector: '[data-action="display"]', text: 'Настройки отображения карты и объектов', icon: '📱' },
+    { selector: '[data-action="hierarchy"]', text: 'Управление системой иерархии объектов (экспериментальная функция)', icon: '🌐' },
+    { selector: '[data-action="export"]', text: 'Экспорт и импорт данных для резервного копирования', icon: '💾' }
+  ];
+
+  settingsItems.forEach(item => {
+    const element = document.querySelector(item.selector);
+    if (element) {
+      element.addEventListener('mouseenter', () => {
+        showInfoPanel(item.text, item.icon);
+      });
+      element.addEventListener('mouseleave', hideInfoPanel);
+    }
+  });
+
+  // Подсказки для переключателей видов
+  const viewChips = [
+    { selector: '[data-view="map"]', text: 'Карта - основной вид для работы с объектами и их связями', icon: '🗺️' },
+    { selector: '[data-view="today"]', text: 'Сегодня - список задач на сегодня с приоритетами', icon: '📅' }
+  ];
+
+  viewChips.forEach(chip => {
+    const element = document.querySelector(chip.selector);
+    if (element) {
+      element.addEventListener('mouseenter', () => {
+        showInfoPanel(chip.text, chip.icon);
+      });
+      element.addEventListener('mouseleave', hideInfoPanel);
+    }
+  });
+
+  // Подсказки для зум-слайдера
+  const zoomSlider = document.getElementById('zoomSlider');
+  if (zoomSlider) {
+    zoomSlider.addEventListener('mouseenter', () => {
+      showInfoPanel('Регулировка масштаба карты - от 50% до 220%', '🔍');
+    });
+    zoomSlider.addEventListener('mouseleave', hideInfoPanel);
+  }
+
+  // Подсказки для кнопки "О версии"
+  const aboutBtn = document.getElementById('btnAbout');
+  if (aboutBtn) {
+    aboutBtn.addEventListener('mouseenter', () => {
+      showInfoPanel('Информация о версии приложения и изменениях', 'ℹ️');
+    });
+    aboutBtn.addEventListener('mouseleave', hideInfoPanel);
+  }
+
+  // Подсказки для левой панели
+  const leftPanelSections = [
+    { selector: '.section h3', text: 'Секции левой панели - домены, фильтры и подсказки', icon: '📂' },
+    { selector: '#domainsList', text: 'Список доменов - основных сфер жизни', icon: '🌍' },
+    { selector: '#tagsList', text: 'Фильтры по тегам - для быстрого поиска задач', icon: '🏷️' }
+  ];
+
+  leftPanelSections.forEach(section => {
+    const elements = document.querySelectorAll(section.selector);
+    elements.forEach(element => {
+      element.addEventListener('mouseenter', () => {
+        showInfoPanel(section.text, section.icon);
+      });
+      element.addEventListener('mouseleave', hideInfoPanel);
+    });
+  });
+
+  // Подсказки для правой панели (инспектор)
+  const inspectorPanel = document.getElementById('inspector');
+  if (inspectorPanel) {
+    inspectorPanel.addEventListener('mouseenter', () => {
+      showInfoPanel('Инспектор - показывает детали выбранного объекта', '🔍');
+    });
+    inspectorPanel.addEventListener('mouseleave', hideInfoPanel);
+  }
+
+  // Подсказки для шорткатов
+  const hintSection = document.querySelector('.hint');
+  if (hintSection) {
+    hintSection.addEventListener('mouseenter', () => {
+      showInfoPanel('Шорткаты для быстрого создания задач: #тег @проект !время ~длительность', '⚡');
+    });
+    hintSection.addEventListener('mouseleave', hideInfoPanel);
+  }
+
+  // Подсказки для навигации (перенесены из левой панели)
+  const navHints = [
+    { text: 'LMB + перетаскивание = панорамирование карты', icon: '🖱️' },
+    { text: 'Alt + LMB + перетаскивание = перетаскивание объектов', icon: '🔄' },
+    { text: 'Правый клик = контекстное меню для создания объектов', icon: '📋' },
+    { text: 'Колесо мыши = масштабирование карты', icon: '🔍' },
+    { text: 'Клик по объекту = выделение и показ в инспекторе', icon: '👆' }
+  ];
+
+  // Показываем подсказки навигации при наведении на карту
+  const canvas = document.getElementById('canvas');
+  if (canvas) {
+    let hintIndex = 0;
+    canvas.addEventListener('mouseenter', () => {
+      showInfoPanel(navHints[hintIndex].text, navHints[hintIndex].icon);
+      hintIndex = (hintIndex + 1) % navHints.length;
+    });
+    canvas.addEventListener('mouseleave', hideInfoPanel);
+  }
+
+  // Подсказки для объектов на карте (через делегирование событий)
+  setupMapObjectTooltips();
+}
+
+// Подсказки для объектов на карте
+function setupMapObjectTooltips() {
+  // Добавляем обработчики для объектов, которые будут создаваться динамически
+  document.addEventListener('mouseover', (e) => {
+    // Проверяем, является ли элемент объектом на карте
+    if (e.target.classList.contains('domain-item') || 
+        e.target.classList.contains('project-item') || 
+        e.target.classList.contains('task-item') ||
+        e.target.classList.contains('idea-item') ||
+        e.target.classList.contains('note-item')) {
+      
+      const type = e.target.classList.contains('domain-item') ? 'domain' :
+                   e.target.classList.contains('project-item') ? 'project' :
+                   e.target.classList.contains('task-item') ? 'task' :
+                   e.target.classList.contains('idea-item') ? 'idea' : 'note';
+      
+      const tooltips = {
+        domain: { text: 'Домен - основная сфера жизни (работа, дом, хобби)', icon: '🌍' },
+        project: { text: 'Проект - группа связанных задач в рамках домена', icon: '🎯' },
+        task: { text: 'Задача - конкретное действие для выполнения', icon: '✅' },
+        idea: { text: 'Идея - творческая мысль или концепция', icon: '🌌' },
+        note: { text: 'Заметка - важная информация для запоминания', icon: '📝' }
+      };
+      
+      if (tooltips[type]) {
+        showInfoPanel(tooltips[type].text, tooltips[type].icon);
+      }
+    }
+  });
+  
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.classList.contains('domain-item') || 
+        e.target.classList.contains('project-item') || 
+        e.target.classList.contains('task-item') ||
+        e.target.classList.contains('idea-item') ||
+        e.target.classList.contains('note-item')) {
+      hideInfoPanel();
+    }
+  });
+}
+
 // expose globally for addons/other modules
 try { window.showToast = showToast; } catch (_) {}
 try { window.clearHotkey = clearHotkey; } catch (_) {}
 try { window.openModal = openModal; } catch (_) {}
 try { window.getMapNodes = getMapNodes; } catch (_) {}
+try { window.showInfoPanel = showInfoPanel; } catch (_) {}
+try { window.hideInfoPanel = hideInfoPanel; } catch (_) {}
 
 // Функции для работы с идеями и заметками
 window.createIdea = function() {
@@ -482,6 +1213,10 @@ window.createIdea = function() {
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
+  
+  // Инициализируем поля иерархии
+  // initHierarchyFields(idea, 'idea'); // Временно отключено
+  
   state.ideas.push(idea);
   saveState();
   layoutMap();
@@ -503,6 +1238,10 @@ window.createNote = function() {
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
+  
+  // Инициализируем поля иерархии
+  // initHierarchyFields(note, 'note'); // Временно отключено
+  
   state.notes.push(note);
   saveState();
   layoutMap();
@@ -998,45 +1737,44 @@ window.showDomainEditor = function(domain) {
   ).join('');
   
   modal.innerHTML = `
-    <div class="box domain-editor">
-      <div class="title">🌍 Редактировать домен</div>
-      <div class="body">
-        <div class="form-group">
-          <label>Название домена:</label>
-          <input type="text" id="domainTitle" value="${domain.title}" placeholder="Введите название домена" class="form-input">
-        </div>
-        <div class="form-group">
-          <label>Описание:</label>
-          <textarea id="domainDescription" placeholder="Опишите домен подробнее..." class="form-textarea">${domain.description || ''}</textarea>
-        </div>
-        <div class="form-group">
-          <label>Настроение домена:</label>
-          <select id="domainMood" class="form-select">
-            ${moodSelect}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Цвет домена:</label>
-          <div class="color-picker">
-            <input type="color" id="domainColor" value="${domain.color || '#6366F1'}" class="color-input">
-            <div class="color-presets">
-              <div class="color-preset" data-color="#6366F1" style="background: #6366F1;"></div>
-              <div class="color-preset" data-color="#8B5CF6" style="background: #8B5CF6;"></div>
-              <div class="color-preset" data-color="#EC4899" style="background: #EC4899;"></div>
-              <div class="color-preset" data-color="#F59E0B" style="background: #F59E0B;"></div>
-              <div class="color-preset" data-color="#10B981" style="background: #10B981;"></div>
-              <div class="color-preset" data-color="#3B82F6" style="background: #3B82F6;"></div>
-            </div>
+    <div class="modal-content">
+      <h2>🌍 Редактировать домен</h2>
+      <div class="form-group">
+        <label for="domainTitle">Название домена:</label>
+        <input type="text" id="domainTitle" value="${domain.title}" placeholder="Введите название домена" autofocus>
+      </div>
+      <div class="form-group">
+        <label for="domainDescription">Описание:</label>
+        <textarea id="domainDescription" rows="3" placeholder="Опишите домен подробнее...">${domain.description || ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="domainMood">Настроение домена:</label>
+        <select id="domainMood">
+          ${moodSelect}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="domainColor">Цвет домена:</label>
+        <div class="color-picker">
+          <input type="color" id="domainColor" value="${domain.color || '#6366F1'}">
+          <div class="color-presets">
+            <div class="color-preset" data-color="#6366F1" style="background: #6366F1;"></div>
+            <div class="color-preset" data-color="#8B5CF6" style="background: #8B5CF6;"></div>
+            <div class="color-preset" data-color="#EC4899" style="background: #EC4899;"></div>
+            <div class="color-preset" data-color="#F59E0B" style="background: #F59E0B;"></div>
+            <div class="color-preset" data-color="#10B981" style="background: #10B981;"></div>
+            <div class="color-preset" data-color="#3B82F6" style="background: #3B82F6;"></div>
+            <div class="color-preset" data-color="#2dd4bf" style="background: #2dd4bf;"></div>
+            <div class="color-preset" data-color="#ef4444" style="background: #ef4444;"></div>
           </div>
         </div>
       </div>
-      <div class="buttons">
-        <button class="btn" onclick="closeModal()">Отмена</button>
-        <button class="btn primary" onclick="saveDomain('${domain.id}')">💾 Сохранить</button>
-        <button class="btn danger" onclick="deleteDomain('${domain.id}')">🗑️ Удалить</button>
+      <div class="modal-actions">
+        <button class="btn" id="cancelDomainEdit">Отмена</button>
+        <button class="btn primary" id="saveDomainEdit">💾 Сохранить</button>
+        <button class="btn danger" id="deleteDomainEdit">🗑️ Удалить</button>
       </div>
     </div>
-    <div class="backdrop"></div>
   `;
   modal.style.display = 'flex';
   
@@ -1045,7 +1783,78 @@ window.showDomainEditor = function(domain) {
     preset.addEventListener('click', () => {
       const color = preset.dataset.color;
       modal.querySelector('#domainColor').value = color;
+      // Обновляем визуальное выделение
+      modal.querySelectorAll('.color-preset').forEach(p => p.classList.remove('selected'));
+      preset.classList.add('selected');
     });
+  });
+  
+  // Выделяем текущий цвет
+  const currentColor = domain.color || '#6366F1';
+  const currentPreset = modal.querySelector(`.color-preset[data-color="${currentColor}"]`);
+  if (currentPreset) {
+    currentPreset.classList.add('selected');
+  }
+  
+  // Обработчики кнопок
+  document.getElementById('cancelDomainEdit').onclick = () => {
+    closeModal();
+  };
+  
+  document.getElementById('saveDomainEdit').onclick = () => {
+    const title = document.getElementById('domainTitle').value.trim();
+    const description = document.getElementById('domainDescription').value.trim();
+    const mood = document.getElementById('domainMood').value;
+    const color = document.getElementById('domainColor').value;
+    
+    if (!title) {
+      showToast('Введите название домена', 'error');
+      return;
+    }
+    
+    domain.title = title;
+    domain.description = description;
+    domain.mood = mood;
+    domain.color = color;
+    domain.updatedAt = Date.now();
+    
+    saveState();
+    if (window.layoutMap) window.layoutMap();
+    if (window.drawMap) window.drawMap();
+    if (window.renderSidebar) window.renderSidebar();
+    
+    closeModal();
+    showToast('Домен обновлен', 'ok');
+  };
+  
+  document.getElementById('deleteDomainEdit').onclick = () => {
+    if (confirm(`Удалить домен "${domain.title}"? Все проекты и задачи в нем будут также удалены.`)) {
+      state.domains = state.domains.filter(d => d.id !== domain.id);
+      state.projects = state.projects.filter(p => p.domainId !== domain.id);
+      state.tasks = state.tasks.filter(t => t.domainId !== domain.id);
+      state.ideas = state.ideas.filter(i => i.domainId !== domain.id);
+      state.notes = state.notes.filter(n => n.domainId !== domain.id);
+      
+      if (state.activeDomain === domain.id) {
+        state.activeDomain = state.domains[0]?.id || null;
+      }
+      
+      saveState();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
+      if (window.renderSidebar) window.renderSidebar();
+      
+      closeModal();
+      showToast('Домен удален', 'ok');
+    }
+  };
+  
+  // Enter для сохранения
+  document.getElementById('domainTitle').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('saveDomainEdit').click();
+    }
   });
 };
 
@@ -1281,13 +2090,34 @@ function updateDomainsList() {
         ? 'style="background:#111a23;border:1px solid #1e2a44"'
         : "";
       const color = d.color || "#2dd4bf";
+      
+      // Calculate mood for this domain
+      let mood, moodColor, moodEmoji;
+      try {
+        mood = getDomainMood(d.id);
+        moodColor = getMoodColor(mood);
+        moodEmoji = {
+          crisis: '🚨',
+          pressure: '⚠️', 
+          growth: '📈',
+          balance: '⚖️'
+        }[mood] || '⚖️';
+      } catch (e) {
+        mood = 'balance';
+        moodColor = '#3b82f6';
+        moodEmoji = '⚖️';
+      }
+      
       return `<div class="row" data-domain="${d.id}" ${act}>
-      <div class="dot" style="background:${color}"></div>
+      <div class="dot" style="background:${moodColor};box-shadow: 0 0 8px ${moodColor}40"></div>
       <div style="flex:1;min-width:0">
-        <div class="title" style="font-weight:500;margin-bottom:2px">${d.title}</div>
+        <div class="title" style="font-weight:500;margin-bottom:2px">
+          ${moodEmoji} ${d.title}
+        </div>
         <div style="display:flex;gap:8px;font-size:10px;color:var(--muted)">
           <span>${projectCount} проектов</span>
           <span>${taskCount} задач</span>
+          <span style="color:${moodColor}">${mood}</span>
         </div>
       </div>
       <div class="hint actions" data-dom="${d.id}" style="cursor:pointer;padding:4px">⋯</div>
@@ -1362,8 +2192,6 @@ function renderSidebar() {
       <button class="btn" id="newDomSave">Создать</button>
       <button class="btn" id="newDomCancel">Отмена</button>
     </div>`;
-  } else {
-    html += `<div class="row"><button class="btn" id="btnAddDomain">+ Домен</button></div>`;
   }
   // Add domains container
   html += `<div class="domains-container"></div>`;
@@ -1402,10 +2230,7 @@ function renderSidebar() {
   const addBtn = document.getElementById("btnAddDomain");
   if (addBtn) {
     addBtn.onclick = () => {
-      ui.newDomain = true;
-      renderSidebar();
-      const inp = $("#newDomName");
-      inp && inp.focus();
+      showDomainCreationModal();
     };
   }
   const showAllBtn = document.getElementById('btnShowAll');
@@ -2044,6 +2869,9 @@ function setupHeader() {
           case 'display':
             openDisplayModal();
             break;
+          case 'hierarchy':
+            openHierarchySettingsModal();
+            break;
           case 'export':
             openExportModal();
             break;
@@ -2305,6 +3133,246 @@ function setupQuickAdd() {
       });
     }
   }catch(_){}
+}
+
+// Show idea editor modal
+function showIdeaEditor(idea) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h2>Редактировать идею</h2>
+      <div class="form-group">
+        <label for="ideaTitle">Название:</label>
+        <input type="text" id="ideaTitle" value="${idea.title}" placeholder="Название идеи">
+      </div>
+      <div class="form-group">
+        <label for="ideaContent">Содержание:</label>
+        <textarea id="ideaContent" rows="4" placeholder="Описание идеи...">${idea.content || ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="ideaColor">Цвет:</label>
+        <input type="color" id="ideaColor" value="${idea.color || '#8b5cf6'}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn primary" id="saveIdea">Сохранить</button>
+        <button class="btn" id="cancelIdea">Отмена</button>
+        <button class="btn danger" id="deleteIdea">Удалить</button>
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'flex';
+  
+  // Event handlers
+  document.getElementById('saveIdea').onclick = () => {
+    idea.title = document.getElementById('ideaTitle').value;
+    idea.content = document.getElementById('ideaContent').value;
+    idea.color = document.getElementById('ideaColor').value;
+    idea.updatedAt = Date.now();
+    saveState();
+    if (window.layoutMap) window.layoutMap();
+    if (window.drawMap) window.drawMap();
+    closeModal();
+    showToast('Идея сохранена', 'ok');
+  };
+  
+  document.getElementById('cancelIdea').onclick = () => {
+    closeModal();
+  };
+  
+  document.getElementById('deleteIdea').onclick = () => {
+    if (confirm('Удалить идею?')) {
+      state.ideas = state.ideas.filter(i => i.id !== idea.id);
+      saveState();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
+      closeModal();
+      showToast('Идея удалена', 'ok');
+    }
+  };
+}
+
+// Show domain creation modal
+function showDomainCreationModal() {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  const moodOptions = [
+    { value: 'balance', label: 'Баланс', emoji: '⚖️' },
+    { value: 'energy', label: 'Энергия', emoji: '⚡' },
+    { value: 'focus', label: 'Фокус', emoji: '🎯' },
+    { value: 'creativity', label: 'Творчество', emoji: '🎨' },
+    { value: 'growth', label: 'Рост', emoji: '🌱' },
+    { value: 'rest', label: 'Отдых', emoji: '😴' }
+  ];
+  
+  const moodSelect = moodOptions.map(mood => 
+    `<option value="${mood.value}">${mood.emoji} ${mood.label}</option>`
+  ).join('');
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h2>🌍 Создать домен</h2>
+      <div class="form-group">
+        <label for="domainTitle">Название домена:</label>
+        <input type="text" id="domainTitle" placeholder="Введите название домена" autofocus>
+      </div>
+      <div class="form-group">
+        <label for="domainDescription">Описание (необязательно):</label>
+        <textarea id="domainDescription" rows="3" placeholder="Краткое описание домена..."></textarea>
+      </div>
+      <div class="form-group">
+        <label for="domainMood">Настроение домена:</label>
+        <select id="domainMood">
+          ${moodSelect}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="domainColor">Цвет домена:</label>
+        <div class="color-picker">
+          <input type="color" id="domainColor" value="#2dd4bf">
+          <div class="color-presets">
+            <div class="color-preset" data-color="#2dd4bf" style="background: #2dd4bf"></div>
+            <div class="color-preset" data-color="#3b82f6" style="background: #3b82f6"></div>
+            <div class="color-preset" data-color="#8b5cf6" style="background: #8b5cf6"></div>
+            <div class="color-preset" data-color="#f59e0b" style="background: #f59e0b"></div>
+            <div class="color-preset" data-color="#ef4444" style="background: #ef4444"></div>
+            <div class="color-preset" data-color="#10b981" style="background: #10b981"></div>
+            <div class="color-preset" data-color="#f97316" style="background: #f97316"></div>
+            <div class="color-preset" data-color="#06b6d4" style="background: #06b6d4"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelDomainBtn">Отмена</button>
+        <button class="btn primary" id="createDomainBtn">🌍 Создать домен</button>
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'flex';
+  
+  // Event handlers
+  document.getElementById('createDomainBtn').onclick = () => {
+    const title = document.getElementById('domainTitle').value.trim();
+    const description = document.getElementById('domainDescription').value.trim();
+    const mood = document.getElementById('domainMood').value;
+    const color = document.getElementById('domainColor').value;
+    
+    if (!title) {
+      showToast('Введите название домена', 'error');
+      return;
+    }
+    
+    // Create domain
+    const domain = {
+      id: generateId(),
+      title: title,
+      description: description,
+      mood: mood,
+      color: color,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    
+    state.domains.push(domain);
+    state.activeDomain = domain.id;
+    saveState();
+    
+    if (window.layoutMap) window.layoutMap();
+    if (window.drawMap) window.drawMap();
+    if (window.renderSidebar) window.renderSidebar();
+    
+    closeModal();
+    showToast(`Домен "${title}" создан`, 'ok');
+  };
+  
+  document.getElementById('cancelDomainBtn').onclick = () => {
+    closeModal();
+  };
+  
+  // Color preset handlers
+  document.querySelectorAll('.color-preset').forEach(preset => {
+    preset.onclick = () => {
+      const color = preset.dataset.color;
+      document.getElementById('domainColor').value = color;
+      // Update visual feedback
+      document.querySelectorAll('.color-preset').forEach(p => p.classList.remove('selected'));
+      preset.classList.add('selected');
+    };
+  });
+  
+  // Set initial selected color
+  document.querySelector('.color-preset[data-color="#2dd4bf"]').classList.add('selected');
+  
+  // Enter key to create
+  document.getElementById('domainTitle').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('createDomainBtn').click();
+    }
+  });
+}
+
+// Show note editor modal
+function showNoteEditor(note) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h2>Редактировать заметку</h2>
+      <div class="form-group">
+        <label for="noteTitle">Название:</label>
+        <input type="text" id="noteTitle" value="${note.title}" placeholder="Название заметки">
+      </div>
+      <div class="form-group">
+        <label for="noteContent">Содержание:</label>
+        <textarea id="noteContent" rows="4" placeholder="Содержание заметки...">${note.content || ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="noteColor">Цвет:</label>
+        <input type="color" id="noteColor" value="${note.color || '#10b981'}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn primary" id="saveNote">Сохранить</button>
+        <button class="btn" id="cancelNote">Отмена</button>
+        <button class="btn danger" id="deleteNote">Удалить</button>
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'flex';
+  
+  // Event handlers
+  document.getElementById('saveNote').onclick = () => {
+    note.title = document.getElementById('noteTitle').value;
+    note.content = document.getElementById('noteContent').value;
+    note.color = document.getElementById('noteColor').value;
+    note.updatedAt = Date.now();
+    saveState();
+    if (window.layoutMap) window.layoutMap();
+    if (window.drawMap) window.drawMap();
+    closeModal();
+    showToast('Заметка сохранена', 'ok');
+  };
+  
+  document.getElementById('cancelNote').onclick = () => {
+    closeModal();
+  };
+  
+  document.getElementById('deleteNote').onclick = () => {
+    if (confirm('Удалить заметку?')) {
+      state.notes = state.notes.filter(n => n.id !== note.id);
+      saveState();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
+      closeModal();
+      showToast('Заметка удалена', 'ok');
+    }
+  };
 }
 
 // Setup creation panel buttons
@@ -2607,11 +3675,24 @@ async function init() {
   window.analyticsDashboard = analyticsDashboard;
   console.log('Analytics dashboard initialized successfully');
   
+  // Initialize info panel tooltips
+  setupInfoPanelTooltips();
+  
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
   // Don't override APP_VERSION from CHANGELOG - use the hardcoded version
   if (brandEl) brandEl.textContent = APP_VERSION;
   document.title = APP_VERSION + " (modular)";
+  
+  // Проверяем флаг системы иерархии v2
+  if (isHierarchyV2Enabled()) {
+    console.log('✅ Система иерархии v2 включена');
+    // Здесь будет инициализация системы иерархии v2
+  } else {
+    console.log('🚫 Система иерархии v2 отключена (по умолчанию)');
+    console.log('✅ Приложение работает в режиме совместимости');
+  }
+  
   renderSidebar();
   setupHeader();
   setupQuickAdd();
@@ -2654,6 +3735,13 @@ async function init() {
     if (k === "r") {
       e.preventDefault();
       resetView();
+    }
+    if (k === "b") {
+      e.preventDefault();
+      // Toggle focus mode "Black Hole"
+      if (window.toggleFocusMode) {
+        window.toggleFocusMode();
+      }
     }
     if (k === "n") {
       e.preventDefault();

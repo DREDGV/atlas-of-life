@@ -11,6 +11,13 @@ import {
   getRandomProjectColor,
   getContrastColor,
   PROJECT_COLOR_PRESETS,
+  getChildObjects,
+  getParentObject,
+  findObjectById,
+  canChangeHierarchy,
+  attachObjectToParent,
+  detachObjectFromParent,
+  getAvailableParents
 } from "./state.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
 function drawMap() {
@@ -41,6 +48,323 @@ function cancelAttach() {
 import { saveState } from "./storage.js";
 import { renderToday } from "./view_today.js";
 
+// Fallback функции для работы с иерархией когда система отключена
+function getParentObjectFallback(obj) {
+  if (!obj) return null;
+  
+  if (obj._type === 'project' && obj.domainId) {
+    const domain = state.domains.find(d => d.id === obj.domainId);
+    return domain ? {...domain, _type: 'domain'} : null;
+  }
+  
+  if (obj._type === 'task' && obj.projectId) {
+    const project = state.projects.find(p => p.id === obj.projectId);
+    return project ? {...project, _type: 'project'} : null;
+  }
+  
+  if (obj._type === 'task' && obj.domainId) {
+    const domain = state.domains.find(d => d.id === obj.domainId);
+    return domain ? {...domain, _type: 'domain'} : null;
+  }
+  
+  if (obj._type === 'idea' && obj.domainId) {
+    const domain = state.domains.find(d => d.id === obj.domainId);
+    return domain ? {...domain, _type: 'domain'} : null;
+  }
+  
+  if (obj._type === 'idea' && obj.projectId) {
+    const project = state.projects.find(p => p.id === obj.projectId);
+    return project ? {...project, _type: 'project'} : null;
+  }
+  
+  if (obj._type === 'note' && obj.domainId) {
+    const domain = state.domains.find(d => d.id === obj.domainId);
+    return domain ? {...domain, _type: 'domain'} : null;
+  }
+  
+  if (obj._type === 'note' && obj.projectId) {
+    const project = state.projects.find(p => p.id === obj.projectId);
+    return project ? {...project, _type: 'project'} : null;
+  }
+  
+  return null;
+}
+
+function getChildObjectsFallback(obj) {
+  if (!obj) return { projects: [], tasks: [], ideas: [], notes: [] };
+  
+  const children = { projects: [], tasks: [], ideas: [], notes: [] };
+  
+  if (obj._type === 'domain') {
+    // Проекты в домене
+    children.projects = state.projects.filter(p => p.domainId === obj.id);
+    
+    // Задачи в домене (включая все задачи в проектах домена)
+    const domainProjectIds = children.projects.map(p => p.id);
+    children.tasks = state.tasks.filter(t => 
+      t.domainId === obj.id || 
+      (t.projectId && domainProjectIds.includes(t.projectId))
+    );
+    
+    // Идеи в домене (включая все идеи в проектах домена)
+    children.ideas = state.ideas.filter(i => 
+      i.domainId === obj.id || 
+      (i.projectId && domainProjectIds.includes(i.projectId))
+    );
+    
+    // Заметки в домене (включая все заметки в проектах домена)
+    children.notes = state.notes.filter(n => 
+      n.domainId === obj.id || 
+      (n.projectId && domainProjectIds.includes(n.projectId))
+    );
+  }
+  
+  if (obj._type === 'project') {
+    // Задачи в проекте
+    children.tasks = state.tasks.filter(t => t.projectId === obj.id);
+    
+    // Идеи в проекте
+    children.ideas = state.ideas.filter(i => i.projectId === obj.id);
+    
+    // Заметки в проекте
+    children.notes = state.notes.filter(n => n.projectId === obj.id);
+  }
+  
+  return children;
+}
+
+// Функция для отображения иерархии объекта
+function renderHierarchySection(obj) {
+  if (!obj) return '';
+  
+  // Fallback для случая когда система иерархии отключена
+  const children = getChildObjectsFallback(obj);
+  const parent = getParentObjectFallback(obj);
+  
+  let html = `
+    <div class="section">
+      <h3>🌐 Иерархия</h3>
+      <div class="hierarchy-info">
+  `;
+  
+  // Показываем родителя
+  if (parent) {
+    const parentType = parent._type === 'domain' ? 'Домен' : 
+                      parent._type === 'project' ? 'Проект' : 
+                      parent._type === 'idea' ? 'Идея' : 
+                      parent._type === 'note' ? 'Заметка' : 'Объект';
+    html += `
+      <div class="hierarchy-item parent">
+        <span class="hierarchy-icon">⬆️</span>
+        <span class="hierarchy-label">Родитель:</span>
+        <span class="hierarchy-value">${parentType} "${parent.title}"</span>
+      </div>
+    `;
+  } else {
+    html += `
+      <div class="hierarchy-item parent">
+        <span class="hierarchy-icon">🌌</span>
+        <span class="hierarchy-label">Статус:</span>
+        <span class="hierarchy-value">Независимый объект</span>
+      </div>
+    `;
+  }
+  
+  // Показываем детей
+  if (children && Object.keys(children).length > 0) {
+    html += `
+      <div class="hierarchy-item children">
+        <span class="hierarchy-icon">⬇️</span>
+        <span class="hierarchy-label">Дети:</span>
+        <div class="children-list">
+    `;
+    
+    Object.keys(children).forEach(childType => {
+      const childIds = children[childType] || [];
+      if (childIds.length > 0) {
+        const typeLabel = childType === 'projects' ? 'Проекты' :
+                         childType === 'tasks' ? 'Задачи' :
+                         childType === 'ideas' ? 'Идеи' :
+                         childType === 'notes' ? 'Заметки' : childType;
+        html += `
+          <div class="child-type">
+            <span class="child-count">${childIds.length}</span>
+            <span class="child-label">${typeLabel}</span>
+          </div>
+        `;
+      }
+    });
+    
+    html += `
+        </div>
+      </div>
+    `;
+  } else {
+    html += `
+      <div class="hierarchy-item children">
+        <span class="hierarchy-icon">🌱</span>
+        <span class="hierarchy-label">Дети:</span>
+        <span class="hierarchy-value">Нет дочерних объектов</span>
+      </div>
+    `;
+  }
+  
+  html += `
+      </div>
+      
+      ${renderHierarchyActions(obj)}
+    </div>
+  `;
+  
+  return html;
+}
+
+// Функция для отображения кнопок действий иерархии
+function renderHierarchyActions(obj) {
+  if (!obj) return '';
+  
+  const parent = getParentObjectFallback(obj);
+  const canChange = canChangeHierarchy(obj);
+  
+  if (!canChange) {
+    return `
+      <div class="hierarchy-actions">
+        <div class="hint">🔒 Изменение связей заблокировано</div>
+      </div>
+    `;
+  }
+  
+  let html = `
+    <div class="hierarchy-actions">
+      <h4>Действия</h4>
+      <div class="action-buttons">
+  `;
+  
+  if (parent) {
+    // Есть родитель - показываем кнопку отвязки
+    html += `
+      <button class="btn-small danger" id="detachFromParent" title="Отвязать от родителя">
+        🔓 Отвязать
+      </button>
+    `;
+  } else {
+    // Нет родителя - показываем кнопку привязки
+    const availableParents = getAvailableParents(obj._type);
+    if (availableParents.length > 0) {
+      html += `
+        <button class="btn-small primary" id="attachToParent" title="Привязать к родителю">
+          🔗 Привязать
+        </button>
+      `;
+    }
+  }
+  
+  html += `
+      </div>
+    </div>
+  `;
+  
+  return html;
+}
+
+// Функция для настройки обработчиков действий иерархии
+function setupHierarchyActionHandlers(obj) {
+  // Обработчик отвязки от родителя
+  const detachBtn = document.getElementById('detachFromParent');
+  if (detachBtn) {
+    detachBtn.onclick = () => {
+      if (confirm(`Отвязать "${obj.title}" от родителя?`)) {
+        const success = detachObjectFromParent(obj.id, obj._type);
+        if (success) {
+          saveState();
+          refreshMap();
+          openInspectorFor(obj); // Обновляем инспектор
+          showToast('Объект отвязан от родителя', 'ok');
+        } else {
+          showToast('Не удалось отвязать объект', 'error');
+        }
+      }
+    };
+  }
+  
+  // Обработчик привязки к родителю
+  const attachBtn = document.getElementById('attachToParent');
+  if (attachBtn) {
+    attachBtn.onclick = () => {
+      showParentSelectionModal(obj);
+    };
+  }
+}
+
+// Функция для показа модального окна выбора родителя
+function showParentSelectionModal(obj) {
+  const availableParents = getAvailableParents(obj._type);
+  
+  if (availableParents.length === 0) {
+    showToast('Нет доступных родителей для привязки', 'warn');
+    return;
+  }
+  
+  // Создаем модальное окно
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.display = 'flex';
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h3>Выберите родителя для "${obj.title}"</h3>
+      <div class="parent-list">
+        ${availableParents.map(parent => `
+          <div class="parent-item" data-parent-id="${parent.id}" data-parent-type="${parent._type}">
+            <span class="parent-icon">${parent._type === 'domain' ? '🌌' : '🎯'}</span>
+            <span class="parent-title">${parent.title}</span>
+            <span class="parent-type">${parent._type === 'domain' ? 'Домен' : 'Проект'}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelParentSelection">Отмена</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Обработчики кликов по родителям
+  modal.querySelectorAll('.parent-item').forEach(item => {
+    item.onclick = () => {
+      const parentId = item.dataset.parentId;
+      const parentType = item.dataset.parentType;
+      
+      if (confirm(`Привязать "${obj.title}" к "${item.querySelector('.parent-title').textContent}"?`)) {
+        const success = attachObjectToParent(obj.id, obj._type, parentId, parentType);
+        if (success) {
+          saveState();
+          refreshMap();
+          openInspectorFor(obj); // Обновляем инспектор
+          showToast('Объект привязан к родителю', 'ok');
+        } else {
+          showToast('Не удалось привязать объект', 'error');
+        }
+      }
+      
+      document.body.removeChild(modal);
+    };
+  });
+  
+  // Обработчик отмены
+  document.getElementById('cancelParentSelection').onclick = () => {
+    document.body.removeChild(modal);
+  };
+  
+  // Закрытие по клику вне модального окна
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
+}
+
 export function openInspectorFor(obj) {
   const ins = document.getElementById("inspector");
   if (!obj) {
@@ -54,9 +378,31 @@ export function openInspectorFor(obj) {
       (a, p) => a + tasksOfProject(p.id).length,
       0
     );
+    // Инициализируем поля блокировок если их нет
+    if (!obj.locks) {
+      obj.locks = { move: false, hierarchy: false };
+    }
+    
     ins.innerHTML = `
       <h2>Домен: ${obj.title}</h2>
       <div class="kv">Проектов: ${prjs.length} · Задач: ${totalTasks}</div>
+      
+      <div class="section">
+        <h3>🔒 Блокировки</h3>
+        <div class="locks">
+          <label class="lock-item">
+            <input type="checkbox" id="lockMove" ${obj.locks.move ? 'checked' : ''}>
+            <span>Блокировка перемещения</span>
+          </label>
+          <label class="lock-item">
+            <input type="checkbox" id="lockHierarchy" ${obj.locks.hierarchy ? 'checked' : ''}>
+            <span>Блокировка смены связей</span>
+          </label>
+        </div>
+      </div>
+      
+      ${renderHierarchySection(obj)}
+      
       <div class="btns">
         <button class="btn primary" id="addProject">+ Проект</button>
         <button class="btn danger" id="delDomain">🗑️ Удалить домен</button>
@@ -123,14 +469,53 @@ export function openInspectorFor(obj) {
       }
     };
     
+    // Обработчики блокировок
+    document.getElementById("lockMove").onchange = (e) => {
+      obj.locks.move = e.target.checked;
+      saveState();
+      refreshMap();
+    };
+    
+    document.getElementById("lockHierarchy").onchange = (e) => {
+      obj.locks.hierarchy = e.target.checked;
+      saveState();
+      refreshMap();
+    };
+    
+    // Обработчики действий иерархии
+    setupHierarchyActionHandlers(obj);
+    
     // Domain color is now automatically determined by mood - no manual change needed
   }
   if (type === "project") {
     const tks = tasksOfProject(obj.id);
+    
+    // Инициализируем поля блокировок если их нет
+    if (!obj.locks) {
+      obj.locks = { move: false, hierarchy: false };
+    }
+    
     ins.innerHTML = `
       <h2>Проект: ${obj.title}</h2>
       <div class="kv">Домен: ${domainOf(obj)?.title || 'Независимый'}</div>
       <div class="kv">Теги: #${(obj.tags || []).join(" #")}</div>
+      
+      <div class="section">
+        <h3>🔒 Блокировки</h3>
+        <div class="locks">
+          <label class="lock-item">
+            <input type="checkbox" id="lockMove" ${obj.locks.move ? 'checked' : ''}>
+            <span>Блокировка перемещения</span>
+          </label>
+          <label class="lock-item">
+            <input type="checkbox" id="lockHierarchy" ${obj.locks.hierarchy ? 'checked' : ''}>
+            <span>Блокировка смены связей</span>
+          </label>
+        </div>
+      </div>
+      
+      ${renderHierarchySection(obj)}
+      
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
         <button class="btn" id="toToday">Взять 3 задачи в Сегодня</button>
@@ -293,6 +678,22 @@ export function openInspectorFor(obj) {
         openInspectorFor(obj); // Refresh inspector
       }
     };
+    
+    // Обработчики блокировок для проектов
+    document.getElementById("lockMove").onchange = (e) => {
+      obj.locks.move = e.target.checked;
+      saveState();
+      refreshMap();
+    };
+    
+    document.getElementById("lockHierarchy").onchange = (e) => {
+      obj.locks.hierarchy = e.target.checked;
+      saveState();
+      refreshMap();
+    };
+    
+    // Обработчики действий иерархии
+    setupHierarchyActionHandlers(obj);
   }
   if (type === "task") {
     const pending = getPendingAttach();
@@ -351,6 +752,8 @@ export function openInspectorFor(obj) {
       <div class="kv">Проект: ${project(obj.projectId)?.title || 'Без проекта'}</div>
       <div class="kv">Домен: ${obj.domainId ? byId(state.domains, obj.domainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
       <div class="kv">Обновлено: ${daysSince(obj.updatedAt)} дн. назад</div>
+      
+      ${renderHierarchySection(obj)}
       
       ${
         pendForThis
@@ -532,6 +935,9 @@ export function openInspectorFor(obj) {
         cancelBtn.click();
       }
     });
+    
+    // Обработчики действий иерархии
+    setupHierarchyActionHandlers(obj);
   }
 }
 
@@ -681,4 +1087,86 @@ function showColorPicker(project) {
       document.body.removeChild(modal);
     }
   });
+  
+  // Обработка идей
+  if (type === "idea") {
+    ins.innerHTML = `
+      <h2>Идея: ${obj.title}</h2>
+      <div class="kv">Содержание: ${obj.content || 'Нет описания'}</div>
+      <div class="kv">Домен: ${obj.domainId ? byId(state.domains, obj.domainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
+      <div class="kv">Проект: ${obj.projectId ? byId(state.projects, obj.projectId)?.title || 'Неизвестный проект' : 'Без проекта'}</div>
+      <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
+      
+      ${renderHierarchySection(obj)}
+      
+      <div class="btns">
+        <button class="btn primary" id="editIdea">✏️ Редактировать</button>
+        <button class="btn danger" id="delIdea">🗑️ Удалить</button>
+      </div>
+    `;
+    
+    document.getElementById("editIdea").onclick = () => {
+      const newTitle = prompt("Название идеи:", obj.title);
+      if (newTitle && newTitle !== obj.title) {
+        obj.title = newTitle;
+        obj.updatedAt = Date.now();
+        saveState();
+        drawMap();
+        openInspectorFor(obj);
+      }
+    };
+    
+    document.getElementById("delIdea").onclick = () => {
+      if (confirm(`Удалить идею "${obj.title}"?`)) {
+        state.ideas = state.ideas.filter(i => i.id !== obj.id);
+        saveState();
+        drawMap();
+        openInspectorFor(null);
+      }
+    };
+    
+    // Обработчики действий иерархии
+    setupHierarchyActionHandlers(obj);
+  }
+  
+  // Обработка заметок
+  if (type === "note") {
+    ins.innerHTML = `
+      <h2>Заметка: ${obj.title}</h2>
+      <div class="kv">Содержание: ${obj.content || 'Нет описания'}</div>
+      <div class="kv">Домен: ${obj.domainId ? byId(state.domains, obj.domainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
+      <div class="kv">Проект: ${obj.projectId ? byId(state.projects, obj.projectId)?.title || 'Неизвестный проект' : 'Без проекта'}</div>
+      <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
+      
+      ${renderHierarchySection(obj)}
+      
+      <div class="btns">
+        <button class="btn primary" id="editNote">✏️ Редактировать</button>
+        <button class="btn danger" id="delNote">🗑️ Удалить</button>
+      </div>
+    `;
+    
+    document.getElementById("editNote").onclick = () => {
+      const newTitle = prompt("Название заметки:", obj.title);
+      if (newTitle && newTitle !== obj.title) {
+        obj.title = newTitle;
+        obj.updatedAt = Date.now();
+        saveState();
+        drawMap();
+        openInspectorFor(obj);
+      }
+    };
+    
+    document.getElementById("delNote").onclick = () => {
+      if (confirm(`Удалить заметку "${obj.title}"?`)) {
+        state.notes = state.notes.filter(n => n.id !== obj.id);
+        saveState();
+        drawMap();
+        openInspectorFor(null);
+      }
+    };
+    
+    // Обработчики действий иерархии
+    setupHierarchyActionHandlers(obj);
+  }
 }
