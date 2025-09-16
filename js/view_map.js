@@ -3153,23 +3153,42 @@ export function drawMap() {
       } else if (projectVisualStyle === 'mixed') {
         drawMixedStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else {
-        // Enhanced fallback task rendering
+        // Enhanced task rendering with advanced effects
         const isHovered = hoverNodeId === n.id;
         const isClicked = clickedNodeId === n.id;
+        const time = performance.now() * 0.002;
         
-        // Main task circle with gradient
-        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, n.r);
+        // Dynamic pulsing effect for active tasks
+        const pulseIntensity = n.status === 'doing' ? 1 + Math.sin(time * 2) * 0.15 : 1;
+        const pulseRadius = n.r * pulseIntensity;
+        
+        // Enhanced gradient with multiple color stops
+        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, pulseRadius);
         gradient.addColorStop(0, baseColor + "FF");
-        gradient.addColorStop(0.3, baseColor + "DD");
-        gradient.addColorStop(0.7, baseColor + "AA");
-        gradient.addColorStop(1, baseColor + "77");
+        gradient.addColorStop(0.2, baseColor + "EE");
+        gradient.addColorStop(0.4, baseColor + "CC");
+        gradient.addColorStop(0.7, baseColor + "99");
+        gradient.addColorStop(1, baseColor + "66");
         
+        // Outer energy ring for active tasks
+        if (n.status === 'doing' || n.status === 'today') {
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 8 * DPR * pulseIntensity;
+          ctx.strokeStyle = baseColor + "60";
+          ctx.lineWidth = 2 * DPR;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+        
+        // Main task circle with enhanced gradient
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
         
         if (state.showGlow && allowGlow) {
           ctx.shadowColor = baseColor;
-          ctx.shadowBlur = 12 * DPR;
+          ctx.shadowBlur = 15 * DPR * pulseIntensity;
         } else {
           ctx.shadowBlur = 0;
         }
@@ -3178,29 +3197,71 @@ export function drawMap() {
         ctx.fill();
         ctx.shadowBlur = 0;
         
-        // Inner highlight for 3D effect
-        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.6);
-        innerGradient.addColorStop(0, "#ffffff40");
+        // Enhanced inner highlight with multiple layers
+        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.7);
+        innerGradient.addColorStop(0, "#ffffff60");
+        innerGradient.addColorStop(0.3, "#ffffff30");
+        innerGradient.addColorStop(0.7, "#ffffff10");
         innerGradient.addColorStop(1, "#00000000");
         
         ctx.beginPath();
         ctx.fillStyle = innerGradient;
-        ctx.arc(n.x, n.y, n.r * 0.6, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r * 0.7, 0, Math.PI * 2);
         ctx.fill();
         
-        // Border with contrast color
+        // Secondary inner highlight for more depth
+        const innerGradient2 = ctx.createRadialGradient(n.x - n.r/4, n.y - n.r/4, 0, n.x, n.y, n.r * 0.4);
+        innerGradient2.addColorStop(0, "#ffffff80");
+        innerGradient2.addColorStop(1, "#00000000");
+        
         ctx.beginPath();
-        ctx.strokeStyle = getContrastColor(baseColor);
-        ctx.lineWidth = 1.5 * DPR;
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fillStyle = innerGradient2;
+        ctx.arc(n.x, n.y, n.r * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Enhanced border with gradient
+        const borderGradient = ctx.createLinearGradient(n.x - n.r, n.y, n.x + n.r, n.y);
+        borderGradient.addColorStop(0, getContrastColor(baseColor) + "CC");
+        borderGradient.addColorStop(0.5, getContrastColor(baseColor) + "FF");
+        borderGradient.addColorStop(1, getContrastColor(baseColor) + "CC");
+        
+        ctx.beginPath();
+        ctx.strokeStyle = borderGradient;
+        ctx.lineWidth = 2 * DPR;
+        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
         ctx.stroke();
         
-        // Outer glow for depth
+        // Outer glow with multiple rings
         ctx.beginPath();
-        ctx.strokeStyle = baseColor + "30";
-        ctx.lineWidth = 3 * DPR;
-        ctx.arc(n.x, n.y, n.r + 1 * DPR, 0, Math.PI * 2);
+        ctx.strokeStyle = baseColor + "40";
+        ctx.lineWidth = 4 * DPR;
+        ctx.arc(n.x, n.y, pulseRadius + 2 * DPR, 0, Math.PI * 2);
         ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.strokeStyle = baseColor + "20";
+        ctx.lineWidth = 6 * DPR;
+        ctx.arc(n.x, n.y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Status-specific effects
+        if (n.status === 'today') {
+          // Today tasks get a golden ring
+          ctx.beginPath();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(n.x, n.y, pulseRadius + 6 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (n.status === 'done') {
+          // Done tasks get a subtle checkmark effect
+          ctx.strokeStyle = "#10b981";
+          ctx.lineWidth = 2 * DPR;
+          ctx.beginPath();
+          ctx.moveTo(n.x - n.r * 0.3, n.y);
+          ctx.lineTo(n.x - n.r * 0.1, n.y + n.r * 0.2);
+          ctx.lineTo(n.x + n.r * 0.3, n.y - n.r * 0.2);
+          ctx.stroke();
+        }
         
         // Status-specific styling
         if (n.status === "today") {
@@ -6261,28 +6322,28 @@ function drawNotes() {
     const pulse = 1 + Math.sin(time + note.y * 0.01) * 0.05; // Очень слабая пульсация
     const pulseRadius = r * pulse;
     
-    // Рисуем заметку - красивый дизайн в стиле бумаги
+    // Рисуем заметку - современный дизайн с эффектами
     ctx.save();
     
     const baseColor = note.color || '#6c757d';
-    const alpha = Math.max(0.8, note.opacity || 0.9);
+    const alpha = Math.max(0.9, note.opacity || 1.0);
     
-    // Создаем форму заметки (слегка неровный прямоугольник)
-    const width = pulseRadius * 1.8;
-    const height = pulseRadius * 1.2;
-    const cornerRadius = pulseRadius * 0.2;
+    // Создаем форму заметки (современный прямоугольник с закругленными углами)
+    const width = pulseRadius * 2.2;
+    const height = pulseRadius * 1.6;
+    const cornerRadius = pulseRadius * 0.3;
     
-    // Тень
-    ctx.globalAlpha = alpha * 0.3;
+    // Улучшенная тень с размытием
+    ctx.globalAlpha = alpha * 0.4;
     ctx.fillStyle = '#000000';
     ctx.shadowColor = '#000000';
-    ctx.shadowBlur = 8 * DPR;
-    ctx.shadowOffsetX = 3 * DPR;
-    ctx.shadowOffsetY = 3 * DPR;
+    ctx.shadowBlur = 12 * DPR;
+    ctx.shadowOffsetX = 4 * DPR;
+    ctx.shadowOffsetY = 4 * DPR;
     
     // Рисуем тень
     ctx.beginPath();
-    drawRoundedRect(ctx, x - width/2 + 2, y - height/2 + 2, width, height, cornerRadius);
+    drawRoundedRect(ctx, x - width/2 + 3, y - height/2 + 3, width, height, cornerRadius);
     ctx.fill();
     
     // Основная форма заметки
@@ -6291,10 +6352,12 @@ function drawNotes() {
     ctx.shadowOffsetY = 0;
     ctx.globalAlpha = alpha;
     
-    // Градиент для бумаги
+    // Современный градиент с акцентным цветом
     const gradient = ctx.createLinearGradient(x - width/2, y - height/2, x + width/2, y + height/2);
     gradient.addColorStop(0, '#ffffff');
     gradient.addColorStop(0.1, '#f8f9fa');
+    gradient.addColorStop(0.3, baseColor + '15');
+    gradient.addColorStop(0.7, baseColor + '10');
     gradient.addColorStop(0.9, '#e9ecef');
     gradient.addColorStop(1, '#dee2e6');
     
@@ -6303,16 +6366,27 @@ function drawNotes() {
     drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
     ctx.fill();
     
-    // Обводка
-    ctx.strokeStyle = baseColor + 'cc';
-    ctx.lineWidth = 2 * DPR;
+    // Акцентная полоса сверху
+    ctx.fillStyle = baseColor + '80';
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, pulseRadius * 0.15, cornerRadius, cornerRadius, 0, 0);
+    ctx.fill();
+    
+    // Улучшенная обводка с градиентом
+    const borderGradient = ctx.createLinearGradient(x - width/2, y, x + width/2, y);
+    borderGradient.addColorStop(0, baseColor + '60');
+    borderGradient.addColorStop(0.5, baseColor + 'CC');
+    borderGradient.addColorStop(1, baseColor + '60');
+    
+    ctx.strokeStyle = borderGradient;
+    ctx.lineWidth = 2.5 * DPR;
     ctx.beginPath();
     drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
     ctx.stroke();
     
-    // Линии на бумаге
-    ctx.globalAlpha = alpha * 0.3;
-    ctx.strokeStyle = baseColor + '44';
+    // Декоративные линии на бумаге
+    ctx.globalAlpha = alpha * 0.4;
+    ctx.strokeStyle = baseColor + '30';
     ctx.lineWidth = 1 * DPR;
     for (let i = 1; i < 3; i++) {
       const lineY = y - height/2 + (height * i / 4);
