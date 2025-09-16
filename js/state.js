@@ -314,7 +314,8 @@ export function colorByAging(ts){
 }
 
 export function sizeByImportance(item){
-  return Math.max(20, Math.min(80, 20 + (item.priority || 1) * 15));
+  // Задачи должны быть меньше и помещаться в проекты
+  return Math.max(12, Math.min(24, 12 + (item.priority || 1) * 4));
 }
 
 export function statusPill(s){
@@ -872,7 +873,7 @@ export function createTask(title, projectId = null, domainId = null) {
     priority: 2,
     x: Math.random() * 2000 - 1000,
     y: Math.random() * 2000 - 1000,
-    r: 20,
+    r: 16,
     color: '#3b82f6',
     opacity: 1.0,
     createdAt: Date.now(),

@@ -1837,26 +1837,77 @@ export function resize() {
 
 function calculateProjectRadius(tasks) {
   // Минимальный размер для пустых проектов (с учетом DPR)
-  const baseRadius = 48 * DPR;
+  const baseRadius = 32 * DPR;
 
   if (tasks.length === 0) return baseRadius;
 
-  // Вычисляем общую площадь всех задач с учетом DPR
-  const totalTaskArea = tasks.reduce((sum, task) => {
-    const taskSize = sizeByImportance(task) * DPR;
-    return sum + Math.PI * taskSize * taskSize;
+  // Вычисляем максимальный размер задачи
+  const maxTaskSize = Math.max(...tasks.map(task => sizeByImportance(task) * DPR));
+  
+  // Вычисляем количество задач
+  const taskCount = tasks.length;
+  
+  // Минимальное расстояние между центрами задач
+  const minDist = maxTaskSize * 2.2 + 10 * DPR;
+  
+  // Для небольшого количества задач используем простую формулу
+  if (taskCount <= 3) {
+    return Math.max(baseRadius, maxTaskSize * 2.5 + 16 * DPR);
+  }
+  
+  // Для большего количества задач используем кольцевую упаковку
+  // Максимум 8 задач в кольце
+  const maxTasksPerRing = 8;
+  const ringsNeeded = Math.ceil(taskCount / maxTasksPerRing);
+  
+  // Вычисляем радиус для каждого кольца
+  let totalRadius = 0;
+  for (let ring = 0; ring < ringsNeeded; ring++) {
+    const tasksInRing = Math.min(maxTasksPerRing, taskCount - ring * maxTasksPerRing);
+    const ringRadius = minDist + ring * minDist;
+    totalRadius = Math.max(totalRadius, ringRadius);
+  }
+  
+  // Добавляем отступ от края
+  const finalRadius = totalRadius + maxTaskSize + 16 * DPR;
+
+  // Возвращаем максимальное значение между базовым радиусом и вычисленным
+  return Math.max(baseRadius, finalRadius);
+}
+
+function calculateDomainRadius(projects) {
+  // Минимальный размер для пустых доменов (с учетом DPR)
+  const baseRadius = 80 * DPR;
+
+  if (projects.length === 0) return baseRadius;
+
+  // Вычисляем максимальный размер проекта
+  const maxProjectSize = Math.max(...projects.map(project => project.r || 40 * DPR));
+  
+  // Вычисляем количество проектов
+  const projectCount = projects.length;
+  
+  // Для небольшого количества проектов используем простую формулу
+  if (projectCount <= 2) {
+    return Math.max(baseRadius, maxProjectSize * 2.0 + 32 * DPR);
+  }
+  
+  // Для большего количества проектов используем площадь
+  const totalProjectArea = projects.reduce((sum, project) => {
+    const projectSize = project.r || 40 * DPR;
+    return sum + Math.PI * projectSize * projectSize;
   }, 0);
 
-  // Добавляем пространство для отступов между задачами (50%)
-  const areaWithPadding = totalTaskArea * 1.5;
+  // Добавляем пространство для отступов между проектами (50%)
+  const areaWithPadding = totalProjectArea * 1.5;
 
   // Вычисляем радиус круга, который может вместить эту площадь
-  // и добавляем отступ от края
   const radiusFromArea = Math.sqrt(areaWithPadding / Math.PI) + 32 * DPR;
 
   // Возвращаем максимальное значение между базовым радиусом и вычисленным
   return Math.max(baseRadius, radiusFromArea);
 }
+
 export function layoutMap() {
   // Prevent recursive layout calls
   if (isLayouting) {
@@ -2044,25 +2095,51 @@ export function layoutMap() {
       const minDist = maxSize * 2.2 + 10 * DPR;
       // 3. Максимальный радиус для размещения
       const maxR = pNode.r - maxSize - 8 * DPR;
-      // 4. Группируем задачи по кольцам
+      // 4. Группируем задачи по кольцам с ограничением по количеству
       let rings = [];
       let placed = 0;
       let currentRadius = minDist;
+      
       while (placed < siblings.length && currentRadius <= maxR) {
-        const tasksInRing = Math.floor((2 * Math.PI * currentRadius) / minDist);
-        const ringTasks = siblings.slice(placed, placed + tasksInRing);
-        rings.push({ radius: currentRadius, tasks: ringTasks });
-        placed += tasksInRing;
+        // Максимальное количество задач в кольце (не более 8)
+        const maxTasksInRing = Math.min(8, Math.floor((2 * Math.PI * currentRadius) / minDist));
+        const tasksInRing = Math.min(maxTasksInRing, siblings.length - placed);
+        
+        if (tasksInRing > 0) {
+          const ringTasks = siblings.slice(placed, placed + tasksInRing);
+          rings.push({ radius: currentRadius, tasks: ringTasks });
+          placed += tasksInRing;
+        }
+        
         currentRadius += minDist;
       }
-      // Если задач больше, чем поместилось на кольцах, докладываем в «последнее кольцо»
+      
+      // Если задач больше, чем поместилось на кольцах, увеличиваем размер проекта
       if (placed < siblings.length) {
-        // ГАРД: могло не создаться ни одного кольца (узкий maxR и т.п.)
-        if (rings.length === 0) {
-          rings.push({ radius: currentRadius, tasks: [] });
+        // Вычисляем необходимый радиус для оставшихся задач
+        const remainingTasks = siblings.length - placed;
+        const additionalRadius = Math.ceil(remainingTasks / 8) * minDist;
+        const newProjectRadius = Math.min(pNode.r + additionalRadius, maxR + additionalRadius);
+        
+        // Обновляем радиус проекта
+        pNode.r = newProjectRadius;
+        
+        // Добавляем оставшиеся задачи в новые кольца
+        let remainingPlaced = placed;
+        let newRadius = currentRadius;
+        
+        while (remainingPlaced < siblings.length && newRadius <= newProjectRadius - maxSize - 8 * DPR) {
+          const maxTasksInRing = Math.min(8, Math.floor((2 * Math.PI * newRadius) / minDist));
+          const tasksInRing = Math.min(maxTasksInRing, siblings.length - remainingPlaced);
+          
+          if (tasksInRing > 0) {
+            const ringTasks = siblings.slice(remainingPlaced, remainingPlaced + tasksInRing);
+            rings.push({ radius: newRadius, tasks: ringTasks });
+            remainingPlaced += tasksInRing;
+          }
+          
+          newRadius += minDist;
         }
-        const last = rings[rings.length - 1];
-        last.tasks = (last.tasks || []).concat(siblings.slice(placed));
       }
 
       // 5. Для каждой задачи определяем её позицию
@@ -2094,6 +2171,7 @@ export function layoutMap() {
       }
     } else {
       // Свободное размещение вне проектов
+      const savedT = t.pos || t._pos;
       nodes.push({
         _type: "task",
         id: t.id,
@@ -2541,7 +2619,26 @@ export function drawMap() {
       } else if (projectVisualStyle === 'mixed') {
         drawMixedStyle(ctx, n.x, n.y, n.r, domainColor, 'domain');
       } else {
-        drawPlanet(ctx, n.x, n.y, n.r, domainColor, 'nebula');
+        // Original domain rendering (M-01: Domain Aura)
+        console.log("Rendering domain with original style:", n.id, domainColor);
+        const gradient = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
+        gradient.addColorStop(0, domainColor + "40");
+        gradient.addColorStop(0.7, domainColor + "20");
+        gradient.addColorStop(1, domainColor + "10");
+        
+        ctx.beginPath();
+        ctx.fillStyle = gradient;
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Dashed border
+        ctx.beginPath();
+        ctx.strokeStyle = domainColor;
+        ctx.lineWidth = 1.2 * DPR;
+        ctx.setLineDash([4 * DPR, 4 * DPR]);
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
       
       // Search highlight
@@ -2680,7 +2777,19 @@ export function drawMap() {
       } else if (projectVisualStyle === 'mixed') {
         drawMixedStyle(ctx, n.x, n.y, pulseRadius, projectColor, 'project');
       } else {
-        drawGalaxy(ctx, n.x, n.y, pulseRadius, projectColor, seed);
+        // Original project rendering (M-02: Project Orbit)
+        console.log("Rendering project with original style:", n.id, projectColor);
+        ctx.beginPath();
+        ctx.fillStyle = projectColor;
+        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Thin border
+        ctx.beginPath();
+        ctx.strokeStyle = getContrastColor(projectColor);
+        ctx.lineWidth = 1 * DPR;
+        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
+        ctx.stroke();
       }
       
       // Универсальный эффект клика для всех стилей
@@ -2943,32 +3052,94 @@ export function drawMap() {
       
       // Draw task with style support
       if (projectVisualStyle === 'original') {
-        // Original task drawing from v0.2.7.5
-      if (state.showAging) {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
-        ctx.strokeStyle = colorByAging(n.aging);
-        ctx.lineWidth = 2 * DPR;
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      if (state.showGlow && allowGlow) {
-        ctx.shadowColor = baseColor;
-        ctx.shadowBlur = 12 * DPR;
-      } else {
-        ctx.shadowBlur = 0;
-      }
-      ctx.fillStyle = baseColor;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      if (n.status === "today") {
-        ctx.beginPath();
-        ctx.strokeStyle = "#f59e0b";
-        ctx.lineWidth = 1 * DPR;
-        ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
-        ctx.stroke();
+        // Enhanced task drawing with better visual appeal
+        const isHovered = hoverNodeId === n.id;
+        const isClicked = clickedNodeId === n.id;
+        
+        // Aging ring (if enabled)
+        if (state.showAging) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
+          ctx.strokeStyle = colorByAging(n.aging);
+          ctx.lineWidth = 2 * DPR;
+          ctx.stroke();
         }
+        
+        // Main task circle with gradient
+        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, n.r);
+        gradient.addColorStop(0, baseColor + "FF");
+        gradient.addColorStop(0.3, baseColor + "DD");
+        gradient.addColorStop(0.7, baseColor + "AA");
+        gradient.addColorStop(1, baseColor + "77");
+        
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        
+        // Glow effect
+        if (state.showGlow && allowGlow) {
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 12 * DPR;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        // Inner highlight for 3D effect
+        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.6);
+        innerGradient.addColorStop(0, "#ffffff40");
+        innerGradient.addColorStop(1, "#00000000");
+        
+        ctx.beginPath();
+        ctx.fillStyle = innerGradient;
+        ctx.arc(n.x, n.y, n.r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Border with contrast color
+        ctx.beginPath();
+        ctx.strokeStyle = getContrastColor(baseColor);
+        ctx.lineWidth = 1.5 * DPR;
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Outer glow for depth
+        ctx.beginPath();
+        ctx.strokeStyle = baseColor + "30";
+        ctx.lineWidth = 3 * DPR;
+        ctx.arc(n.x, n.y, n.r + 1 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Status-specific styling
+        if (n.status === "today") {
+          // Yellow ring for "today" tasks
+          ctx.beginPath();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(n.x, n.y, n.r + 4 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (n.status === "doing") {
+          // Pulsing effect for "doing" tasks
+          const pulse = Math.sin(Date.now() * 0.003) * 0.1 + 1;
+          ctx.beginPath();
+          ctx.strokeStyle = baseColor + "80";
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(n.x, n.y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        
+        // Hover effect
+        if (isHovered) {
+          ctx.beginPath();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        
+        // Click effect will be drawn after all other layers
+        
       } else if (projectVisualStyle === 'neon') {
         drawNeonStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'tech') {
@@ -2982,7 +3153,81 @@ export function drawMap() {
       } else if (projectVisualStyle === 'mixed') {
         drawMixedStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else {
-        drawTaskModern(ctx, n.x, n.y, n.r, baseColor, n.status);
+        // Enhanced fallback task rendering
+        const isHovered = hoverNodeId === n.id;
+        const isClicked = clickedNodeId === n.id;
+        
+        // Main task circle with gradient
+        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, n.r);
+        gradient.addColorStop(0, baseColor + "FF");
+        gradient.addColorStop(0.3, baseColor + "DD");
+        gradient.addColorStop(0.7, baseColor + "AA");
+        gradient.addColorStop(1, baseColor + "77");
+        
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        
+        if (state.showGlow && allowGlow) {
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 12 * DPR;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        // Inner highlight for 3D effect
+        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.6);
+        innerGradient.addColorStop(0, "#ffffff40");
+        innerGradient.addColorStop(1, "#00000000");
+        
+        ctx.beginPath();
+        ctx.fillStyle = innerGradient;
+        ctx.arc(n.x, n.y, n.r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Border with contrast color
+        ctx.beginPath();
+        ctx.strokeStyle = getContrastColor(baseColor);
+        ctx.lineWidth = 1.5 * DPR;
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Outer glow for depth
+        ctx.beginPath();
+        ctx.strokeStyle = baseColor + "30";
+        ctx.lineWidth = 3 * DPR;
+        ctx.arc(n.x, n.y, n.r + 1 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Status-specific styling
+        if (n.status === "today") {
+          ctx.beginPath();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(n.x, n.y, n.r + 4 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (n.status === "doing") {
+          const pulse = Math.sin(Date.now() * 0.003) * 0.1 + 1;
+          ctx.beginPath();
+          ctx.strokeStyle = baseColor + "80";
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(n.x, n.y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        
+        // Hover effect
+        if (isHovered) {
+          ctx.beginPath();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2 * DPR;
+          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        
+        // Click effect will be drawn after all other layers
       }
       
       // Search highlight
@@ -3000,6 +3245,45 @@ export function drawMap() {
         ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
         ctx.strokeStyle = colorByAging(n.aging);
         ctx.lineWidth = 2 * DPR;
+        ctx.stroke();
+      }
+      
+      // Click effect (dynamic highlight) - drawn on top of everything
+      const isClicked = clickedNodeId === n.id;
+      if (isClicked && clickEffectTime > 0) {
+        console.log("Task click effect:", n.id, clickEffectTime);
+        const clickRadius = n.r + (clickEffectTime * 40 * DPR);
+        const starRadius = n.r + (clickEffectTime * 60 * DPR);
+        const clickAlpha = Math.max(0, clickEffectTime * 0.8);
+        
+        // Star effect - multiple lines radiating outward
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2 * DPR;
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2;
+          const startX = n.x + Math.cos(angle) * (n.r + 5 * DPR);
+          const startY = n.y + Math.sin(angle) * (n.r + 5 * DPR);
+          const endX = n.x + Math.cos(angle) * starRadius;
+          const endY = n.y + Math.sin(angle) * starRadius;
+          
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+        
+        // Pulsing outer ring
+        ctx.beginPath();
+        ctx.strokeStyle = baseColor + Math.floor(clickAlpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 4 * DPR;
+        ctx.arc(n.x, n.y, clickRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Bright inner ring
+        ctx.beginPath();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 3 * DPR;
+        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
       
