@@ -1886,25 +1886,24 @@ export function layoutMap() {
     : state.domains.slice();
   }
   const domainCount = domains.length;
-  // Радиусы доменов (можно сделать динамическими, если потребуется)
-  const domainRadius = 220 * DPR;
+  const spacing = 32 * DPR;
+  const domainRadii = domains.map((d) => {
+    const raw = typeof d.r === "number" ? d.r : parseFloat(d.r);
+    const base = Number.isFinite(raw) ? raw : 120;
+    return clamp(base, 80, 160) * DPR;
+  });
   const midY = H / 2;
-  // Автоматическое размещение доменов без пересечений
-  let domainXs = [];
-  let totalWidth = 0;
-  for (let i = 0; i < domainCount; i++) {
-    totalWidth += (i === 0 ? 0 : domainRadius * 2) + 32 * DPR;
-  }
-  // Центрируем домены по ширине
-  let startX =
-    (W -
-      ((domainCount - 1) * (domainRadius * 2 + 32 * DPR) + domainRadius * 2)) /
-      2 +
-    domainRadius;
-  for (let i = 0; i < domainCount; i++) {
-    domainXs.push(startX + i * (domainRadius * 2 + 32 * DPR));
-  }
-
+  const totalWidth = domainRadii.reduce(
+    (sum, radius, index) => sum + radius * 2 + (index > 0 ? spacing : 0),
+    0
+  );
+  let currentX = (W - totalWidth) / 2;
+  const domainXs = [];
+  domainRadii.forEach((radius) => {
+    const center = currentX + radius;
+    domainXs.push(center);
+    currentX += radius * 2 + spacing;
+  });
   // Prepare task list first since we need it for project sizing
   const taskList = state.tasks
     .filter((t) =>
@@ -1927,6 +1926,7 @@ export function layoutMap() {
   domains.forEach((d, i) => {
     const x = domainXs[i];
     const y = midY;
+    const radius = domainRadii[i] || 120 * DPR;
     const color = (d.color || "").startsWith("var(")
       ? getComputedStyle(document.documentElement)
           .getPropertyValue(d.color.replace("var(", "").replace(")", "").trim())
@@ -1957,7 +1957,7 @@ export function layoutMap() {
       title: d.title,
       x,
       y,
-      r: domainRadius,
+      r: radius,
       color,
       mood,
       moodColor,
@@ -2029,60 +2029,79 @@ export function layoutMap() {
 
   const golden = Math.PI * (3 - Math.sqrt(5));
   taskList.forEach((t) => {
+    const savedT = t.pos || t._pos;
     if (t.projectId) {
       const pNode = nodes.find(
         (n) => n._type === "project" && n.id === t.projectId
       );
       if (!pNode) return;
       const siblings = taskList.filter((x) => x.projectId === t.projectId);
-      const idx = siblings.indexOf(t);
-      // 1. Считаем максимальный радиус задачи
-      const maxSize = Math.max(
-        ...siblings.map((s) => sizeByImportance(s) * DPR)
-      );
-      // 2. Минимальное расстояние между центрами задач
-      const minDist = maxSize * 2.2 + 10 * DPR;
-      // 3. Максимальный радиус для размещения
-      const maxR = pNode.r - maxSize - 8 * DPR;
-      // 4. Группируем задачи по кольцам
+      const rawSizes = siblings.map((s) => sizeByImportance(s) * DPR);
+      const maxRawSize = rawSizes.length ? Math.max(...rawSizes) : 20 * DPR;
+      const orbitCapacity = Math.max(pNode.r - 24 * DPR, 24 * DPR);
+      let sizeScale = 1;
+      if (maxRawSize + 8 * DPR > orbitCapacity) {
+        sizeScale = Math.max(0.45, (orbitCapacity - 8 * DPR) / Math.max(maxRawSize, 1));
+      }
+      const scaledSizes = siblings.map((s, index) => {
+        const base = rawSizes[index] || sizeByImportance(s) * DPR;
+        return Math.max(12 * DPR, base * sizeScale);
+      });
+      const sizeById = new Map();
+      siblings.forEach((s, index) => {
+        sizeById.set(s.id, scaledSizes[index] || 12 * DPR);
+      });
+      const maxSize = scaledSizes.length ? Math.max(...scaledSizes) : 12 * DPR;
+      const minDist = Math.max(maxSize * 1.6 + 8 * DPR, 24 * DPR);
+      const radialLimit = Math.max(pNode.r - maxSize - 6 * DPR, maxSize + 8 * DPR);
+      let maxR = Math.min(radialLimit, orbitCapacity);
+      if (!Number.isFinite(maxR) || maxR <= 0) {
+        maxR = Math.max(16 * DPR, orbitCapacity * 0.75);
+      }
       let rings = [];
       let placed = 0;
-      let currentRadius = minDist;
+      let currentRadius = Math.min(
+        Math.max(minDist, maxSize + 12 * DPR),
+        maxR
+      );
       while (placed < siblings.length && currentRadius <= maxR) {
-        const tasksInRing = Math.floor((2 * Math.PI * currentRadius) / minDist);
+        const circumference = 2 * Math.PI * currentRadius;
+        const tasksInRing = Math.max(1, Math.floor(circumference / minDist));
         const ringTasks = siblings.slice(placed, placed + tasksInRing);
         rings.push({ radius: currentRadius, tasks: ringTasks });
-        placed += tasksInRing;
-        currentRadius += minDist;
+        placed += ringTasks.length;
+        if (placed >= siblings.length) break;
+        const nextRadius = Math.min(currentRadius + minDist, maxR);
+        if (nextRadius <= currentRadius) break;
+        currentRadius = nextRadius;
       }
-      // Если задач больше, чем поместилось на кольцах, докладываем в «последнее кольцо»
       if (placed < siblings.length) {
-        // ГАРД: могло не создаться ни одного кольца (узкий maxR и т.п.)
-        if (rings.length === 0) {
-          rings.push({ radius: currentRadius, tasks: [] });
+        const fallbackRadius = Math.min(maxR, Math.max(maxSize + 8 * DPR, currentRadius));
+        if (!rings.length) {
+          rings.push({ radius: fallbackRadius, tasks: [] });
         }
         const last = rings[rings.length - 1];
+        last.radius = fallbackRadius;
         last.tasks = (last.tasks || []).concat(siblings.slice(placed));
       }
-
-      // 5. Для каждой задачи определяем её позицию
       let found = false;
       for (let r = 0; r < rings.length; r++) {
-        const ring = rings[r] || { radius: minDist, tasks: [] };
-        const tasks = (ring && ring.tasks) || [];
+        const ring = rings[r] || { radius: currentRadius, tasks: [] };
+        const tasks = ring.tasks || [];
         const radius = ring.radius;
         for (let k = 0; k < tasks.length; k++) {
           if (tasks[k].id === t.id) {
-            const angle = (k / tasks.length) * 2 * Math.PI;
+            const angle = tasks.length === 1 ? 0 : (k / tasks.length) * 2 * Math.PI;
             const x = pNode.x + Math.cos(angle) * radius;
             const y = pNode.y + Math.sin(angle) * radius;
+            const taskRadius = sizeById.get(t.id) || sizeByImportance(t) * DPR * sizeScale;
             nodes.push({
               _type: "task",
               id: t.id,
               title: t.title,
-              x: x,
-              y: y,
-              r: sizeByImportance(t) * DPR,
+              x,
+              y,
+              r: taskRadius,
               status: t.status,
               aging: t.updatedAt,
             });
@@ -2091,6 +2110,19 @@ export function layoutMap() {
           }
         }
         if (found) break;
+      }
+      if (!found) {
+        const fallbackRadius = sizeById.get(t.id) || sizeByImportance(t) * DPR * sizeScale;
+        nodes.push({
+          _type: "task",
+          id: t.id,
+          title: t.title,
+          x: pNode.x,
+          y: pNode.y,
+          r: fallbackRadius,
+          status: t.status,
+          aging: t.updatedAt,
+        });
       }
     } else {
       // Свободное размещение вне проектов
@@ -3058,54 +3090,134 @@ export function drawMap() {
     }
   }
 
-  // Рисуем идеи
+  // Рисуем идеи (улучшенная версия)
   nodes
     .filter((n) => n._type === "idea")
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
       
-      // Рисуем идею как полупрозрачный круг
+      const x = n.x;
+      const y = n.y;
+      const r = n.r;
+      
+      // Очень медленная и плавная анимация пульсации
+      const time = performance.now() * 0.0005; // Замедлено в 6 раз
+      const pulse = 1 + Math.sin(time + n.x * 0.01) * 0.08; // Очень слабая пульсация
+      const pulseRadius = r * pulse;
+      
+      // Рисуем идею - упрощенный и надежный дизайн
+      ctx.save();
+      
+      const baseColor = n.color || '#8b5cf6';
+      const alpha = Math.max(0.6, n.opacity || 0.8);
+      
+      // Основной круг с градиентом
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, pulseRadius);
+      gradient.addColorStop(0, baseColor + 'ff');
+      gradient.addColorStop(0.5, baseColor + 'aa');
+      gradient.addColorStop(1, baseColor + '66');
+      
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = gradient;
+      ctx.shadowColor = baseColor;
+      ctx.shadowBlur = 15 * DPR;
+      
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fillStyle = (n.color || "#8b5cf6") + "80"; // 50% прозрачности
+      ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
       ctx.fill();
       
-      // Обводка
+      // Внутренний круг
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.fillStyle = baseColor + 'cc';
+      ctx.shadowBlur = 0;
       ctx.beginPath();
-      ctx.strokeStyle = n.color || "#8b5cf6";
-      ctx.lineWidth = 2 * DPR;
-      ctx.setLineDash([4 * DPR, 4 * DPR]);
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.arc(x, y, pulseRadius * 0.7, 0, Math.PI * 2);
+      ctx.fill();
       
-      // Название идеи
-      ctx.fillStyle = "#e0e7ff";
-      ctx.font = `${10 * DPR}px system-ui`;
-      ctx.textAlign = "center";
-      ctx.fillText(n.title, n.x, n.y - n.r - 8 * DPR);
+      // Иконка
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `${pulseRadius * 0.8}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💡', x, y);
+      
+      ctx.restore();
     });
 
-  // Рисуем заметки
+  // Рисуем заметки (улучшенная версия)
   nodes
     .filter((n) => n._type === "note")
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
       
-      // Рисуем заметку как квадрат
-      ctx.fillStyle = n.color || "#10b981";
-      ctx.fillRect(n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
+      const x = n.x;
+      const y = n.y;
+      const r = n.r;
+      
+      // Очень медленная и плавная анимация вращения
+      const time = performance.now() * 0.0003; // Замедлено в 10 раз
+      const pulse = 1 + Math.sin(time + n.y * 0.01) * 0.05; // Очень слабая пульсация
+      const pulseRadius = r * pulse;
+      
+      // Рисуем заметку - красивый дизайн в стиле бумаги
+      ctx.save();
+      
+      const baseColor = n.color || '#6c757d';
+      const alpha = Math.max(0.8, n.opacity || 0.9);
+      
+      // Создаем форму заметки (слегка неровный прямоугольник)
+      const width = pulseRadius * 1.8;
+      const height = pulseRadius * 1.2;
+      const cornerRadius = pulseRadius * 0.2;
+      
+      // Тень
+      ctx.globalAlpha = alpha * 0.3;
+      ctx.fillStyle = '#000000';
+      ctx.shadowColor = '#000000';
+      ctx.shadowBlur = 8 * DPR;
+      ctx.shadowOffsetX = 3 * DPR;
+      ctx.shadowOffsetY = 3 * DPR;
+      
+      // Рисуем тень
+      ctx.beginPath();
+      drawRoundedRect(ctx, x - width/2 + 2, y - height/2 + 2, width, height, cornerRadius);
+      ctx.fill();
+      
+      // Основная форма заметки
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.globalAlpha = alpha;
+      
+      // Градиент для бумаги
+      const gradient = ctx.createLinearGradient(x - width/2, y - height/2, x + width/2, y + height/2);
+      gradient.addColorStop(0, '#ffffff');
+      gradient.addColorStop(0.1, '#f8f9fa');
+      gradient.addColorStop(0.9, '#e9ecef');
+      gradient.addColorStop(1, '#dee2e6');
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
+      ctx.fill();
       
       // Обводка
-      ctx.strokeStyle = "#059669";
+      ctx.strokeStyle = baseColor;
       ctx.lineWidth = 1 * DPR;
-      ctx.strokeRect(n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
+      ctx.beginPath();
+      drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
+      ctx.stroke();
       
-      // Название заметки
-      ctx.fillStyle = "#ecfdf5";
-      ctx.font = `${9 * DPR}px system-ui`;
-      ctx.textAlign = "center";
-      ctx.fillText(n.title, n.x, n.y + 3 * DPR);
+      // Иконка заметки
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = baseColor;
+      ctx.font = `${pulseRadius * 0.6}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📝', x, y);
+      
+      ctx.restore();
     });
 
   // FPS overlay
@@ -3183,9 +3295,7 @@ function debugOverlay() {
       );
       ctx.fillStyle = "rgba(255,255,255,0.9)";
       ctx.font = "12px monospace";
-      const info = `nodes:${nodes.length} view: scale=${viewState.scale.toFixed(
-        2
-      )} tx=${viewState.tx.toFixed(0)} ty=${viewState.ty.toFixed(0)}`;
+      const info = `nodes:${nodes.length} view: scale=${viewState.scale.toFixed(2)} tx=${viewState.tx.toFixed(0)} ty=${viewState.ty.toFixed(0)}`;
       ctx.fillText(info, 8, 18);
       ctx.restore();
       console.log(
@@ -6242,3 +6352,21 @@ function showNoteEditor(note) {
     }, 100);
   });
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
