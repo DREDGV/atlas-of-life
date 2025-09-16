@@ -1563,7 +1563,7 @@ function createNoteAtPosition(x, y) {
 
 function createChecklistAtPosition(x, y) {
   const checklist = {
-    id: generateId(),
+    id: 'c' + generateId(),
     title: 'Новый чек-лист',
     projectId: null,
     domainId: state.activeDomain || state.domains[0]?.id || null,
@@ -1579,8 +1579,12 @@ function createChecklistAtPosition(x, y) {
   
   state.checklists.push(checklist);
   saveState();
-  layoutMap();
-  drawMap();
+  
+  // Принудительно обновляем карту
+  if (window.layoutMap) window.layoutMap();
+  if (window.drawMap) window.drawMap();
+  
+  // Открываем редактор
   window.showChecklistEditor(checklist);
 }
 

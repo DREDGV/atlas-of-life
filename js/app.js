@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.3-checklist-fixed";
+let APP_VERSION = "Atlas_of_life_v0.5.4-checklist-bugs-fixed";
 
 // ephemeral UI state
 const ui = {
@@ -3411,7 +3411,7 @@ function showChecklistEditor(checklist) {
       <h2>Редактировать чек-лист</h2>
       <div class="form-group">
         <label for="checklistTitle">Название:</label>
-        <input type="text" id="checklistTitle" value="${checklist.title}" placeholder="Название чек-листа">
+        <input type="text" id="checklistTitle" value="${checklist.title || 'Новый чек-лист'}" placeholder="Название чек-листа">
       </div>
       <div class="form-group">
         <label>Элементы чек-листа:</label>
@@ -3422,7 +3422,17 @@ function showChecklistEditor(checklist) {
       </div>
       <div class="form-group">
         <label for="checklistColor">Цвет:</label>
-        <input type="color" id="checklistColor" value="${checklist.color || '#3b82f6'}">
+        <div class="color-picker-container">
+          <input type="color" id="checklistColor" value="${checklist.color || '#3b82f6'}">
+          <div class="color-presets">
+            <div class="color-preset" data-color="#3b82f6" style="background: #3b82f6"></div>
+            <div class="color-preset" data-color="#10b981" style="background: #10b981"></div>
+            <div class="color-preset" data-color="#f59e0b" style="background: #f59e0b"></div>
+            <div class="color-preset" data-color="#ef4444" style="background: #ef4444"></div>
+            <div class="color-preset" data-color="#8b5cf6" style="background: #8b5cf6"></div>
+            <div class="color-preset" data-color="#06b6d4" style="background: #06b6d4"></div>
+          </div>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn primary" id="saveChecklist">Сохранить</button>
@@ -3433,6 +3443,14 @@ function showChecklistEditor(checklist) {
   `;
   
   modal.style.display = 'flex';
+  
+  // Event handlers для предустановленных цветов
+  document.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      document.getElementById('checklistColor').value = color;
+    });
+  });
   
   // Event handlers
   document.getElementById('saveChecklist').onclick = () => {
@@ -3608,7 +3626,7 @@ function setupCreationPanel() {
   const createChecklistBtn = document.getElementById('createChecklistBtn');
   if (createChecklistBtn) {
     createChecklistBtn.addEventListener('click', () => {
-      const checklist = createChecklist();
+      const checklist = createChecklist('Новый чек-лист');
       showChecklistEditor(checklist);
     });
   }

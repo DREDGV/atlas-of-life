@@ -2388,6 +2388,37 @@ kbd {
   border: 2px dashed var(--border);
 }
 
+.color-picker-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.color-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-preset {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.color-preset:hover {
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+
+.color-preset.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 /* Checklist styles in inspector */
 .checklist-card {
   border-left: 3px solid var(--accent);
