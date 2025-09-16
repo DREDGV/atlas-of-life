@@ -314,5 +314,185 @@ function calculateDomainRadius(projects) {
 
 ---
 
+## 🎛️ Панели интерфейса
+
+### Header (Верхняя панель)
+- **Фон**: `var(--panel)` (#0f1624)
+- **Высота**: 56px (min-height: 48px)
+- **Граница**: `border-bottom: 1px solid var(--panel-2)`
+- **Расположение**: `display: flex; align-items: center; gap: 8px; padding: 0 10px`
+
+### Brand (Логотип)
+- **Градиент**: `linear-gradient(45deg, #ff6b6b, #4ecdc4)`
+- **Стиль**: `-webkit-background-clip: text; -webkit-text-fill-color: transparent`
+- **Шрифт**: `font-weight: 700; letter-spacing: .3px`
+- **Размер**: `max-width: 200px`
+
+### Main Layout (Основная сетка)
+- **Структура**: `grid-template-rows: 56px 1fr 56px`
+- **Боковые панели**: `grid-template-columns: minmax(200px, 250px) 1fr minmax(250px, 300px)`
+- **Левая панель**: `background: var(--panel); border-right: 1px solid var(--panel-2)`
+- **Правая панель**: `background: var(--panel); border-left: 1px solid var(--panel-2)`
+
+### Inspector (Правая панель)
+- **Отступы**: `padding: 12px`
+- **Переполнение**: `overflow: auto; word-wrap: break-word`
+- **Заголовки**: `font-size: 16px; margin: 0 0 6px 0`
+- **Метаданные**: `color: var(--muted); font-size: 12px`
+
+### Footer (Нижняя панель)
+- **Высота**: 56px
+- **Фон**: `var(--panel)`
+- **Граница**: `border-top: 1px solid var(--panel-2)`
+- **Функция**: Информационная панель (не создание задач)
+
+---
+
+## 🔘 Кнопки и элементы управления
+
+### Основные кнопки (.btn)
+- **Отступы**: `padding: 6px 10px`
+- **Радиус**: `border-radius: 8px`
+- **Граница**: `border: 1px solid var(--panel-2)`
+- **Фон**: `background: var(--panel-2)`
+- **Цвет**: `color: var(--text)`
+- **Переход**: `transition: all 0.2s ease`
+- **Шрифт**: `font-size: 12px`
+
+### Hover эффекты
+- **Фон**: `background: var(--accent)`
+- **Цвет**: `color: var(--bg)`
+- **Трансформация**: `transform: translateY(-1px)`
+- **Тень**: `box-shadow: 0 4px 12px rgba(0,0,0,0.3)`
+
+### Типы кнопок
+- **Primary**: `background: var(--accent); border-color: var(--accent); color: var(--bg)`
+- **Danger**: `background: var(--danger); border-color: var(--danger); color: var(--bg)`
+- **Warn**: `background: var(--warn); border-color: var(--warn); color: var(--bg)`
+- **OK**: `background: var(--ok); border-color: var(--ok); color: var(--bg)`
+
+### Кнопки добавления идей/заметок
+- **Идеи**: `background: linear-gradient(135deg, #4ecdc4, #44a08d)`
+- **Заметки**: `background: linear-gradient(135deg, #8b7355, #6c757d)`
+- **Размер**: `padding: 8px 12px; font-size: 16px`
+- **Радиус**: `border-radius: 6px`
+
+### Статусные кнопки (.status-buttons)
+- **Расположение**: `display: flex; gap: 4px; flex-wrap: wrap`
+- **Размер**: `min-width: 60px; font-size: 12px; padding: 4px 8px`
+- **Цвета статусов**:
+  - **Backlog**: `#9ca3af` (серый)
+  - **Today**: `#f59e0b` (желтый)
+  - **Doing**: `#60a5fa` (синий)
+  - **Done**: `#059669` (зеленый)
+
+### Маленькие кнопки (.btn-small)
+- **Размер**: `min-width: 28px; height: 28px`
+- **Шрифт**: `font-size: 12px`
+- **Выравнивание**: `display: flex; align-items: center; justify-content: center`
+- **Hover**: `transform: scale(1.1); opacity: 0.9`
+
+---
+
+## 🎨 Цветовая схема (CSS переменные)
+
+### Темная тема (по умолчанию)
+```css
+:root {
+  --bg: #0b0f17;           /* Основной фон */
+  --panel: #0f1624;        /* Фон панелей */
+  --panel-2: #111a2a;      /* Вторичный фон */
+  --text: #e6edf3;         /* Основной текст */
+  --muted: #9db1c9;        /* Приглушенный текст */
+  --accent: #56ccf2;       /* Акцентный цвет */
+  --warn: #f2c94c;         /* Предупреждение */
+  --danger: #ff6b6b;       /* Опасность */
+  --ok: #19c37d;           /* Успех */
+  --link: #7f9cf5;         /* Ссылки */
+  --home: #2dd4bf;         /* Дом */
+  --dacha: #f59e0b;        /* Дача */
+}
+```
+
+### Светлая тема
+```css
+[data-theme="light"] {
+  --bg: #f7fafc;           /* Светлый фон */
+  --panel: #ffffff;        /* Белые панели */
+  --panel-2: #f2f6fb;      /* Светло-серый */
+  --text: #0b1220;          /* Темный текст */
+  --muted: #6b7a90;         /* Приглушенный */
+  --accent: #2563eb;        /* Синий акцент */
+  --warn: #b7791f;          /* Оранжевый */
+  --danger: #d14343;        /* Красный */
+  --ok: #059669;            /* Зеленый */
+  --link: #3b82f6;          /* Синие ссылки */
+}
+```
+
+---
+
+## 📝 Формы и поля ввода
+
+### Поля ввода (.form-input, .form-textarea)
+- **Фон**: `background: rgba(255, 255, 255, 0.05)`
+- **Граница**: `border: 1px solid rgba(255, 255, 255, 0.2)`
+- **Радиус**: `border-radius: 8px`
+- **Отступы**: `padding: 12px`
+- **Фокус**: `border-color: #4ecdc4; box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.1)`
+
+### Выпадающие списки (.autocomplete-dropdown)
+- **Фон**: `background: var(--panel)`
+- **Граница**: `border: 1px solid var(--panel-2)`
+- **Радиус**: `border-radius: 8px`
+- **Тень**: `box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)`
+- **Z-index**: `1000`
+
+### Элементы автодополнения (.autocomplete-item)
+- **Отступы**: `padding: 8px 12px`
+- **Переход**: `transition: background-color 0.2s ease`
+- **Hover**: `background: var(--panel-2)`
+- **Граница**: `border-bottom: 1px solid var(--panel-2)`
+
+---
+
+## 🎯 Модальные окна
+
+### Редакторы идей/заметок (.idea-editor, .note-editor)
+- **Фон**: `background: linear-gradient(135deg, var(--panel) 0%, #1a1a2e 100%)`
+- **Граница**: `border: 1px solid rgba(255, 255, 255, 0.1)`
+- **Радиус**: `border-radius: 12px`
+- **Тень**: `box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3)`
+- **Размер**: `max-width: 600px; width: 95%`
+
+### Заголовки модальных окон
+- **Идеи**: `background: linear-gradient(135deg, #ff6b6b, #4ecdc4)`
+- **Заметки**: `background: linear-gradient(135deg, #8b7355, #a0a0a0)`
+- **Стиль**: `-webkit-background-clip: text; -webkit-text-fill-color: transparent`
+- **Размер**: `font-size: 1.5em; font-weight: bold`
+
+---
+
+## 🔧 Технические детали UI
+
+### Анимации и переходы
+- **Стандартный переход**: `transition: all 0.2s ease`
+- **Медленный переход**: `transition: all 0.3s ease`
+- **Hover трансформации**: `transform: translateY(-1px)` или `scale(1.1)`
+- **Активные состояния**: `transform: scale(0.95)`
+
+### Z-index слои
+- **Автодополнение**: `z-index: 1000`
+- **Модальные окна**: `z-index: 1000+`
+- **Тултипы**: `z-index: высокий`
+
+### Адаптивность
+- **Минимальная ширина**: `min-width: 600px`
+- **Минимальная высота**: `min-height: 100vh`
+- **Flexbox**: для гибкого расположения элементов
+- **Grid**: для основной структуры приложения
+
+---
+
 *Последнее обновление: 17.01.2025*
 *Версия: v0.3.9-fixed-click*
