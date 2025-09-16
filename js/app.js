@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.4.1-fixed-notes";
+let APP_VERSION = "Atlas_of_life_v0.4.2-interactive";
 
 // ephemeral UI state
 const ui = {
@@ -2416,40 +2416,22 @@ function renderSidebar() {
     const currentValue = searchInput.value;
     
     searchInput.addEventListener("input", (e) => {
-      const query = e.target.value.toLowerCase().trim();
+      const query = e.target.value.trim();
       
       if (query.length === 0) {
         // Clear search - show all
         state.searchQuery = null;
         state.searchResults = null;
-        // Don't re-render sidebar to preserve input value
-        if (window.layoutMap) window.layoutMap();
-        if (window.drawMap) window.drawMap();
+        if (window.mapApi && window.mapApi.searchObjects) {
+          window.mapApi.searchObjects('');
+        }
         return;
       }
       
-      // Filter domains, projects, and tasks
-      const filteredDomains = state.domains.filter(d => 
-        d.title.toLowerCase().includes(query)
-      );
-      const filteredProjects = state.projects.filter(p => 
-        p.title.toLowerCase().includes(query)
-      );
-      const filteredTasks = state.tasks.filter(t => 
-        t.title.toLowerCase().includes(query) ||
-        (t.tags || []).some(tag => tag.toLowerCase().includes(query))
-      );
-      
-      // Highlight search results
-      highlightSearchResults(query, filteredDomains, filteredProjects, filteredTasks);
-      
-      // Update filter to show only matching items
-      state.searchQuery = query;
-      // Update only domains list and statistics, not entire sidebar
-      updateDomainsList();
-      updateStatistics();
-      if (window.layoutMap) window.layoutMap();
-      if (window.drawMap) window.drawMap();
+      // Use new map search functionality
+      if (window.mapApi && window.mapApi.searchObjects) {
+        window.mapApi.searchObjects(query);
+      }
     });
     
     // Clear search on Escape
@@ -2458,10 +2440,45 @@ function renderSidebar() {
         e.target.value = "";
         state.searchQuery = null;
         state.searchResults = null;
-        updateDomainsList();
-        updateStatistics();
-        if (window.layoutMap) window.layoutMap();
-        if (window.drawMap) window.drawMap();
+        if (window.mapApi && window.mapApi.searchObjects) {
+          window.mapApi.searchObjects('');
+        }
+      }
+    });
+  }
+  
+  // Add search functionality to header search input
+  const headerSearchInput = document.getElementById("searchInput");
+  if (headerSearchInput) {
+    headerSearchInput.addEventListener("input", (e) => {
+      const query = e.target.value.trim();
+      
+      if (window.mapApi && window.mapApi.searchObjects) {
+        window.mapApi.searchObjects(query);
+      }
+    });
+    
+    headerSearchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.target.value = "";
+        if (window.mapApi && window.mapApi.searchObjects) {
+          window.mapApi.searchObjects('');
+        }
+      } else if (e.key === "Enter") {
+        // Navigate to next search result
+        if (window.mapApi && window.mapApi.nextSearchResult) {
+          window.mapApi.nextSearchResult();
+        }
+      } else if (e.key === "ArrowDown") {
+        // Navigate to next search result
+        if (window.mapApi && window.mapApi.nextSearchResult) {
+          window.mapApi.nextSearchResult();
+        }
+      } else if (e.key === "ArrowUp") {
+        // Navigate to previous search result
+        if (window.mapApi && window.mapApi.previousSearchResult) {
+          window.mapApi.previousSearchResult();
+        }
       }
     });
   }

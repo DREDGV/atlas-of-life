@@ -98,6 +98,8 @@ export function initializeHotkeys() {
       newTask: 'ctrl+n',
       newProject: 'ctrl+shift+n', 
       newDomain: 'ctrl+shift+d',
+      newIdea: 'ctrl+i',
+      newNote: 'ctrl+shift+i',
       search: 'ctrl+f',
       closeInspector: 'escape',
       statusPlan: '1',
@@ -106,7 +108,17 @@ export function initializeHotkeys() {
       statusDone: '4',
       fitAll: 'ctrl+0',
       fitDomain: 'ctrl+1',
-      fitProject: 'ctrl+2'
+      fitProject: 'ctrl+2',
+      zoomIn: 'ctrl+plus',
+      zoomOut: 'ctrl+minus',
+      resetZoom: 'ctrl+0',
+      panMode: 'space',
+      deleteSelected: 'delete',
+      duplicateSelected: 'ctrl+d',
+      toggleGlow: 'ctrl+g',
+      toggleFps: 'ctrl+shift+f',
+      nextSearchResult: 'f3',
+      previousSearchResult: 'shift+f3'
     };
   }
   
@@ -153,6 +165,34 @@ export function initializeHotkeys() {
       console.error('Error in newDomain hotkey:', error);
     }
   }, 'Создать новый домен');
+  
+  // New idea
+  registerHotkey(hotkeys.newIdea, () => {
+    try {
+      const quickAdd = document.getElementById('quickAdd');
+      if (quickAdd) {
+        quickAdd.value = '!';
+        quickAdd.focus();
+        quickAdd.setSelectionRange(1, 1);
+      }
+    } catch (error) {
+      console.error('Error in newIdea hotkey:', error);
+    }
+  }, 'Создать новую идею');
+  
+  // New note
+  registerHotkey(hotkeys.newNote, () => {
+    try {
+      const quickAdd = document.getElementById('quickAdd');
+      if (quickAdd) {
+        quickAdd.value = '?';
+        quickAdd.focus();
+        quickAdd.setSelectionRange(1, 1);
+      }
+    } catch (error) {
+      console.error('Error in newNote hotkey:', error);
+    }
+  }, 'Создать новую заметку');
   
   // Search
   registerHotkey(hotkeys.search, () => {
@@ -232,6 +272,79 @@ export function initializeHotkeys() {
       window.mapApi.fitActiveProject();
     }
   }, 'Подогнать активный проект');
+  
+  // Zoom controls
+  registerHotkey(hotkeys.zoomIn, () => {
+    if (window.mapApi && window.mapApi.setZoom) {
+      const currentScale = window.mapApi.getScale();
+      window.mapApi.setZoom(Math.min(currentScale + 10, 220));
+    }
+  }, 'Увеличить масштаб');
+  
+  registerHotkey(hotkeys.zoomOut, () => {
+    if (window.mapApi && window.mapApi.setZoom) {
+      const currentScale = window.mapApi.getScale();
+      window.mapApi.setZoom(Math.max(currentScale - 10, 50));
+    }
+  }, 'Уменьшить масштаб');
+  
+  registerHotkey(hotkeys.resetZoom, () => {
+    if (window.mapApi && window.mapApi.setZoom) {
+      window.mapApi.setZoom(100);
+    }
+  }, 'Сбросить масштаб');
+  
+  // Pan mode (spacebar)
+  registerHotkey(hotkeys.panMode, () => {
+    if (window.mapApi && window.mapApi.setPanMode) {
+      window.mapApi.setPanMode();
+    }
+  }, 'Режим панорамирования');
+  
+  // Delete selected object
+  registerHotkey(hotkeys.deleteSelected, () => {
+    const inspector = document.getElementById('inspector');
+    if (inspector && inspector.style.display !== 'none') {
+      const deleteBtn = document.querySelector('.btn-danger');
+      if (deleteBtn) deleteBtn.click();
+    }
+  }, 'Удалить выбранный объект');
+  
+  // Duplicate selected object
+  registerHotkey(hotkeys.duplicateSelected, () => {
+    const inspector = document.getElementById('inspector');
+    if (inspector && inspector.style.display !== 'none') {
+      const duplicateBtn = document.querySelector('[data-action="duplicate"]');
+      if (duplicateBtn) duplicateBtn.click();
+    }
+  }, 'Дублировать выбранный объект');
+  
+  // Toggle glow effects
+  registerHotkey(hotkeys.toggleGlow, () => {
+    if (window.mapApi && window.mapApi.toggleGlow) {
+      window.mapApi.toggleGlow();
+    }
+  }, 'Переключить эффекты свечения');
+  
+  // Toggle FPS display
+  registerHotkey(hotkeys.toggleFps, () => {
+    if (window.mapApi && window.mapApi.toggleFps) {
+      window.mapApi.toggleFps();
+    }
+  }, 'Переключить отображение FPS');
+  
+  // Search navigation
+  registerHotkey(hotkeys.nextSearchResult, () => {
+    if (window.mapApi && window.mapApi.nextSearchResult) {
+      window.mapApi.nextSearchResult();
+    }
+  }, 'Следующий результат поиска');
+  
+  registerHotkey(hotkeys.previousSearchResult, () => {
+    if (window.mapApi && window.mapApi.previousSearchResult) {
+      window.mapApi.previousSearchResult();
+    }
+  }, 'Предыдущий результат поиска');
 }
 
 // Global keydown handler

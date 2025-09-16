@@ -5200,6 +5200,129 @@ window.mapApi.toggleFocusMode = toggleFocusMode;
 window.mapApi.isFocusModeActive = isFocusModeActive;
 window.mapApi.getFocusedDomainId = getFocusedDomainId;
 
+// Pan mode functions
+window.mapApi.setPanMode = () => {
+  if (NAV.mode === 'pan') {
+    NAV.mode = 'idle';
+    canvas.style.cursor = '';
+    showToast('Режим панорамирования отключен', 'info');
+  } else {
+    NAV.mode = 'pan';
+    canvas.style.cursor = 'grab';
+    showToast('Режим панорамирования включен (перетаскивайте карту)', 'info');
+  }
+};
+
+// Toggle glow effects
+window.mapApi.toggleGlow = () => {
+  state.showGlow = !state.showGlow;
+  drawMap();
+  showToast(`Эффекты свечения ${state.showGlow ? 'включены' : 'отключены'}`, 'info');
+};
+
+// Toggle FPS display
+window.mapApi.toggleFps = () => {
+  setShowFps();
+  showToast(`FPS ${showFps ? 'включен' : 'отключен'}`, 'info');
+};
+
+// Search functionality
+let searchResults = [];
+let currentSearchIndex = 0;
+let searchHighlightTime = 0;
+
+window.mapApi.searchObjects = (query) => {
+  if (!query || query.trim().length < 2) {
+    searchResults = [];
+    currentSearchIndex = 0;
+    drawMap();
+    return [];
+  }
+  
+  const searchTerm = query.toLowerCase().trim();
+  searchResults = [];
+  
+  // Search in all objects
+  [...state.domains, ...state.projects, ...state.tasks, ...state.ideas, ...state.notes].forEach(obj => {
+    if (obj.title && obj.title.toLowerCase().includes(searchTerm)) {
+      searchResults.push({
+        id: obj.id,
+        title: obj.title,
+        type: obj.type || 'unknown',
+        x: obj.x,
+        y: obj.y
+      });
+    }
+  });
+  
+  currentSearchIndex = 0;
+  searchHighlightTime = performance.now();
+  
+  if (searchResults.length > 0) {
+    showToast(`Найдено ${searchResults.length} объектов`, 'info');
+    // Center on first result
+    centerOnObject(searchResults[0]);
+  } else {
+    showToast('Объекты не найдены', 'warning');
+  }
+  
+  drawMap();
+  return searchResults;
+};
+
+window.mapApi.nextSearchResult = () => {
+  if (searchResults.length === 0) return;
+  
+  currentSearchIndex = (currentSearchIndex + 1) % searchResults.length;
+  centerOnObject(searchResults[currentSearchIndex]);
+  showToast(`Результат ${currentSearchIndex + 1} из ${searchResults.length}: ${searchResults[currentSearchIndex].title}`, 'info');
+};
+
+window.mapApi.previousSearchResult = () => {
+  if (searchResults.length === 0) return;
+  
+  currentSearchIndex = currentSearchIndex === 0 ? searchResults.length - 1 : currentSearchIndex - 1;
+  centerOnObject(searchResults[currentSearchIndex]);
+  showToast(`Результат ${currentSearchIndex + 1} из ${searchResults.length}: ${searchResults[currentSearchIndex].title}`, 'info');
+};
+
+function centerOnObject(obj) {
+  if (!obj) return;
+  
+  const targetX = obj.x;
+  const targetY = obj.y;
+  
+  // Animate to object
+  const startTime = performance.now();
+  const duration = 500;
+  
+  const startTx = viewState.tx;
+  const startTy = viewState.ty;
+  const startScale = viewState.scale;
+  
+  const targetScale = Math.min(1.5, Math.max(0.8, startScale));
+  const targetTx = W/2 - targetX * targetScale;
+  const targetTy = H/2 - targetY * targetScale;
+  
+  function animate() {
+    const elapsed = performance.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const easeProgress = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+    
+    viewState.tx = startTx + (targetTx - startTx) * easeProgress;
+    viewState.ty = startTy + (targetTy - startTy) * easeProgress;
+    viewState.scale = startScale + (targetScale - startScale) * easeProgress;
+    
+    drawMap();
+    
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    }
+  }
+  
+  animate();
+}
+
 // Back-compat aliases for modules that call global functions directly
 try {
   window.layoutMap = layoutMap;
