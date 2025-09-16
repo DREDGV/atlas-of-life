@@ -17,7 +17,10 @@ import {
   canChangeHierarchy,
   attachObjectToParent,
   detachObjectFromParent,
-  getAvailableParents
+  getAvailableParents,
+  createChecklist,
+  getChecklistsOfProject,
+  getChecklistProgress
 } from "./state.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
 function drawMap() {
@@ -91,9 +94,9 @@ function getParentObjectFallback(obj) {
 }
 
 function getChildObjectsFallback(obj) {
-  if (!obj) return { projects: [], tasks: [], ideas: [], notes: [] };
+  if (!obj) return { projects: [], tasks: [], ideas: [], notes: [], checklists: [] };
   
-  const children = { projects: [], tasks: [], ideas: [], notes: [] };
+  const children = { projects: [], tasks: [], ideas: [], notes: [], checklists: [] };
   
   if (obj._type === 'domain') {
     // Проекты в домене
@@ -117,6 +120,12 @@ function getChildObjectsFallback(obj) {
       n.domainId === obj.id || 
       (n.projectId && domainProjectIds.includes(n.projectId))
     );
+    
+    // Чек-листы в домене (включая все чек-листы в проектах домена)
+    children.checklists = state.checklists.filter(c => 
+      c.domainId === obj.id || 
+      (c.projectId && domainProjectIds.includes(c.projectId))
+    );
   }
   
   if (obj._type === 'project') {
@@ -128,6 +137,9 @@ function getChildObjectsFallback(obj) {
     
     // Заметки в проекте
     children.notes = state.notes.filter(n => n.projectId === obj.id);
+    
+    // Чек-листы в проекте
+    children.checklists = state.checklists.filter(c => c.projectId === obj.id);
   }
   
   return children;
@@ -185,7 +197,8 @@ function renderHierarchySection(obj) {
         const typeLabel = childType === 'projects' ? 'Проекты' :
                          childType === 'tasks' ? 'Задачи' :
                          childType === 'ideas' ? 'Идеи' :
-                         childType === 'notes' ? 'Заметки' : childType;
+                         childType === 'notes' ? 'Заметки' :
+                         childType === 'checklists' ? 'Чек-листы' : childType;
         html += `
           <div class="child-type">
             <span class="child-count">${childIds.length}</span>
@@ -518,6 +531,7 @@ export function openInspectorFor(obj) {
       
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
+        <button class="btn" id="addChecklist">✓ Чек-лист</button>
         <button class="btn" id="toToday">Взять 3 задачи в Сегодня</button>
         <button class="btn" id="changeProjectColor">🎨 Изменить цвет</button>
         <button class="btn" id="editProjectTitle">✏️ Переименовать</button>
@@ -525,18 +539,40 @@ export function openInspectorFor(obj) {
         <button class="btn" id="makeProjectIndependent">🔓 Сделать независимым</button>
         <button class="btn danger" id="delProject">🗑️ Удалить проект</button>
       </div>
-      <div class="list">${tks
-        .map(
-          (t) => `
-        <div class="card">
-          <div>${statusPill(t.status).text} <strong>${t.title}</strong></div>
-          <div class="meta">#${(t.tags || []).join(" #")} · обновл. ${daysSince(
-            t.updatedAt
-          )} дн.</div>
-        </div>
-      `
-        )
-        .join("")}</div>
+      <div class="list">
+        <h4>Задачи (${tks.length})</h4>
+        ${tks
+          .map(
+            (t) => `
+          <div class="card">
+            <div>${statusPill(t.status).text} <strong>${t.title}</strong></div>
+            <div class="meta">#${(t.tags || []).join(" #")} · обновл. ${daysSince(
+              t.updatedAt
+            )} дн.</div>
+          </div>
+        `
+          )
+          .join("")}
+        
+        <h4>Чек-листы (${getChecklistsOfProject(obj.id).length})</h4>
+        ${getChecklistsOfProject(obj.id)
+          .map(
+            (c) => `
+          <div class="card checklist-card">
+            <div class="checklist-header">
+              <span class="checklist-icon">✓</span>
+              <strong>${c.title}</strong>
+              <span class="checklist-progress">${getChecklistProgress(c.id)}%</span>
+            </div>
+            <div class="checklist-progress-bar">
+              <div class="checklist-progress-fill" style="width: ${getChecklistProgress(c.id)}%"></div>
+            </div>
+            <div class="meta">${c.items.length} элементов · обновл. ${daysSince(c.updatedAt)} дн.</div>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
     `;
     document.getElementById("addTask").onclick = () => {
       const title = prompt("Название задачи:", "Новая задача");
@@ -552,6 +588,15 @@ export function openInspectorFor(obj) {
         updatedAt: Date.now(),
       });
       saveState();
+      refreshMap({ layout: true });
+      openInspectorFor(obj);
+    };
+    
+    document.getElementById("addChecklist").onclick = () => {
+      const title = prompt("Название чек-листа:", "Новый чек-лист");
+      if (!title) return;
+      const checklist = createChecklist(title, obj.id, obj.domainId);
+      window.showChecklistEditor(checklist);
       refreshMap({ layout: true });
       openInspectorFor(obj);
     };

@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.0-checklists";
+let APP_VERSION = "Atlas_of_life_v0.5.1-integrated";
 
 // ephemeral UI state
 const ui = {
@@ -3499,6 +3499,9 @@ function showChecklistEditor(checklist) {
   };
 }
 
+// Добавляем функцию в глобальную область для использования в inspector.js
+window.showChecklistEditor = showChecklistEditor;
+
 // Setup creation panel buttons
 function setupCreationPanel() {
   // Create Task button
@@ -3601,8 +3604,24 @@ function submitQuick(text) {
   if (text.startsWith('✓')) {
     const title = text.substring(1).trim();
     if (title) {
+      // Parse the text to extract project assignment
+      const parsed = parseQuick(text);
+      const checklistTitle = parsed.title || title;
+      
       const checklist = createChecklist();
-      checklist.title = title;
+      checklist.title = checklistTitle;
+      
+      // Assign to project if specified
+      if (parsed.project) {
+        const project = state.projects.find(p => p.title.toLowerCase() === parsed.project.toLowerCase());
+        if (project) {
+          checklist.projectId = project.id;
+          checklist.domainId = project.domainId;
+        }
+      } else if (state.activeDomain) {
+        checklist.domainId = state.activeDomain;
+      }
+      
       showChecklistEditor(checklist);
       $("#quickAdd").value = "";
       $("#qaChips").innerHTML = "";
