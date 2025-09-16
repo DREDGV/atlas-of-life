@@ -77,6 +77,9 @@ export function tasksOfProject(projectId) {
 
 // Функция для подсчета дней с даты
 export function daysSince(timestamp) {
+  if (!timestamp || isNaN(timestamp)) {
+    return 0; // Если дата не задана, считаем что обновлено сегодня
+  }
   return Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000));
 }
 
