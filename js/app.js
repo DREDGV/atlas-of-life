@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.1-integrated";
+let APP_VERSION = "Atlas_of_life_v0.5.2-ux-improved";
 
 // ephemeral UI state
 const ui = {
@@ -1006,6 +1006,7 @@ function setupInfoPanelTooltips() {
     { selector: '#createProjectBtn', text: 'Создать новый проект (горячая клавиша: Ctrl+Shift+N)', icon: '🎯' },
     { selector: '#createIdeaBtn', text: 'Создать новую идею - для хранения творческих мыслей', icon: '🌌' },
     { selector: '#createNoteBtn', text: 'Создать новую заметку - для записи важной информации', icon: '📝' },
+    { selector: '#createChecklistBtn', text: 'Создать новый чек-лист - для списков подзадач (горячая клавиша: Ctrl+Shift+C)', icon: '✓' },
     { selector: '#btnAddDomain', text: 'Создать новый домен - основную сферу жизни (горячая клавиша: Ctrl+Shift+D)', icon: '🌍' }
   ];
 
@@ -3569,6 +3570,15 @@ function setupCreationPanel() {
     createNoteBtn.addEventListener('click', () => {
       const note = createNote();
       showNoteEditor(note);
+    });
+  }
+  
+  // Create Checklist button
+  const createChecklistBtn = document.getElementById('createChecklistBtn');
+  if (createChecklistBtn) {
+    createChecklistBtn.addEventListener('click', () => {
+      const checklist = createChecklist();
+      showChecklistEditor(checklist);
     });
   }
 }

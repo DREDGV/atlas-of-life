@@ -1434,6 +1434,9 @@ function initContextMenu() {
       case 'create-note':
         createNoteAtPosition(worldPos.x, worldPos.y);
         break;
+      case 'create-checklist':
+        createChecklistAtPosition(worldPos.x, worldPos.y);
+        break;
       case 'create-domain':
         createDomainAtPosition(worldPos.x, worldPos.y);
         break;
@@ -1556,6 +1559,29 @@ function createNoteAtPosition(x, y) {
   layoutMap();
   drawMap();
   showNoteEditor(note);
+}
+
+function createChecklistAtPosition(x, y) {
+  const checklist = {
+    id: generateId(),
+    title: 'Новый чек-лист',
+    projectId: null,
+    domainId: state.activeDomain || state.domains[0]?.id || null,
+    x: x,
+    y: y,
+    r: 20,
+    color: getRandomProjectColor(),
+    opacity: 0.9,
+    items: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  state.checklists.push(checklist);
+  saveState();
+  layoutMap();
+  drawMap();
+  window.showChecklistEditor(checklist);
 }
 
 function createDomainAtPosition(x, y) {
@@ -2329,6 +2355,30 @@ export function layoutMap() {
         });
       } else {
         console.warn('⚠️ Note missing coordinates:', note);
+      }
+    });
+  }
+
+  // Добавляем чек-листы в nodes
+  if (state.checklists && state.checklists.length > 0) {
+    console.log('✓ Adding checklists to nodes:', state.checklists.length);
+    state.checklists.forEach(checklist => {
+      if (checklist.x !== undefined && checklist.y !== undefined && checklist.r !== undefined) {
+        nodes.push({
+          _type: "checklist",
+          id: checklist.id,
+          title: checklist.title,
+          x: checklist.x,
+          y: checklist.y,
+          r: checklist.r,
+          color: checklist.color,
+          opacity: checklist.opacity,
+          items: checklist.items,
+          projectId: checklist.projectId,
+          domainId: checklist.domainId
+        });
+      } else {
+        console.warn('⚠️ Checklist missing coordinates:', checklist);
       }
     });
   }
@@ -3554,6 +3604,8 @@ function hit(x, y) {
         ? n.r + 15 * DPR
         : n._type === "note"
         ? n.r + 8 * DPR
+        : n._type === "checklist"
+        ? n.r + 10 * DPR
         : n.r;
     if (dx * dx + dy * dy <= rr * rr) {
       return n;
@@ -3578,6 +3630,8 @@ function hitExcluding(x, y, ignoreId) {
         ? n.r + 15 * DPR
         : n._type === "note"
         ? n.r + 8 * DPR
+        : n._type === "checklist"
+        ? n.r + 10 * DPR
         : n.r;
     if (dx * dx + dy * dy <= rr * rr) {
       return n;
@@ -5880,6 +5934,17 @@ function onClick(e) {
       clickEffectTime = 1.0;
       
       openInspectorFor({...note, _type: 'note'});
+    }
+    return;
+  } else if (n._type === 'checklist') {
+    // Левый клик по чек-листу - открываем редактор
+    const checklist = state.checklists.find(c => c.id === n.id);
+    if (checklist) {
+      // Запускаем эффект клика
+      clickedNodeId = n.id;
+      clickEffectTime = 1.0;
+      
+      window.showChecklistEditor(checklist);
     }
     return;
   } else {
