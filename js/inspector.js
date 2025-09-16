@@ -529,7 +529,7 @@ export function openInspectorFor(obj) {
         .map(
           (t) => `
         <div class="card">
-          <div>${statusPill(t.status)} <strong>${t.title}</strong></div>
+          <div>${statusPill(t.status).text} <strong>${t.title}</strong></div>
           <div class="meta">#${(t.tags || []).join(" #")} · обновл. ${daysSince(
             t.updatedAt
           )} дн.</div>
