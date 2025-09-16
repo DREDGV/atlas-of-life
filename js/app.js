@@ -2886,7 +2886,7 @@ function setupHeader() {
       }
     });
   } else {
-    console.error('Settings elements not found!');
+    console.warn('Settings elements not found!');
   }
 }
 

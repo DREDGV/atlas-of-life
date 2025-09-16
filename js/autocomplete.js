@@ -5,14 +5,18 @@ import { state } from './state.js';
 
 class AutocompleteSystem {
   constructor() {
-    this.input = null;
     this.popup = null;
     this.dim = null;
     this.items = [];
     this.selectedIndex = -1;
     this.lastTrigger = null;
     this.isVisible = false;
-    
+
+    this.input = document.getElementById('quickAdd');
+    if (!this.input) {
+      return;
+    }
+
     this.init();
   }
   
@@ -542,3 +546,4 @@ window.forceRefreshStyles = function() {
     console.error('Autocomplete instance not found');
   }
 };
+
