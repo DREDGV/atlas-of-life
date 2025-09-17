@@ -5940,18 +5940,22 @@ function onClick(e) {
       openInspectorFor({...note, _type: 'note'});
     }
     return;
-  } else if (n._type === 'checklist') {
-    // Левый клик по чек-листу - открываем редактор
-    const checklist = state.checklists.find(c => c.id === n.id);
-    if (checklist) {
-      // Запускаем эффект клика
-      clickedNodeId = n.id;
-      clickEffectTime = 1.0;
-      
-      window.showChecklistEditor(checklist);
-    }
-    return;
-  } else {
+            } else if (n._type === 'checklist') {
+              // Левый клик по чек-листу - открываем всплывающее окно
+              const checklist = state.checklists.find(c => c.id === n.id);
+              if (checklist) {
+                // Запускаем эффект клика
+                clickedNodeId = n.id;
+                clickEffectTime = 1.0;
+                
+                // Показываем всплывающее окно
+                const rect = canvas.getBoundingClientRect();
+                const x = rect.left + (n.x * DPR + viewState.tx);
+                const y = rect.top + (n.y * DPR + viewState.ty);
+                window.showChecklistPopup(checklist, x, y);
+              }
+              return;
+            } else {
     const obj = state.domains.find((d) => d.id === n.id);
     obj._type = "domain";
     openInspectorFor(obj);
@@ -6947,6 +6951,10 @@ function drawChecklists() {
         ctx.fillText(`+${checklist.items.length - 3} еще`, x, startY + maxItems * itemHeight + 4 * DPR);
       }
     }
+    
+    // Добавляем интерактивность для всплывающего окна
+    checklist._hover = false;
+    checklist._hoverTime = 0;
     
     ctx.restore();
   });

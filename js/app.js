@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.7-checklist-enhanced";
+let APP_VERSION = "Atlas_of_life_v0.5.8-checklist-popup";
 
 // ephemeral UI state
 const ui = {
@@ -3594,6 +3594,99 @@ function showChecklistEditor(checklist) {
 
 // Добавляем функцию в глобальную область для использования в inspector.js
 window.showChecklistEditor = showChecklistEditor;
+
+// Функции для всплывающего окна чек-листов
+function showChecklistPopup(checklist, x, y) {
+  const popup = document.getElementById('checklistPopup');
+  if (!popup) return;
+  
+  // Заполняем заголовок
+  const title = popup.querySelector('.checklist-popup-title');
+  const progress = popup.querySelector('.checklist-popup-progress');
+  const items = popup.querySelector('.checklist-popup-items');
+  
+  title.textContent = checklist.title;
+  progress.textContent = `${getChecklistProgress(checklist.id)}%`;
+  
+  // Заполняем элементы
+  items.innerHTML = '';
+  if (checklist.items && checklist.items.length > 0) {
+    checklist.items.forEach(item => {
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'checklist-popup-item';
+      itemDiv.innerHTML = `
+        <input type="checkbox" class="checklist-popup-checkbox" ${item.completed ? 'checked' : ''} 
+               onchange="toggleChecklistItemInPopup('${checklist.id}', '${item.id}')">
+        <span class="checklist-popup-text ${item.completed ? 'completed' : ''}">${item.text}</span>
+      `;
+      items.appendChild(itemDiv);
+    });
+  } else {
+    items.innerHTML = '<div style="text-align: center; color: var(--muted); font-style: italic;">Нет элементов</div>';
+  }
+  
+  // Позиционируем окно
+  popup.style.left = `${x + 20}px`;
+  popup.style.top = `${y - 20}px`;
+  popup.classList.add('show');
+  
+  // Обработчики кнопок
+  document.getElementById('editChecklistBtn').onclick = () => {
+    hideChecklistPopup();
+    showChecklistEditor(checklist);
+  };
+  
+  document.getElementById('closeChecklistPopup').onclick = () => {
+    hideChecklistPopup();
+  };
+}
+
+function hideChecklistPopup() {
+  const popup = document.getElementById('checklistPopup');
+  if (popup) {
+    popup.classList.remove('show');
+  }
+}
+
+function toggleChecklistItemInPopup(checklistId, itemId) {
+  const completed = toggleChecklistItem(checklistId, itemId);
+  console.log(`✅ Toggled item ${itemId} in popup: ${completed ? 'completed' : 'not completed'}`);
+  
+  // Обновляем отображение в попапе
+  const popup = document.getElementById('checklistPopup');
+  if (popup) {
+    const progress = popup.querySelector('.checklist-popup-progress');
+    const checklist = state.checklists.find(c => c.id === checklistId);
+    if (checklist && progress) {
+      progress.textContent = `${getChecklistProgress(checklistId)}%`;
+    }
+    
+    // Обновляем стиль текста
+    const itemDiv = popup.querySelector(`[onchange*="${itemId}"]`).parentElement;
+    const textSpan = itemDiv.querySelector('.checklist-popup-text');
+    if (textSpan) {
+      textSpan.classList.toggle('completed', completed);
+    }
+  }
+  
+  // Обновляем карту
+  if (window.drawMap) window.drawMap();
+}
+
+// Добавляем функции в глобальную область
+window.showChecklistPopup = showChecklistPopup;
+window.hideChecklistPopup = hideChecklistPopup;
+window.toggleChecklistItemInPopup = toggleChecklistItemInPopup;
+
+// Обработчик закрытия попапа при клике вне его
+document.addEventListener('click', (e) => {
+  const popup = document.getElementById('checklistPopup');
+  if (popup && popup.classList.contains('show')) {
+    if (!popup.contains(e.target)) {
+      hideChecklistPopup();
+    }
+  }
+});
 
 // Setup creation panel buttons
 function setupCreationPanel() {

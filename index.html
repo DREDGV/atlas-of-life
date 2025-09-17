@@ -13,7 +13,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%2300d1b2'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23ffffff' opacity='0.9'/%3E%3C/svg%3E" />
-    <title>Атлас жизни v0.5.7-checklist-enhanced</title>
+    <title>Атлас жизни v0.5.8-checklist-popup</title>
     <link rel="stylesheet" href="styles.css?v=0.3.2-visual-restore&t=1757491261189&cache=bust" />
 </head>
 <body>
@@ -129,6 +129,19 @@
   <div class="backdrop"></div>
 </div>
 
+<!-- Checklist Hover Popup -->
+<div id="checklistPopup" class="checklist-popup">
+  <div class="checklist-popup-header">
+    <span class="checklist-popup-title"></span>
+    <span class="checklist-popup-progress"></span>
+  </div>
+  <div class="checklist-popup-items"></div>
+  <div class="checklist-popup-actions">
+    <button class="btn-small" id="editChecklistBtn">Редактировать</button>
+    <button class="btn-small" id="closeChecklistPopup">Закрыть</button>
+  </div>
+</div>
+
 <!-- toast area -->
 <div id="toast" class="toast"></div>
 
@@ -164,7 +177,7 @@
       // Отладочная информация
       console.log("Atlas of Life loading...");
     </script>
-    <script type="module" src="./js/app.js?v=0.5.7-checklist-enhanced&t=1757491261189&cache=bust&force=25"></script>
+    <script type="module" src="./js/app.js?v=0.5.8-checklist-popup&t=1757491261189&cache=bust&force=26"></script>
 <!-- Experiments system -->
 <script src="addons/_experiments.js"></script>
 <script src="addons/experiments/exp-2025-09-07-pulse-active-domain.js"></script>
