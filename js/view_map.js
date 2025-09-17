@@ -4020,6 +4020,7 @@ function handleChecklistHover(screenX, screenY, worldPos) {
     
     if (distance <= radius) {
       hoveredChecklist = checklist;
+      console.log('🎯 Hovering over checklist:', checklist.title, 'distance:', distance, 'radius:', radius);
       break;
     }
   }
@@ -4030,13 +4031,17 @@ function handleChecklistHover(screenX, screenY, worldPos) {
       // Начали наводить
       hoveredChecklist._hover = true;
       hoveredChecklist._hoverTime = Date.now();
+      console.log('🎯 Starting hover on checklist:', hoveredChecklist.title);
       
       // Устанавливаем таймаут для показа попапа
       hoveredChecklist._hoverTimeout = setTimeout(() => {
         if (hoveredChecklist._hover) {
+          console.log('🎯 Showing popup for checklist:', hoveredChecklist.title);
           const rect = canvas.getBoundingClientRect();
-          const x = rect.left + (hoveredChecklist.x * DPR + viewState.tx);
-          const y = rect.top + (hoveredChecklist.y * DPR + viewState.ty);
+          // Исправляем координаты - используем screenX и screenY из параметров функции
+          const x = rect.left + screenX;
+          const y = rect.top + screenY;
+          console.log('🎯 Popup coordinates:', x, y);
           window.showChecklistPopup(hoveredChecklist, x, y);
         }
       }, 500); // Задержка 500мс
@@ -6993,17 +6998,24 @@ function drawChecklists() {
     ctx.textAlign = "center";
     ctx.fillText('✓', x, y - 2 * DPR);
     
-    // Название чек-листа
+    // Название чек-листа с лучшим позиционированием
     ctx.fillStyle = baseColor;
-    ctx.font = `${10 * DPR}px system-ui`;
+    ctx.font = `bold ${11 * DPR}px system-ui`;
     ctx.textAlign = "center";
-    ctx.fillText(checklist.title, x, y - height/2 - 8 * DPR);
+    
+    // Ограничиваем длину названия
+    const maxTitleLength = 12;
+    const displayTitle = checklist.title.length > maxTitleLength 
+      ? checklist.title.substring(0, maxTitleLength) + '...' 
+      : checklist.title;
+    
+    ctx.fillText(displayTitle, x, y - height/2 - 12 * DPR);
     
     // Отображение элементов списка (первые 3 элемента)
     if (checklist.items && checklist.items.length > 0) {
       const maxItems = Math.min(3, checklist.items.length);
-      const itemHeight = 8 * DPR;
-      const startY = y - height/2 + 20 * DPR;
+      const itemHeight = 9 * DPR;
+      const startY = y - height/2 + 25 * DPR;
       
       ctx.font = `${8 * DPR}px system-ui`;
       ctx.textAlign = "left";
@@ -7011,25 +7023,27 @@ function drawChecklists() {
       for (let i = 0; i < maxItems; i++) {
         const item = checklist.items[i];
         const itemY = startY + i * itemHeight;
-        const checkboxX = x - width/2 + 8 * DPR;
-        const textX = checkboxX + 12 * DPR;
+        const checkboxX = x - width/2 + 10 * DPR;
+        const textX = checkboxX + 14 * DPR;
         
-        // Чекбокс
-        ctx.fillStyle = item.completed ? baseColor : '#cccccc';
+        // Чекбокс с лучшим стилем
+        ctx.fillStyle = item.completed ? baseColor : '#666666';
+        ctx.font = `${10 * DPR}px system-ui`;
         ctx.fillText(item.completed ? '☑' : '☐', checkboxX, itemY);
         
-        // Текст элемента
-        ctx.fillStyle = item.completed ? '#888888' : '#333333';
-        const text = item.text.length > 15 ? item.text.substring(0, 15) + '...' : item.text;
+        // Текст элемента с лучшим стилем
+        ctx.fillStyle = item.completed ? '#888888' : '#222222';
+        ctx.font = `${7 * DPR}px system-ui`;
+        const text = item.text.length > 12 ? item.text.substring(0, 12) + '...' : item.text;
         ctx.fillText(text, textX, itemY);
       }
       
       // Показать количество элементов, если их больше 3
       if (checklist.items.length > 3) {
         ctx.fillStyle = baseColor;
-        ctx.font = `${7 * DPR}px system-ui`;
+        ctx.font = `bold ${7 * DPR}px system-ui`;
         ctx.textAlign = "center";
-        ctx.fillText(`+${checklist.items.length - 3} еще`, x, startY + maxItems * itemHeight + 4 * DPR);
+        ctx.fillText(`+${checklist.items.length - 3} еще`, x, startY + maxItems * itemHeight + 6 * DPR);
       }
     }
     

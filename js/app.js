@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.9-checklist-hover";
+let APP_VERSION = "Atlas_of_life_v0.6.0-checklist-fixed";
 
 // ephemeral UI state
 const ui = {
@@ -3597,8 +3597,13 @@ window.showChecklistEditor = showChecklistEditor;
 
 // Функции для всплывающего окна чек-листов
 function showChecklistPopup(checklist, x, y) {
+  console.log('🔍 showChecklistPopup called with:', checklist.title, 'at', x, y);
   const popup = document.getElementById('checklistPopup');
-  if (!popup) return;
+  if (!popup) {
+    console.error('❌ Checklist popup not found!');
+    return;
+  }
+  console.log('✅ Checklist popup found, proceeding...');
   
   // Заполняем заголовок
   const title = popup.querySelector('.checklist-popup-title');
