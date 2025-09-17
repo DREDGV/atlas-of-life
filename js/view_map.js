@@ -5723,6 +5723,17 @@ function showObjectContextMenu(x, y, node) {
         <span class="text">Удалить заметку</span>
       </div>
     `;
+  } else if (node._type === 'checklist') {
+    menuContent = `
+      <div class="context-menu-item" data-action="edit-checklist">
+        <span class="icon">✏️</span>
+        <span class="text">Редактировать чек-лист</span>
+      </div>
+      <div class="context-menu-item" data-action="delete-checklist">
+        <span class="icon">🗑️</span>
+        <span class="text">Удалить чек-лист</span>
+      </div>
+    `;
   }
   
   contextMenu.innerHTML = menuContent;
@@ -5758,6 +5769,20 @@ function showObjectContextMenu(x, y, node) {
         break;
       case 'edit-note':
         showNoteEditor(node);
+        break;
+      case 'edit-checklist':
+        const checklist = state.checklists.find(c => c.id === node.id);
+        if (checklist) {
+          window.showChecklistEditor(checklist);
+        }
+        break;
+      case 'delete-checklist':
+        if (confirm(`Удалить чек-лист "${node.title}"?`)) {
+          state.checklists = state.checklists.filter(c => c.id !== node.id);
+          saveState();
+          layoutMap();
+          drawMap();
+        }
         break;
       case 'delete-task':
         if (confirm(`Удалить задачу "${node.title}"?`)) {

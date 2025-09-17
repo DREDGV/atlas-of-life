@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, createChecklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, getChecklistProgress, getChecklistsOfProject } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.6.0-checklist-fixed";
+let APP_VERSION = "Atlas_of_life_v0.6.2-context-menu-fixed";
 
 // ephemeral UI state
 const ui = {
@@ -1006,7 +1006,6 @@ function setupInfoPanelTooltips() {
     { selector: '#createProjectBtn', text: 'Создать новый проект (горячая клавиша: Ctrl+Shift+N)', icon: '🎯' },
     { selector: '#createIdeaBtn', text: 'Создать новую идею - для хранения творческих мыслей', icon: '🌌' },
     { selector: '#createNoteBtn', text: 'Создать новую заметку - для записи важной информации', icon: '📝' },
-    { selector: '#createChecklistBtn', text: 'Создать новый чек-лист - для списков подзадач (горячая клавиша: Ctrl+Shift+C)', icon: '✓' },
     { selector: '#btnAddDomain', text: 'Создать новый домен - основную сферу жизни (горячая клавиша: Ctrl+Shift+D)', icon: '🌍' }
   ];
 
@@ -2417,22 +2416,40 @@ function renderSidebar() {
     const currentValue = searchInput.value;
     
     searchInput.addEventListener("input", (e) => {
-      const query = e.target.value.trim();
+      const query = e.target.value.toLowerCase().trim();
       
       if (query.length === 0) {
         // Clear search - show all
         state.searchQuery = null;
         state.searchResults = null;
-        if (window.mapApi && window.mapApi.searchObjects) {
-          window.mapApi.searchObjects('');
-        }
+        // Don't re-render sidebar to preserve input value
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
         return;
       }
       
-      // Use new map search functionality
-      if (window.mapApi && window.mapApi.searchObjects) {
-        window.mapApi.searchObjects(query);
-      }
+      // Filter domains, projects, and tasks
+      const filteredDomains = state.domains.filter(d => 
+        d.title.toLowerCase().includes(query)
+      );
+      const filteredProjects = state.projects.filter(p => 
+        p.title.toLowerCase().includes(query)
+      );
+      const filteredTasks = state.tasks.filter(t => 
+        t.title.toLowerCase().includes(query) ||
+        (t.tags || []).some(tag => tag.toLowerCase().includes(query))
+      );
+      
+      // Highlight search results
+      highlightSearchResults(query, filteredDomains, filteredProjects, filteredTasks);
+      
+      // Update filter to show only matching items
+      state.searchQuery = query;
+      // Update only domains list and statistics, not entire sidebar
+      updateDomainsList();
+      updateStatistics();
+      if (window.layoutMap) window.layoutMap();
+      if (window.drawMap) window.drawMap();
     });
     
     // Clear search on Escape
@@ -2441,45 +2458,10 @@ function renderSidebar() {
         e.target.value = "";
         state.searchQuery = null;
         state.searchResults = null;
-        if (window.mapApi && window.mapApi.searchObjects) {
-          window.mapApi.searchObjects('');
-        }
-      }
-    });
-  }
-  
-  // Add search functionality to header search input
-  const headerSearchInput = document.getElementById("searchInput");
-  if (headerSearchInput) {
-    headerSearchInput.addEventListener("input", (e) => {
-      const query = e.target.value.trim();
-      
-      if (window.mapApi && window.mapApi.searchObjects) {
-        window.mapApi.searchObjects(query);
-      }
-    });
-    
-    headerSearchInput.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.target.value = "";
-        if (window.mapApi && window.mapApi.searchObjects) {
-          window.mapApi.searchObjects('');
-        }
-      } else if (e.key === "Enter") {
-        // Navigate to next search result
-        if (window.mapApi && window.mapApi.nextSearchResult) {
-          window.mapApi.nextSearchResult();
-        }
-      } else if (e.key === "ArrowDown") {
-        // Navigate to next search result
-        if (window.mapApi && window.mapApi.nextSearchResult) {
-          window.mapApi.nextSearchResult();
-        }
-      } else if (e.key === "ArrowUp") {
-        // Navigate to previous search result
-        if (window.mapApi && window.mapApi.previousSearchResult) {
-          window.mapApi.previousSearchResult();
-        }
+        updateDomainsList();
+        updateStatistics();
+        if (window.layoutMap) window.layoutMap();
+        if (window.drawMap) window.drawMap();
       }
     });
   }
@@ -2904,7 +2886,7 @@ function setupHeader() {
       }
     });
   } else {
-    console.warn('Settings elements not found!');
+    console.error('Settings elements not found!');
   }
 }
 
@@ -3393,52 +3375,208 @@ function showNoteEditor(note) {
   };
 }
 
-function showChecklistEditor(checklist) {
-  console.log('🔍 Opening checklist editor for:', checklist);
-  const modal = document.getElementById('modal');
-  if (!modal) {
-    console.error('❌ Modal not found!');
-    return;
+
+
+
+const escapeChecklistHtml = (value = '') => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}[ch] || ch));
+
+let activeChecklistPopupId = null;
+let checklistPopupLocked = false;
+let checklistPopupHideTimer = null;
+
+function showChecklistPopup(checklist, x, y) {
+  const popup = document.getElementById('checklistPopup');
+  if (!popup || !checklist) return;
+
+  activeChecklistPopupId = checklist.id;
+  checklistPopupLocked = false;
+
+  const titleEl = popup.querySelector('.checklist-popup-title');
+  const progressEl = popup.querySelector('.checklist-popup-progress');
+  const itemsEl = popup.querySelector('.checklist-popup-items');
+
+  if (titleEl) titleEl.textContent = checklist.title || 'Чек-лист';
+  if (progressEl) progressEl.textContent = `${getChecklistProgress(checklist.id)}%`;
+
+  if (itemsEl) {
+    itemsEl.innerHTML = '';
+    if (checklist.items && checklist.items.length) {
+      checklist.items.forEach((item) => {
+        const row = document.createElement('label');
+        row.className = 'checklist-popup-item';
+        row.dataset.itemId = item.id;
+        row.innerHTML = `
+          <input type="checkbox" class="checklist-popup-checkbox" ${item.completed ? 'checked' : ''}>
+          <span class="checklist-popup-text ${item.completed ? 'completed' : ''}">${escapeChecklistHtml(item.text)}</span>
+        `;
+        itemsEl.appendChild(row);
+      });
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'checklist-empty';
+      empty.textContent = 'Пока нет элементов';
+      itemsEl.appendChild(empty);
+    }
   }
-  console.log('✅ Modal found, proceeding...');
-  
-  // Генерируем HTML для элементов чек-листа
-  const itemsHTML = checklist.items.map(item => `
-    <div class="checklist-item" data-item-id="${item.id}">
-      <input type="checkbox" ${item.completed ? 'checked' : ''} class="checklist-checkbox" onchange="toggleChecklistItemInEditor('${checklist.id}', '${item.id}')">
-      <input type="text" value="${item.text}" class="checklist-text" onchange="updateChecklistItemText('${checklist.id}', '${item.id}', this.value)">
-      <button class="btn-small danger" onclick="removeChecklistItemFromEditor('${item.id}')">×</button>
-    </div>
-  `).join('');
-  
+
+  if (!popup.dataset.handlersAttached) {
+    popup.addEventListener('mouseenter', () => {
+      checklistPopupLocked = true;
+      if (checklistPopupHideTimer) {
+        clearTimeout(checklistPopupHideTimer);
+        checklistPopupHideTimer = null;
+      }
+    });
+
+    popup.addEventListener('mouseleave', () => {
+      checklistPopupLocked = false;
+      if (checklistPopupHideTimer) {
+        clearTimeout(checklistPopupHideTimer);
+      }
+      checklistPopupHideTimer = setTimeout(() => {
+        if (!checklistPopupLocked) {
+          hideChecklistPopup();
+        }
+      }, 150);
+    });
+
+    popup.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!target.classList.contains('checklist-popup-checkbox')) return;
+      const itemRow = target.closest('.checklist-popup-item');
+      const itemId = itemRow?.dataset.itemId;
+      const popupChecklistId = popup.dataset.activeChecklistId;
+      if (!itemId || !popupChecklistId) return;
+      toggleChecklistItemInPopup(popupChecklistId, itemId);
+    });
+
+    popup.dataset.handlersAttached = 'true';
+  }
+
+  popup.dataset.activeChecklistId = checklist.id;
+
+  popup.style.left = '0px';
+  popup.style.top = '0px';
+  popup.classList.add('show');
+
+  const rect = popup.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  let popupX = x + 20;
+  let popupY = y - rect.height / 2;
+
+  if (popupX + rect.width > viewportWidth) {
+    popupX = x - rect.width - 20;
+  }
+  if (popupX < 10) popupX = 10;
+
+  if (popupY + rect.height > viewportHeight) {
+    popupY = viewportHeight - rect.height - 10;
+  }
+  if (popupY < 10) popupY = 10;
+
+  popup.style.left = `${Math.round(popupX)}px`;
+  popup.style.top = `${Math.round(popupY)}px`;
+
+  const editBtn = document.getElementById('editChecklistBtn');
+  if (editBtn) {
+    editBtn.onclick = () => {
+      hideChecklistPopup();
+      showChecklistEditor(checklist);
+    };
+  }
+
+  const closeBtn = document.getElementById('closeChecklistPopup');
+  if (closeBtn) {
+    closeBtn.onclick = () => hideChecklistPopup();
+  }
+}
+
+function hideChecklistPopup() {
+  const popup = document.getElementById('checklistPopup');
+  if (popup) {
+    popup.classList.remove('show');
+    delete popup.dataset.activeChecklistId;
+  }
+  activeChecklistPopupId = null;
+  checklistPopupLocked = false;
+}
+
+function toggleChecklistItemInPopup(checklistId, itemId) {
+  const completed = toggleChecklistItem(checklistId, itemId);
+  const popup = document.getElementById('checklistPopup');
+  const checklist = state.checklists.find((c) => c.id === checklistId);
+
+  if (popup && checklist) {
+    const progressEl = popup.querySelector('.checklist-popup-progress');
+    if (progressEl) {
+      progressEl.textContent = `${getChecklistProgress(checklistId)}%`;
+    }
+
+    const row = popup.querySelector(`.checklist-popup-item[data-item-id="${itemId}"]`);
+    if (row) {
+      const textSpan = row.querySelector('.checklist-popup-text');
+      if (textSpan) {
+        textSpan.classList.toggle('completed', completed);
+      }
+      const checkbox = row.querySelector('.checklist-popup-checkbox');
+      if (checkbox) {
+        checkbox.checked = completed;
+      }
+    }
+  }
+
+  try {
+    saveState();
+  } catch (_) {}
+  if (window.drawMap) window.drawMap();
+}
+
+function showChecklistEditor(checklist) {
+  const modal = document.getElementById('modal');
+  if (!modal || !checklist) return;
+
+  const originalItems = new Map((checklist.items || []).map((item) => [item.id, item]));
+
+  const renderRow = (item) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'checklist-editor-item';
+    wrapper.dataset.itemId = item.id || `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    wrapper.innerHTML = `
+      <label class="checklist-editor-check">
+        <input type="checkbox" class="checklist-editor-item-check" ${item.completed ? 'checked' : ''}>
+      </label>
+      <input type="text" class="checklist-editor-item-text" value="${escapeChecklistHtml(item.text || '')}" placeholder="Новый элемент">
+      <button type="button" class="btn-icon checklist-editor-remove" title="Удалить элемент">×</button>
+    `;
+    return wrapper;
+  };
+
+  const safeColor = /^#[0-9a-fA-F]{6}$/.test(checklist.color || '') ? checklist.color : '#3b82f6';
+
   modal.innerHTML = `
-    <div class="modal-content">
-      <h2>Редактировать чек-лист</h2>
-      <div class="form-group">
-        <label for="checklistTitle">Название:</label>
-        <input type="text" id="checklistTitle" value="${checklist.title || 'Новый чек-лист'}" placeholder="Название чек-листа">
+    <div class="modal-content checklist-editor">
+      <div class="modal-header">
+        <h2>Редактор чек-листа</h2>
+        <button class="btn-icon" id="closeChecklistEditor" title="Закрыть">×</button>
       </div>
       <div class="form-group">
-        <label>Элементы чек-листа:</label>
-        <div class="checklist-items" id="checklistItems">
-          ${itemsHTML || '<div class="checklist-empty">Нет элементов. Добавьте первый элемент.</div>'}
-        </div>
-        <button class="btn" id="addChecklistItem">+ Добавить элемент</button>
+        <label for="checklistTitle">Название</label>
+        <input type="text" id="checklistTitle" value="${escapeChecklistHtml(checklist.title || '')}" placeholder="Название чек-листа">
       </div>
       <div class="form-group">
-        <label for="checklistColor">Цвет:</label>
-        <div class="color-picker-container">
-          <input type="color" id="checklistColor" value="${checklist.color || '#3b82f6'}">
-          <div class="color-presets">
-            <div class="color-preset" data-color="#3b82f6" style="background: #3b82f6"></div>
-            <div class="color-preset" data-color="#10b981" style="background: #10b981"></div>
-            <div class="color-preset" data-color="#f59e0b" style="background: #f59e0b"></div>
-            <div class="color-preset" data-color="#ef4444" style="background: #ef4444"></div>
-            <div class="color-preset" data-color="#8b5cf6" style="background: #8b5cf6"></div>
-            <div class="color-preset" data-color="#06b6d4" style="background: #06b6d4"></div>
-          </div>
-        </div>
+        <label for="checklistColor">Цвет</label>
+        <input type="color" id="checklistColor" value="${safeColor}">
       </div>
+      <div class="checklist-items-editor" id="checklistItemsEditor"></div>
+      <button class="btn secondary" type="button" id="addChecklistItem">+ Добавить элемент</button>
       <div class="modal-actions">
         <button class="btn primary" id="saveChecklist">Сохранить</button>
         <button class="btn" id="cancelChecklist">Отмена</button>
@@ -3446,279 +3584,112 @@ function showChecklistEditor(checklist) {
       </div>
     </div>
   `;
-  
+
   modal.style.display = 'flex';
-  
-  // Event handlers для предустановленных цветов
-  document.querySelectorAll('.color-preset').forEach(preset => {
-    preset.addEventListener('click', () => {
-      const color = preset.dataset.color;
-      document.getElementById('checklistColor').value = color;
-    });
+
+  const itemsEditor = document.getElementById('checklistItemsEditor');
+  const addBtn = document.getElementById('addChecklistItem');
+  const saveBtn = document.getElementById('saveChecklist');
+  const cancelBtn = document.getElementById('cancelChecklist');
+  const deleteBtn = document.getElementById('deleteChecklist');
+  const closeBtn = document.getElementById('closeChecklistEditor');
+  const titleInput = document.getElementById('checklistTitle');
+  const colorInput = document.getElementById('checklistColor');
+
+  (checklist.items || []).forEach((item) => {
+    itemsEditor.appendChild(renderRow(item));
   });
-  
-  // Event handlers
-  document.getElementById('saveChecklist').onclick = () => {
-    checklist.title = document.getElementById('checklistTitle').value;
-    checklist.color = document.getElementById('checklistColor').value;
-    checklist.updatedAt = Date.now();
-    
-    // Обновляем элементы чек-листа
-    const items = document.querySelectorAll('.checklist-item');
-    checklist.items = Array.from(items).map(itemEl => {
-      const itemId = itemEl.dataset.itemId;
-      const checkbox = itemEl.querySelector('.checklist-checkbox');
-      const textInput = itemEl.querySelector('.checklist-text');
-      
-      return {
+  if (!itemsEditor.children.length) {
+    itemsEditor.appendChild(renderRow({ text: '', completed: false }));
+  }
+
+  itemsEditor.addEventListener('click', (event) => {
+    if (event.target.classList.contains('checklist-editor-remove')) {
+      const row = event.target.closest('div.checklist-editor-item');
+      if (row) row.remove();
+      if (!itemsEditor.children.length) {
+        itemsEditor.appendChild(renderRow({ text: '', completed: false }));
+      }
+    }
+  });
+
+  addBtn.onclick = () => {
+    const row = renderRow({ text: '', completed: false });
+    itemsEditor.appendChild(row);
+    const input = row.querySelector('.checklist-editor-item-text');
+    if (input) input.focus();
+  };
+
+  const finalizeChecklist = () => {
+    const updatedItems = [];
+    itemsEditor.querySelectorAll('.checklist-editor-item').forEach((row) => {
+      const textInput = row.querySelector('.checklist-editor-item-text');
+      if (!textInput) return;
+      const value = textInput.value.trim();
+      if (!value) return;
+      const checkbox = row.querySelector('.checklist-editor-item-check');
+      let itemId = row.dataset.itemId;
+      if (!itemId || itemId.startswith('new-')) {
+        itemId = generateId();
+      }
+      const original = originalItems.get(itemId);
+      updatedItems.push({
         id: itemId,
-        text: textInput.value,
-        completed: checkbox.checked,
-        createdAt: checklist.items.find(i => i.id === itemId)?.createdAt || Date.now()
-      };
+        text: value,
+        completed: checkbox ? checkbox.checked : false,
+        createdAt: original?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+      });
     });
-    
-    saveState();
+
+    checklist.title = titleInput.value.trim() || checklist.title || 'Checklist';
+    checklist.color = colorInput.value || '#3b82f6';
+    checklist.items = updatedItems;
+    checklist.updatedAt = Date.now();
+
+    try {
+      saveState();
+    } catch (_) {}
     if (window.layoutMap) window.layoutMap();
     if (window.drawMap) window.drawMap();
+    if (window.renderSidebar) window.renderSidebar();
     closeModal();
-    showToast('Чек-лист сохранен', 'ok');
+    showToast('Checklist saved', 'ok');
   };
-  
-  document.getElementById('cancelChecklist').onclick = () => {
-    closeModal();
-  };
-  
-  document.getElementById('deleteChecklist').onclick = () => {
-    if (confirm('Удалить чек-лист?')) {
-      state.checklists = state.checklists.filter(c => c.id !== checklist.id);
+
+  saveBtn.onclick = finalizeChecklist;
+  titleInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      finalizeChecklist();
+    }
+  });
+
+  cancelBtn.onclick = () => closeModal();
+  closeBtn.onclick = () => closeModal();
+
+  deleteBtn.onclick = () => {
+    if (!confirm('Удалить чек-лист?')) return;
+    state.checklists = state.checklists.filter((item) => item.id !== checklist.id);
+    try {
       saveState();
-      if (window.layoutMap) window.layoutMap();
-      if (window.drawMap) window.drawMap();
-      closeModal();
-      showToast('Чек-лист удален', 'ok');
-    }
-  };
-  
-  document.getElementById('addChecklistItem').onclick = () => {
-    const newItem = addChecklistItem(checklist.id, 'Новый элемент');
-    if (newItem) {
-      const itemsContainer = document.getElementById('checklistItems');
-      
-      // Убираем сообщение о пустом состоянии
-      const emptyMessage = itemsContainer.querySelector('.checklist-empty');
-      if (emptyMessage) {
-        emptyMessage.remove();
-      }
-      
-      const itemHTML = `
-        <div class="checklist-item" data-item-id="${newItem.id}">
-          <input type="checkbox" class="checklist-checkbox">
-          <input type="text" value="${newItem.text}" class="checklist-text" placeholder="Введите элемент списка">
-          <button class="btn-small danger" onclick="removeChecklistItemFromEditor('${newItem.id}')">×</button>
-        </div>
-      `;
-      itemsContainer.insertAdjacentHTML('beforeend', itemHTML);
-      
-      // Фокусируемся на новом поле ввода
-      const newTextInput = itemsContainer.querySelector(`[data-item-id="${newItem.id}"] .checklist-text`);
-      if (newTextInput) {
-        newTextInput.focus();
-        newTextInput.select();
-        
-        // Добавляем обработчик Enter для быстрого добавления следующего элемента
-        newTextInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            document.getElementById('addChecklistItem').click();
-          }
-        });
-        
-        // Добавляем обработчики для нового элемента
-        const newCheckbox = itemsContainer.querySelector(`[data-item-id="${newItem.id}"] .checklist-checkbox`);
-        if (newCheckbox) {
-          newCheckbox.addEventListener('change', () => {
-            window.toggleChecklistItemInEditor(checklist.id, newItem.id);
-          });
-        }
-        
-        newTextInput.addEventListener('change', () => {
-          window.updateChecklistItemText(checklist.id, newItem.id, newTextInput.value);
-        });
-      }
-      
-      // Обновляем карту
-      if (window.drawMap) window.drawMap();
-    }
-  };
-  
-  // Добавляем функции для работы с элементами в глобальную область
-  window.removeChecklistItemFromEditor = (itemId) => {
-    if (removeChecklistItem(checklist.id, itemId)) {
-      document.querySelector(`[data-item-id="${itemId}"]`).remove();
-      
-      // Проверяем, остались ли элементы
-      const itemsContainer = document.getElementById('checklistItems');
-      const remainingItems = itemsContainer.querySelectorAll('.checklist-item');
-      
-      if (remainingItems.length === 0) {
-        // Показываем сообщение о пустом состоянии
-        itemsContainer.innerHTML = '<div class="checklist-empty">Нет элементов. Добавьте первый элемент.</div>';
-      }
-    }
-  };
-  
-  window.toggleChecklistItemInEditor = (checklistId, itemId) => {
-    const completed = toggleChecklistItem(checklistId, itemId);
-    console.log(`✅ Toggled item ${itemId}: ${completed ? 'completed' : 'not completed'}`);
-    
-    // Обновляем карту
+    } catch (_) {}
+    if (window.layoutMap) window.layoutMap();
     if (window.drawMap) window.drawMap();
-  };
-  
-  window.updateChecklistItemText = (checklistId, itemId, newText) => {
-    const checklist = state.checklists.find(c => c.id === checklistId);
-    if (checklist) {
-      const item = checklist.items.find(i => i.id === itemId);
-      if (item) {
-        item.text = newText;
-        checklist.updatedAt = Date.now();
-        console.log(`✅ Updated item text: ${newText}`);
-        
-        // Обновляем карту
-        if (window.drawMap) window.drawMap();
-      }
-    }
+    if (window.renderSidebar) window.renderSidebar();
+    closeModal();
+    showToast('Checklist deleted', 'ok');
   };
 }
 
-// Добавляем функцию в глобальную область для использования в inspector.js
-window.showChecklistEditor = showChecklistEditor;
-
-// Функции для всплывающего окна чек-листов
-function showChecklistPopup(checklist, x, y) {
-  console.log('🔍 showChecklistPopup called with:', checklist.title, 'at', x, y);
-  const popup = document.getElementById('checklistPopup');
-  if (!popup) {
-    console.error('❌ Checklist popup not found!');
-    return;
-  }
-  console.log('✅ Checklist popup found, proceeding...');
-  
-  // Заполняем заголовок
-  const title = popup.querySelector('.checklist-popup-title');
-  const progress = popup.querySelector('.checklist-popup-progress');
-  const items = popup.querySelector('.checklist-popup-items');
-  
-  title.textContent = checklist.title;
-  progress.textContent = `${getChecklistProgress(checklist.id)}%`;
-  
-  // Заполняем элементы
-  items.innerHTML = '';
-  if (checklist.items && checklist.items.length > 0) {
-    checklist.items.forEach(item => {
-      const itemDiv = document.createElement('div');
-      itemDiv.className = 'checklist-popup-item';
-      itemDiv.innerHTML = `
-        <input type="checkbox" class="checklist-popup-checkbox" ${item.completed ? 'checked' : ''} 
-               onchange="toggleChecklistItemInPopup('${checklist.id}', '${item.id}')">
-        <span class="checklist-popup-text ${item.completed ? 'completed' : ''}">${item.text}</span>
-      `;
-      items.appendChild(itemDiv);
-    });
-  } else {
-    items.innerHTML = '<div style="text-align: center; color: var(--muted); font-style: italic;">Нет элементов</div>';
-  }
-  
-  // Позиционируем окно с учетом границ экрана
-  const popupRect = popup.getBoundingClientRect();
-  const screenWidth = window.innerWidth;
-  const screenHeight = window.innerHeight;
-  
-  let popupX = x + 20;
-  let popupY = y - 20;
-  
-  // Проверяем правую границу
-  if (popupX + 300 > screenWidth) {
-    popupX = x - 320; // Показываем слева от курсора
-  }
-  
-  // Проверяем нижнюю границу
-  if (popupY + 200 > screenHeight) {
-    popupY = y - 220; // Показываем выше курсора
-  }
-  
-  // Проверяем верхнюю границу
-  if (popupY < 0) {
-    popupY = 10; // Минимальный отступ от верха
-  }
-  
-  // Проверяем левую границу
-  if (popupX < 0) {
-    popupX = 10; // Минимальный отступ слева
-  }
-  
-  popup.style.left = `${popupX}px`;
-  popup.style.top = `${popupY}px`;
-  popup.classList.add('show');
-  
-  // Обработчики кнопок
-  document.getElementById('editChecklistBtn').onclick = () => {
-    hideChecklistPopup();
-    showChecklistEditor(checklist);
-  };
-  
-  document.getElementById('closeChecklistPopup').onclick = () => {
-    hideChecklistPopup();
-  };
-}
-
-function hideChecklistPopup() {
-  const popup = document.getElementById('checklistPopup');
-  if (popup) {
-    popup.classList.remove('show');
-  }
-}
-
-function toggleChecklistItemInPopup(checklistId, itemId) {
-  const completed = toggleChecklistItem(checklistId, itemId);
-  console.log(`✅ Toggled item ${itemId} in popup: ${completed ? 'completed' : 'not completed'}`);
-  
-  // Обновляем отображение в попапе
-  const popup = document.getElementById('checklistPopup');
-  if (popup) {
-    const progress = popup.querySelector('.checklist-popup-progress');
-    const checklist = state.checklists.find(c => c.id === checklistId);
-    if (checklist && progress) {
-      progress.textContent = `${getChecklistProgress(checklistId)}%`;
-    }
-    
-    // Обновляем стиль текста
-    const itemDiv = popup.querySelector(`[onchange*="${itemId}"]`).parentElement;
-    const textSpan = itemDiv.querySelector('.checklist-popup-text');
-    if (textSpan) {
-      textSpan.classList.toggle('completed', completed);
-    }
-  }
-  
-  // Обновляем карту
-  if (window.drawMap) window.drawMap();
-}
-
-// Добавляем функции в глобальную область
 window.showChecklistPopup = showChecklistPopup;
 window.hideChecklistPopup = hideChecklistPopup;
 window.toggleChecklistItemInPopup = toggleChecklistItemInPopup;
+window.showChecklistEditor = showChecklistEditor;
+window.isChecklistPopupLocked = () => checklistPopupLocked;
+window.getChecklistPopupActiveId = () => activeChecklistPopupId;
 
-// Обработчик закрытия попапа при клике вне его
-document.addEventListener('click', (e) => {
-  const popup = document.getElementById('checklistPopup');
-  if (popup && popup.classList.contains('show')) {
-    if (!popup.contains(e.target)) {
-      hideChecklistPopup();
-    }
-  }
-});
+
 
 // Setup creation panel buttons
 function setupCreationPanel() {
@@ -3789,24 +3760,6 @@ function setupCreationPanel() {
       showNoteEditor(note);
     });
   }
-  
-  // Create Checklist button
-  const createChecklistBtn = document.getElementById('createChecklistBtn');
-  if (createChecklistBtn) {
-    createChecklistBtn.addEventListener('click', () => {
-      console.log('🔍 Creating checklist...');
-      try {
-        const checklist = createChecklist('Новый чек-лист');
-        console.log('✅ Checklist created:', checklist);
-        showChecklistEditor(checklist);
-        console.log('✅ Checklist editor opened');
-      } catch (error) {
-        console.error('❌ Error creating checklist:', error);
-      }
-    });
-  } else {
-    console.error('❌ createChecklistBtn not found!');
-  }
 }
 
 function submitQuick(text) {
@@ -3831,34 +3784,6 @@ function submitQuick(text) {
       const note = createNote();
       note.title = title;
       showNoteEditor(note);
-      $("#quickAdd").value = "";
-      $("#qaChips").innerHTML = "";
-      return;
-    }
-  }
-  
-  if (text.startsWith('✓')) {
-    const title = text.substring(1).trim();
-    if (title) {
-      // Parse the text to extract project assignment
-      const parsed = parseQuick(text);
-      const checklistTitle = parsed.title || title;
-      
-      const checklist = createChecklist();
-      checklist.title = checklistTitle;
-      
-      // Assign to project if specified
-      if (parsed.project) {
-        const project = state.projects.find(p => p.title.toLowerCase() === parsed.project.toLowerCase());
-        if (project) {
-          checklist.projectId = project.id;
-          checklist.domainId = project.domainId;
-        }
-      } else if (state.activeDomain) {
-        checklist.domainId = state.activeDomain;
-      }
-      
-      showChecklistEditor(checklist);
       $("#quickAdd").value = "";
       $("#qaChips").innerHTML = "";
       return;
@@ -4170,3 +4095,6 @@ window.toggleAllTags = function() {
   state.showAllTags = !state.showAllTags;
   renderSidebar();
 };
+
+
+

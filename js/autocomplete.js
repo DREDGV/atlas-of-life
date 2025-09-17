@@ -67,13 +67,11 @@ class AutocompleteSystem {
   
   attachEvents() {
     // Find quick input field
-    this.input = document.getElementById('quickAdd');
     if (!this.input) {
-      console.warn('Autocomplete: quickAdd input not found');
       return;
     }
     
-    console.log('Autocomplete: initialized for input', this.input);
+    console.debug('Autocomplete: initialized for input', this.input);
     
     this.input.addEventListener('input', (e) => this.handleInput(e));
     this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
