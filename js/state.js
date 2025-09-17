@@ -950,7 +950,7 @@ export function createChecklist(title, projectId = null, domainId = null) {
 
 // Функции для работы с элементами чек-листа
 export function addChecklistItem(checklistId, text) {
-  const checklist = byId(checklistId);
+  const checklist = byId(state.checklists, checklistId);
   if (!checklist) return null;
   
   const item = {
@@ -966,7 +966,7 @@ export function addChecklistItem(checklistId, text) {
 }
 
 export function toggleChecklistItem(checklistId, itemId) {
-  const checklist = byId(checklistId);
+  const checklist = byId(state.checklists, checklistId);
   if (!checklist) return false;
   
   const item = checklist.items.find(i => i.id === itemId);
@@ -978,7 +978,7 @@ export function toggleChecklistItem(checklistId, itemId) {
 }
 
 export function removeChecklistItem(checklistId, itemId) {
-  const checklist = byId(checklistId);
+  const checklist = byId(state.checklists, checklistId);
   if (!checklist) return false;
   
   const index = checklist.items.findIndex(i => i.id === itemId);
@@ -990,7 +990,7 @@ export function removeChecklistItem(checklistId, itemId) {
 }
 
 export function getChecklistProgress(checklistId) {
-  const checklist = byId(checklistId);
+  const checklist = byId(state.checklists, checklistId);
   if (!checklist || !checklist.items.length) return 0;
   
   const completed = checklist.items.filter(item => item.completed).length;

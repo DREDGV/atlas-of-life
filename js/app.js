@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.5-checklist-debug";
+let APP_VERSION = "Atlas_of_life_v0.5.6-checklist-fixed";
 
 // ephemeral UI state
 const ui = {
