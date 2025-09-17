@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.6-checklist-fixed";
+let APP_VERSION = "Atlas_of_life_v0.5.7-checklist-enhanced";
 
 // ephemeral UI state
 const ui = {
@@ -3405,8 +3405,8 @@ function showChecklistEditor(checklist) {
   // Генерируем HTML для элементов чек-листа
   const itemsHTML = checklist.items.map(item => `
     <div class="checklist-item" data-item-id="${item.id}">
-      <input type="checkbox" ${item.completed ? 'checked' : ''} class="checklist-checkbox">
-      <input type="text" value="${item.text}" class="checklist-text">
+      <input type="checkbox" ${item.completed ? 'checked' : ''} class="checklist-checkbox" onchange="toggleChecklistItemInEditor('${checklist.id}', '${item.id}')">
+      <input type="text" value="${item.text}" class="checklist-text" onchange="updateChecklistItemText('${checklist.id}', '${item.id}', this.value)">
       <button class="btn-small danger" onclick="removeChecklistItemFromEditor('${item.id}')">×</button>
     </div>
   `).join('');
@@ -3533,11 +3533,26 @@ function showChecklistEditor(checklist) {
             document.getElementById('addChecklistItem').click();
           }
         });
+        
+        // Добавляем обработчики для нового элемента
+        const newCheckbox = itemsContainer.querySelector(`[data-item-id="${newItem.id}"] .checklist-checkbox`);
+        if (newCheckbox) {
+          newCheckbox.addEventListener('change', () => {
+            window.toggleChecklistItemInEditor(checklist.id, newItem.id);
+          });
+        }
+        
+        newTextInput.addEventListener('change', () => {
+          window.updateChecklistItemText(checklist.id, newItem.id, newTextInput.value);
+        });
       }
+      
+      // Обновляем карту
+      if (window.drawMap) window.drawMap();
     }
   };
   
-  // Добавляем функцию для удаления элементов в глобальную область
+  // Добавляем функции для работы с элементами в глобальную область
   window.removeChecklistItemFromEditor = (itemId) => {
     if (removeChecklistItem(checklist.id, itemId)) {
       document.querySelector(`[data-item-id="${itemId}"]`).remove();
@@ -3549,6 +3564,29 @@ function showChecklistEditor(checklist) {
       if (remainingItems.length === 0) {
         // Показываем сообщение о пустом состоянии
         itemsContainer.innerHTML = '<div class="checklist-empty">Нет элементов. Добавьте первый элемент.</div>';
+      }
+    }
+  };
+  
+  window.toggleChecklistItemInEditor = (checklistId, itemId) => {
+    const completed = toggleChecklistItem(checklistId, itemId);
+    console.log(`✅ Toggled item ${itemId}: ${completed ? 'completed' : 'not completed'}`);
+    
+    // Обновляем карту
+    if (window.drawMap) window.drawMap();
+  };
+  
+  window.updateChecklistItemText = (checklistId, itemId, newText) => {
+    const checklist = state.checklists.find(c => c.id === checklistId);
+    if (checklist) {
+      const item = checklist.items.find(i => i.id === itemId);
+      if (item) {
+        item.text = newText;
+        checklist.updatedAt = Date.now();
+        console.log(`✅ Updated item text: ${newText}`);
+        
+        // Обновляем карту
+        if (window.drawMap) window.drawMap();
       }
     }
   };
