@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.8-checklist-popup";
+let APP_VERSION = "Atlas_of_life_v0.5.9-checklist-hover";
 
 // ephemeral UI state
 const ui = {
@@ -3625,9 +3625,36 @@ function showChecklistPopup(checklist, x, y) {
     items.innerHTML = '<div style="text-align: center; color: var(--muted); font-style: italic;">Нет элементов</div>';
   }
   
-  // Позиционируем окно
-  popup.style.left = `${x + 20}px`;
-  popup.style.top = `${y - 20}px`;
+  // Позиционируем окно с учетом границ экрана
+  const popupRect = popup.getBoundingClientRect();
+  const screenWidth = window.innerWidth;
+  const screenHeight = window.innerHeight;
+  
+  let popupX = x + 20;
+  let popupY = y - 20;
+  
+  // Проверяем правую границу
+  if (popupX + 300 > screenWidth) {
+    popupX = x - 320; // Показываем слева от курсора
+  }
+  
+  // Проверяем нижнюю границу
+  if (popupY + 200 > screenHeight) {
+    popupY = y - 220; // Показываем выше курсора
+  }
+  
+  // Проверяем верхнюю границу
+  if (popupY < 0) {
+    popupY = 10; // Минимальный отступ от верха
+  }
+  
+  // Проверяем левую границу
+  if (popupX < 0) {
+    popupX = 10; // Минимальный отступ слева
+  }
+  
+  popup.style.left = `${popupX}px`;
+  popup.style.top = `${popupY}px`;
   popup.classList.add('show');
   
   // Обработчики кнопок

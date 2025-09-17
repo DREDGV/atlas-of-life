@@ -4002,6 +4002,68 @@ function onPointerMove(e) {
     if (window.DEBUG_MOUSE) console.log('[NAV] drag move');
     return;
   }
+  
+  // Обработка наведения на чек-листы
+  handleChecklistHover(x, y, worldPos);
+}
+
+// Функция обработки наведения на чек-листы
+function handleChecklistHover(screenX, screenY, worldPos) {
+  if (!state.checklists || state.checklists.length === 0) return;
+  
+  // Проверяем наведение на чек-листы
+  let hoveredChecklist = null;
+  
+  for (const checklist of state.checklists) {
+    const distance = Math.hypot(worldPos.x - checklist.x, worldPos.y - checklist.y);
+    const radius = checklist.r + 10; // Увеличиваем зону наведения
+    
+    if (distance <= radius) {
+      hoveredChecklist = checklist;
+      break;
+    }
+  }
+  
+  // Если навели на чек-лист
+  if (hoveredChecklist) {
+    if (!hoveredChecklist._hover) {
+      // Начали наводить
+      hoveredChecklist._hover = true;
+      hoveredChecklist._hoverTime = Date.now();
+      
+      // Устанавливаем таймаут для показа попапа
+      hoveredChecklist._hoverTimeout = setTimeout(() => {
+        if (hoveredChecklist._hover) {
+          const rect = canvas.getBoundingClientRect();
+          const x = rect.left + (hoveredChecklist.x * DPR + viewState.tx);
+          const y = rect.top + (hoveredChecklist.y * DPR + viewState.ty);
+          window.showChecklistPopup(hoveredChecklist, x, y);
+        }
+      }, 500); // Задержка 500мс
+      
+      // Меняем курсор
+      canvas.style.cursor = 'pointer';
+    }
+  } else {
+    // Убираем наведение со всех чек-листов
+    for (const checklist of state.checklists) {
+      if (checklist._hover) {
+        checklist._hover = false;
+        checklist._hoverTime = 0;
+        
+        if (checklist._hoverTimeout) {
+          clearTimeout(checklist._hoverTimeout);
+          checklist._hoverTimeout = null;
+        }
+        
+        // Скрываем попап
+        window.hideChecklistPopup();
+      }
+    }
+    
+    // Возвращаем обычный курсор
+    canvas.style.cursor = 'grab';
+  }
 }
 
 function onPointerUp(e) {
@@ -4033,6 +4095,28 @@ function onPointerLeave(e) {
     // Continue dragging even if pointer leaves canvas
     return;
   }
+  
+  // Очищаем наведение на чек-листы
+  if (state.checklists && state.checklists.length > 0) {
+    for (const checklist of state.checklists) {
+      if (checklist._hover) {
+        checklist._hover = false;
+        checklist._hoverTime = 0;
+        
+        if (checklist._hoverTimeout) {
+          clearTimeout(checklist._hoverTimeout);
+          checklist._hoverTimeout = null;
+        }
+      }
+    }
+    
+    // Скрываем попап
+    window.hideChecklistPopup();
+    
+    // Возвращаем обычный курсор
+    canvas.style.cursor = 'grab';
+  }
+  
   onMouseLeave(e);
 }
 
@@ -5941,18 +6025,15 @@ function onClick(e) {
     }
     return;
             } else if (n._type === 'checklist') {
-              // Левый клик по чек-листу - открываем всплывающее окно
+              // Левый клик по чек-листу - открываем полный редактор
               const checklist = state.checklists.find(c => c.id === n.id);
               if (checklist) {
                 // Запускаем эффект клика
                 clickedNodeId = n.id;
                 clickEffectTime = 1.0;
                 
-                // Показываем всплывающее окно
-                const rect = canvas.getBoundingClientRect();
-                const x = rect.left + (n.x * DPR + viewState.tx);
-                const y = rect.top + (n.y * DPR + viewState.ty);
-                window.showChecklistPopup(checklist, x, y);
+                // Открываем полный редактор
+                window.showChecklistEditor(checklist);
               }
               return;
             } else {
@@ -6955,6 +7036,7 @@ function drawChecklists() {
     // Добавляем интерактивность для всплывающего окна
     checklist._hover = false;
     checklist._hoverTime = 0;
+    checklist._hoverTimeout = null;
     
     ctx.restore();
   });
