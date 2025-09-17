@@ -939,6 +939,12 @@ export function createChecklist(title, projectId = null, domainId = null) {
     updatedAt: Date.now()
   };
   state.checklists.push(checklist);
+  
+  // Сохраняем состояние и обновляем карту
+  saveState();
+  if (window.layoutMap) window.layoutMap();
+  if (window.drawMap) window.drawMap();
+  
   return checklist;
 }
 

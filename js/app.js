@@ -52,7 +52,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.5.4-checklist-bugs-fixed";
+let APP_VERSION = "Atlas_of_life_v0.5.5-checklist-debug";
 
 // ephemeral UI state
 const ui = {
@@ -3394,8 +3394,13 @@ function showNoteEditor(note) {
 }
 
 function showChecklistEditor(checklist) {
+  console.log('🔍 Opening checklist editor for:', checklist);
   const modal = document.getElementById('modal');
-  if (!modal) return;
+  if (!modal) {
+    console.error('❌ Modal not found!');
+    return;
+  }
+  console.log('✅ Modal found, proceeding...');
   
   // Генерируем HTML для элементов чек-листа
   const itemsHTML = checklist.items.map(item => `
@@ -3626,9 +3631,18 @@ function setupCreationPanel() {
   const createChecklistBtn = document.getElementById('createChecklistBtn');
   if (createChecklistBtn) {
     createChecklistBtn.addEventListener('click', () => {
-      const checklist = createChecklist('Новый чек-лист');
-      showChecklistEditor(checklist);
+      console.log('🔍 Creating checklist...');
+      try {
+        const checklist = createChecklist('Новый чек-лист');
+        console.log('✅ Checklist created:', checklist);
+        showChecklistEditor(checklist);
+        console.log('✅ Checklist editor opened');
+      } catch (error) {
+        console.error('❌ Error creating checklist:', error);
+      }
     });
+  } else {
+    console.error('❌ createChecklistBtn not found!');
   }
 }
 
