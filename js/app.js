@@ -3417,6 +3417,13 @@ function showChecklistEditor(checklist) {
   const modal = document.getElementById('modal');
   if (!modal || !checklist) return;
 
+  // Закрываем возможные всплывающие окна чек-листа, чтобы не было дублирующихся крестиков
+  try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+  try { if (typeof window.closeChecklistWindow === 'function') window.closeChecklistWindow(); } catch(_) {}
+
+  // Помечаем, что открыт редактор чек-листа (блокируем всплывающие окна)
+  try { window.isChecklistEditorOpen = true; } catch(_) {}
+
   const originalItems = new Map((checklist.items || []).map((item) => [item.id, item]));
 
   const renderRow = (item) => {
@@ -3437,6 +3444,8 @@ function showChecklistEditor(checklist) {
         </div>
       </div>
     `;
+    // drag & drop поддержка
+    wrapper.setAttribute('draggable', 'true');
     return wrapper;
   };
 
@@ -3446,6 +3455,7 @@ function showChecklistEditor(checklist) {
     <div class="modal-content checklist-editor">
       <div class="modal-header">
         <h2>Редактор чек-листа</h2>
+        <div id="editorProgress" style="position:absolute; right:56px; top:24px; font-size:12px; color:#9ca3af;"></div>
         <button class="btn-icon" id="closeChecklistEditor" title="Закрыть">×</button>
       </div>
       
@@ -3505,6 +3515,19 @@ function showChecklistEditor(checklist) {
   const titleInput = document.getElementById('checklistTitle');
   const colorInput = document.getElementById('checklistColor');
   const clearTitleBtn = document.getElementById('clearTitle');
+  const editorProgress = document.getElementById('editorProgress');
+
+  // Глобальный Esc для редактора (работает во всех полях)
+  const onEditorKeyDownGlobal = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+      try { window.isChecklistEditorOpen = false; } catch(_) {}
+      document.removeEventListener('keydown', onEditorKeyDownGlobal, true);
+      closeModal();
+    }
+  };
+  document.addEventListener('keydown', onEditorKeyDownGlobal, true);
 
   // Инициализация элементов
   (checklist.items || []).forEach((item) => {
@@ -3513,6 +3536,18 @@ function showChecklistEditor(checklist) {
   if (!itemsEditor.children.length) {
     itemsEditor.appendChild(renderRow({ text: '', completed: false }));
   }
+
+  // Обновление прогресса в шапке
+  const updateProgress = () => {
+    try {
+      const rows = Array.from(itemsEditor.querySelectorAll('.checklist-editor-item'));
+      const validRows = rows.filter(r => (r.querySelector('.checklist-editor-item-text')?.value || '').trim().length > 0);
+      const total = validRows.length;
+      const completed = validRows.filter(r => r.querySelector('.checklist-editor-item-check')?.checked).length;
+      if (editorProgress) editorProgress.textContent = `Прогресс: ${completed}/${total}`;
+    } catch(_) {}
+  };
+  updateProgress();
 
   // Обработчики для элементов чек-листа
   itemsEditor.addEventListener('click', (event) => {
@@ -3524,6 +3559,7 @@ function showChecklistEditor(checklist) {
       if (!itemsEditor.children.length) {
         itemsEditor.appendChild(renderRow({ text: '', completed: false }));
       }
+      updateProgress();
     } else if (event.target.classList.contains('item-move-up')) {
       const prevRow = row.previousElementSibling;
       if (prevRow) {
@@ -3535,6 +3571,42 @@ function showChecklistEditor(checklist) {
         itemsEditor.insertBefore(nextRow, row);
       }
     }
+  });
+
+  // Обновлять прогресс при изменениях
+  itemsEditor.addEventListener('change', (e) => {
+    if (e.target && e.target.classList && e.target.classList.contains('checklist-editor-item-check')) {
+      updateProgress();
+    }
+  });
+  itemsEditor.addEventListener('input', (e) => {
+    if (e.target && e.target.classList && e.target.classList.contains('checklist-editor-item-text')) {
+      updateProgress();
+    }
+  });
+
+  // Drag & Drop сортировка
+  let draggedRow = null;
+  itemsEditor.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('.checklist-editor-item');
+    if (!row) return;
+    draggedRow = row;
+    row.classList.add('dragging');
+    try { e.dataTransfer.effectAllowed = 'move'; } catch(_) {}
+  });
+  itemsEditor.addEventListener('dragend', () => {
+    if (draggedRow) draggedRow.classList.remove('dragging');
+    draggedRow = null;
+    updateProgress();
+  });
+  itemsEditor.addEventListener('dragover', (e) => {
+    if (!draggedRow) return;
+    e.preventDefault();
+    const target = e.target.closest('.checklist-editor-item');
+    if (!target || target === draggedRow) return;
+    const rect = target.getBoundingClientRect();
+    const next = (e.clientY - rect.top) > rect.height / 2;
+    itemsEditor.insertBefore(draggedRow, next ? target.nextSibling : target);
   });
 
   // Обработчик для добавления элементов через Enter
@@ -3561,6 +3633,7 @@ function showChecklistEditor(checklist) {
       input.focus();
       input.select();
     }
+    updateProgress();
   };
 
   addBtn.onclick = addNewItem;
@@ -3623,6 +3696,8 @@ function showChecklistEditor(checklist) {
     if (window.layoutMap) window.layoutMap();
     if (window.drawMap) window.drawMap();
     if (window.renderSidebar) window.renderSidebar();
+    try { window.isChecklistEditorOpen = false; } catch(_) {}
+    try { document.removeEventListener('keydown', onEditorKeyDownGlobal, true); } catch(_) {}
     closeModal();
     showToast('Чек-лист сохранен', 'ok');
   };
@@ -3635,8 +3710,8 @@ function showChecklistEditor(checklist) {
     }
   });
 
-  cancelBtn.onclick = () => closeModal();
-  closeBtn.onclick = () => closeModal();
+  cancelBtn.onclick = () => { try { window.isChecklistEditorOpen = false; } catch(_) {} try { document.removeEventListener('keydown', onEditorKeyDownGlobal, true); } catch(_) {} closeModal(); };
+  closeBtn.onclick = () => { try { window.isChecklistEditorOpen = false; } catch(_) {} try { document.removeEventListener('keydown', onEditorKeyDownGlobal, true); } catch(_) {} closeModal(); };
 
   deleteBtn.onclick = () => {
     if (!confirm('Удалить чек-лист?')) return;
@@ -3647,9 +3722,49 @@ function showChecklistEditor(checklist) {
     if (window.layoutMap) window.layoutMap();
     if (window.drawMap) window.drawMap();
     if (window.renderSidebar) window.renderSidebar();
+    try { window.isChecklistEditorOpen = false; } catch(_) {}
+    try { document.removeEventListener('keydown', onEditorKeyDownGlobal, true); } catch(_) {}
     closeModal();
     showToast('Checklist deleted', 'ok');
   };
+
+  // Горячие клавиши в редакторе: Esc — закрыть, Enter в строке — подтвердить
+  const onKeyDown = (e) => {
+    // Esc закрывает редактор (если фокус не в поле подтверждения системного диалога)
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+      try { window.isChecklistEditorOpen = false; } catch(_) {}
+      closeModal();
+      return;
+    }
+    // Enter в поле элемента — подтверждает ввод и переходит к следующей строке / добавляет новую
+    if (e.key === 'Enter') {
+      const inputEl = e.target && e.target.classList && e.target.classList.contains('checklist-editor-item-text') ? e.target : null;
+      if (inputEl) {
+        e.preventDefault();
+        inputEl.blur();
+        // если это последняя строка и не пустая — добавим новую
+        const row = inputEl.closest('.checklist-editor-item');
+        if (row && row.nextElementSibling == null && inputEl.value.trim()) {
+          const rowNew = renderRow({ text: '', completed: false });
+          itemsEditor.appendChild(rowNew);
+          const nextInput = rowNew.querySelector('.checklist-editor-item-text');
+          if (nextInput) nextInput.focus();
+        } else if (row && row.nextElementSibling) {
+          const nextInput = row.nextElementSibling.querySelector('.checklist-editor-item-text');
+          if (nextInput) nextInput.focus();
+        }
+      }
+    }
+  };
+  itemsEditor.addEventListener('keydown', onKeyDown, true);
+
+  // При закрытии окна — снять обработчик
+  const _origClose = closeBtn.onclick;
+  closeBtn.onclick = () => { itemsEditor.removeEventListener('keydown', onKeyDown, true); if (_origClose) _origClose(); };
+  const _origCancel = cancelBtn.onclick;
+  cancelBtn.onclick = () => { itemsEditor.removeEventListener('keydown', onKeyDown, true); if (_origCancel) _origCancel(); };
 }
 
 // Убраны экспорты неиспользуемых функций попапов
@@ -3734,6 +3849,9 @@ function setupCreationPanel() {
   if (btnAddChecklist) {
     btnAddChecklist.addEventListener('click', () => {
       try {
+        // Закрываем возможные всплывающие окна чек-листа
+        try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+        try { if (typeof window.closeChecklistWindow === 'function') window.closeChecklistWindow(); } catch(_) {}
         const checklist = createChecklist('Новый чек-лист');
         showChecklistEditor(checklist);
       } catch (error) {

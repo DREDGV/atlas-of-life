@@ -1,3 +1,7 @@
+.checklist-editor-item-text::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
 /* Перенесённые стили из index.html */
 .zoom-slider {
   width: 120px;
@@ -115,6 +119,7 @@
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.1);
   outline: none;
+  appearance: none;
   -webkit-appearance: none;
 }
 
@@ -2513,7 +2518,7 @@ kbd {
   padding: 20px 20px 0 20px;
 }
 
-.checklist-editor .btn-icon {
+.checklist-editor .modal-header > .btn-icon {
   position: absolute;
   top: 20px;
   right: 20px;
@@ -2599,24 +2604,30 @@ kbd {
 .checklist-items-editor {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  background: var(--panel);
+  border: 1px solid var(--panel-2);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--panel-2);
 }
 
 .checklist-editor-item {
-  margin-bottom: 8px;
-  padding: 8px;
-  border-radius: 6px;
-  background: var(--background);
-  border: 1px solid var(--border);
-  transition: all 0.2s ease;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--panel-2);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .checklist-editor-item:hover {
-  background: var(--hover);
+  background: var(--panel-2);
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+}
+
+.checklist-editor-item.dragging {
+  opacity: 0.6;
+  transform: scale(0.995);
 }
 
 .checklist-item-content {
@@ -2630,20 +2641,27 @@ kbd {
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   cursor: pointer;
+  width: 28px;
 }
 
 .checklist-editor-check input[type="checkbox"] {
   opacity: 0;
   position: absolute;
-  width: 24px;
-  height: 24px;
+  inset: 0;
+  width: 28px;
+  height: 28px;
   cursor: pointer;
 }
 
 .checkmark {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-block;
+  box-sizing: border-box;
   border: 2px solid var(--muted);
   border-radius: 6px;
   background: var(--background);
@@ -2669,19 +2687,21 @@ kbd {
 
 .checklist-editor-item-text {
   flex: 1;
-  border: none;
-  background: transparent;
+  background: var(--panel);
+  border: 1px solid var(--panel-2);
   color: var(--text);
-  font-size: 16px;
+  font-size: 15px;
   padding: 8px 12px;
   border-radius: 6px;
-  transition: background 0.2s;
-  min-height: 24px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  min-height: 32px;
 }
 
 .checklist-editor-item-text:focus {
   outline: none;
-  background: var(--hover);
+  border-color: var(--accent);
+  background: var(--panel);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .item-actions {
@@ -2825,16 +2845,14 @@ kbd {
   transition: width 0.3s ease;
 }
 
- 
- / *   :=>  C?@02;5=8O  G5:- ;8AB><  * /  
- /* Окно управления чек-листом */
+/* Окно управления чек-листом */
 .checklist-window {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 400px;
-  max-height: 60vh;
+  width: 520px;
+  max-height: 75vh;
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 8px;
@@ -2843,6 +2861,8 @@ kbd {
   display: none;
   opacity: 0;
   transition: all 0.2s ease;
+  resize: both;
+  overflow: auto;
 }
 
 .checklist-window.show {
@@ -2912,7 +2932,7 @@ kbd {
 }
 
 .checklist-window-content {
-  max-height: 300px;
+  max-height: 55vh;
   overflow-y: auto;
 }
 
@@ -2939,6 +2959,15 @@ kbd {
   border-radius: 4px;
   transition: background 0.2s ease;
 }
+.checklist-item.dragging {
+  opacity: 0.6;
+}
+.checklist-item.drop-before {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+.checklist-item.drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
 
 .checklist-item:hover {
   background: rgba(255, 255, 255, 0.05);
@@ -2949,7 +2978,6 @@ kbd {
   align-items: center;
   gap: 8px;
   flex: 1;
-  cursor: pointer;
 }
 
 .checklist-item-label input[type="checkbox"] {
@@ -2963,6 +2991,8 @@ kbd {
   font-size: 14px;
   flex: 1;
   word-break: break-word;
+  user-select: text;
+  cursor: default;
 }
 
 .checklist-item-text.completed {

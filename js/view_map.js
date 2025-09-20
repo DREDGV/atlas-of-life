@@ -1391,23 +1391,8 @@ export function initMap(canvasEl, tooltipEl) {
   canvas.addEventListener("dblclick", onDblClick);
   canvas.addEventListener("contextmenu", onContextMenu);
   
-  // Дополнительно отключаем контекстное меню на canvas
-  canvas.oncontextmenu = function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    return false;
-  };
-  
-  // Также отключаем на уровне document для canvas
-  document.addEventListener('contextmenu', function(e) {
-    if (e.target === canvas) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      return false;
-    }
-  }, true);
+  // Контекстное меню браузера блокируем внутри обработчика onContextMenu
+  // Дополнительных глобальных блокировок не ставим, чтобы не ломать наш обработчик
   
   // DISABLED: Mouse events - using pointer events instead
   // canvas.addEventListener("mousedown", onMouseDown);
@@ -3620,7 +3605,7 @@ function hit(x, y) {
     const n = nodes[i];
     const dx = x - n.x,
       dy = y - n.y;
-    const rr =
+  const rr =
       n._type === "task"
         ? n.r + 6 * DPR
         : n._type === "project"
@@ -3630,7 +3615,7 @@ function hit(x, y) {
         : n._type === "note"
         ? n.r + 8 * DPR
         : n._type === "checklist"
-        ? n.r + 10 * DPR
+        ? n.r * 1.7 + 8 * DPR
         : n.r;
     if (dx * dx + dy * dy <= rr * rr) {
       return n;
@@ -4024,6 +4009,11 @@ function onPointerMove(e) {
   if (NAV.mode === 'drag' && draggedNode) {
     draggedNode.x = worldPos.x - dragOffset.x;
     draggedNode.y = worldPos.y - dragOffset.y;
+    // если перетаскиваем чек-лист — сразу сохраняем координаты в state
+    if (draggedNode._type === 'checklist') {
+      const cl = state.checklists.find(c => c.id === draggedNode.id);
+      if (cl) { cl.x = draggedNode.x; cl.y = draggedNode.y; }
+    }
     requestDraw();
     if (window.DEBUG_MOUSE) console.log('[NAV] drag move');
     return;
@@ -4089,6 +4079,7 @@ function handleChecklistHover(screenX, screenY, worldPos) {
 
 // Простой быстрый просмотр чек-листа
 function showQuickChecklistView(checklist, screenX, screenY) {
+  if (window.isChecklistEditorOpen) return; // не показываем поверх редактора
   // Создаем простой div для быстрого просмотра
   let quickView = document.getElementById('quickChecklistView');
   if (!quickView) {
@@ -4137,6 +4128,7 @@ function hideQuickChecklistView() {
 
 // Полноценное окно чек-листа с вкладками
 function showChecklistToggleView(checklist, screenX, screenY) {
+  if (window.isChecklistEditorOpen) return; // не открываем полноразмерное окно поверх редактора
   // Создаем полноценное окно
   let toggleView = document.getElementById('checklistToggleView');
   if (!toggleView) {
@@ -6319,7 +6311,9 @@ function onClick(e) {
                 clickedNodeId = n.id;
                 clickEffectTime = 1.0;
                 
-                // Открываем полный редактор
+                // Закрываем возможные всплывающие окна, затем открываем редактор
+                try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+                try { if (typeof window.closeChecklistWindow === 'function') window.closeChecklistWindow(); } catch(_) {}
                 window.showChecklistEditor(checklist);
               }
               return;
@@ -7170,9 +7164,11 @@ function drawChecklists() {
       return;
     }
     
-    const x = checklist.x * DPR;
-    const y = checklist.y * DPR;
-    const r = checklist.r * DPR;
+    // ВНИМАНИЕ: координаты в мировых единицах, без умножения на DPR.
+    // DPR используем только для толщин линий/теней.
+    const x = checklist.x;
+    const y = checklist.y;
+    const r = checklist.r;
     
     // Анимация пульсации
     const time = performance.now() * 0.002;

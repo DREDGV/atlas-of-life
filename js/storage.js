@@ -233,22 +233,27 @@ export function importJsonV26(file){
 }
 
 // Методы для работы с чек-листами
-export async function getChecklist(entityKey) {
+export async function getChecklist(checklistId) {
   try {
-    const checklists = state.checklists || {};
-    return checklists[entityKey] || [];
+    const list = Array.isArray(state.checklists) ? state.checklists : [];
+    const found = list.find(c => c && c.id === checklistId);
+    return (found && Array.isArray(found.items)) ? found.items : [];
   } catch (error) {
     console.error('Ошибка загрузки чек-листа:', error);
     return [];
   }
 }
 
-export async function saveChecklist(entityKey, items) {
+export async function saveChecklist(checklistId, items) {
   try {
-    if (!state.checklists) {
-      state.checklists = {};
+    if (!Array.isArray(state.checklists)) {
+      state.checklists = [];
     }
-    state.checklists[entityKey] = items;
+    const idx = state.checklists.findIndex(c => c && c.id === checklistId);
+    if (idx !== -1) {
+      state.checklists[idx].items = items || [];
+      state.checklists[idx].updatedAt = Date.now();
+    }
     await saveState();
   } catch (error) {
     console.error('Ошибка сохранения чек-листа:', error);
@@ -257,11 +262,11 @@ export async function saveChecklist(entityKey, items) {
 
 // Дебаунс для частых сохранений
 let saveTimeout = null;
-export function debouncedSaveChecklist(entityKey, items) {
+export function debouncedSaveChecklist(checklistId, items) {
   if (saveTimeout) {
     clearTimeout(saveTimeout);
   }
   saveTimeout = setTimeout(() => {
-    saveChecklist(entityKey, items);
+    saveChecklist(checklistId, items);
   }, 250);
 }
