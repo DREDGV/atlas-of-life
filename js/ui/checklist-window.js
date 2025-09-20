@@ -3,6 +3,8 @@
  * Открывается по правому клику на иконку чек-листа
  */
 
+import { getChecklist, saveChecklist, debouncedSaveChecklist } from '../storage.js';
+
 let currentChecklistWindow = null;
 let currentChecklist = null;
 
@@ -12,17 +14,20 @@ let currentChecklist = null;
  * @param {number} x - координата X курсора
  * @param {number} y - координата Y курсора
  */
-export function openChecklistWindow(checklist, x, y) {
+export async function openChecklistWindow(checklist, x, y) {
   // Закрываем предыдущее окно если есть
   closeChecklistWindow();
   
   currentChecklist = checklist;
   
+  // Загружаем элементы чек-листа из storage
+  const items = await getChecklist(checklist.id);
+  
   // Создаем HTML структуру окна
   const windowHTML = `
-    <div id="checklist-window" class="checklist-window">
+    <div id="checklist-window" class="checklist-window show">
       <div class="checklist-window-header">
-        <h3 class="checklist-window-title">${checklist.title}</h3>
+        <h3 class="checklist-window-title">${checklist.title || 'Чек-лист'}</h3>
         <button class="checklist-window-close" onclick="window.closeChecklistWindow()">×</button>
       </div>
       
@@ -64,8 +69,8 @@ export function openChecklistWindow(checklist, x, y) {
   setupEventListeners();
   
   // Загружаем данные и рендерим
-  loadChecklistData();
-  renderItems();
+  await loadChecklistData();
+  await renderItems();
   
   // Показываем окно
   currentChecklistWindow.style.display = 'block';
@@ -130,10 +135,10 @@ function setupEventListeners() {
   const addBtn = currentChecklistWindow.querySelector('#add-item-btn');
   const input = currentChecklistWindow.querySelector('#new-item-input');
   
-  addBtn.addEventListener('click', addNewItem);
-  input.addEventListener('keypress', (e) => {
+  addBtn.addEventListener('click', async () => await addNewItem());
+  input.addEventListener('keypress', async (e) => {
     if (e.key === 'Enter') {
-      addNewItem();
+      await addNewItem();
     }
   });
   
@@ -172,20 +177,24 @@ function switchTab(tabName) {
 /**
  * Загружает данные чек-листа
  */
-function loadChecklistData() {
-  if (!currentChecklist || !currentChecklist.items) {
-    currentChecklist.items = [];
-  }
+async function loadChecklistData() {
+  if (!currentChecklist) return;
+  
+  // Загружаем элементы из storage
+  const items = await getChecklist(currentChecklist.id);
+  currentChecklist.items = items || [];
 }
 
 /**
  * Рендерит элементы чек-листа
  */
-function renderItems() {
+async function renderItems() {
   if (!currentChecklist) return;
   
-  const pendingItems = currentChecklist.items.filter(item => !item.completed);
-  const completedItems = currentChecklist.items.filter(item => item.completed);
+  // Загружаем актуальные данные
+  const items = await getChecklist(currentChecklist.id);
+  const pendingItems = items.filter(item => !item.completed);
+  const completedItems = items.filter(item => item.completed);
   
   // Обновляем счетчики
   document.getElementById('pending-count').textContent = pendingItems.length;
@@ -240,7 +249,7 @@ function createItemElement(item) {
 /**
  * Добавляет новый пункт
  */
-function addNewItem() {
+async function addNewItem() {
   const input = currentChecklistWindow.querySelector('#new-item-input');
   const text = input.value.trim();
   
@@ -254,39 +263,48 @@ function addNewItem() {
     updatedAt: Date.now()
   };
   
-  currentChecklist.items.push(newItem);
-  saveChecklist();
-  renderItems();
+  // Загружаем текущие элементы
+  const items = await getChecklist(currentChecklist.id);
+  items.push(newItem);
+  
+  // Сохраняем в storage
+  await debouncedSaveChecklist(currentChecklist.id, items);
+  
+  // Обновляем отображение
+  await renderItems();
   input.value = '';
 }
 
 /**
  * Переключает статус пункта
  */
-window.toggleChecklistItem = function(checklistId, itemId) {
-  const item = currentChecklist.items.find(i => i.id === itemId);
+window.toggleChecklistItem = async function(checklistId, itemId) {
+  const items = await getChecklist(checklistId);
+  const item = items.find(i => i.id === itemId);
   if (item) {
     item.completed = !item.completed;
     item.updatedAt = Date.now();
-    saveChecklist();
-    renderItems();
+    await debouncedSaveChecklist(checklistId, items);
+    await renderItems();
   }
 };
 
 /**
  * Удаляет пункт
  */
-window.deleteChecklistItem = function(checklistId, itemId) {
-  currentChecklist.items = currentChecklist.items.filter(i => i.id !== itemId);
-  saveChecklist();
-  renderItems();
+window.deleteChecklistItem = async function(checklistId, itemId) {
+  const items = await getChecklist(checklistId);
+  const filteredItems = items.filter(i => i.id !== itemId);
+  await debouncedSaveChecklist(checklistId, filteredItems);
+  await renderItems();
 };
 
 /**
  * Редактирует текст пункта
  */
-function editItemText(itemId, textElement) {
-  const item = currentChecklist.items.find(i => i.id === itemId);
+async function editItemText(itemId, textElement) {
+  const items = await getChecklist(currentChecklist.id);
+  const item = items.find(i => i.id === itemId);
   if (!item) return;
   
   const input = document.createElement('input');
@@ -298,14 +316,14 @@ function editItemText(itemId, textElement) {
   input.focus();
   input.select();
   
-  const saveEdit = () => {
+  const saveEdit = async () => {
     const newText = input.value.trim();
     if (newText && newText !== item.text) {
       item.text = newText;
       item.updatedAt = Date.now();
-      saveChecklist();
+      await debouncedSaveChecklist(currentChecklist.id, items);
     }
-    renderItems();
+    await renderItems();
   };
   
   input.addEventListener('blur', saveEdit);
@@ -316,20 +334,7 @@ function editItemText(itemId, textElement) {
   });
 }
 
-/**
- * Сохраняет чек-лист
- */
-function saveChecklist() {
-  if (window.state && window.state.checklists) {
-    const index = window.state.checklists.findIndex(c => c.id === currentChecklist.id);
-    if (index !== -1) {
-      window.state.checklists[index] = currentChecklist;
-      if (window.saveState) {
-        window.saveState();
-      }
-    }
-  }
-}
+// Функция saveChecklist удалена - теперь используется debouncedSaveChecklist
 
 // Делаем функции доступными глобально
 window.openChecklistWindow = openChecklistWindow;

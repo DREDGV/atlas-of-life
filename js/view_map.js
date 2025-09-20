@@ -43,6 +43,7 @@ import {
 import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
+import { openChecklistWindow, closeChecklistWindow } from "./ui/checklist-window.js";
 
 // showToast is defined globally in app.js
 
@@ -1389,6 +1390,24 @@ export function initMap(canvasEl, tooltipEl) {
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
   canvas.addEventListener("contextmenu", onContextMenu);
+  
+  // Дополнительно отключаем контекстное меню на canvas
+  canvas.oncontextmenu = function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    return false;
+  };
+  
+  // Также отключаем на уровне document для canvas
+  document.addEventListener('contextmenu', function(e) {
+    if (e.target === canvas) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      return false;
+    }
+  }, true);
   
   // DISABLED: Mouse events - using pointer events instead
   // canvas.addEventListener("mousedown", onMouseDown);
@@ -5894,9 +5913,19 @@ function onDblClick(e) {
 
 function onContextMenu(e) {
   e.preventDefault(); // Prevent default browser context menu
+  e.stopPropagation(); // Stop event bubbling
   
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
+  
+  // If clicking on a checklist, open checklist window directly
+  if (n && n._type === 'checklist') {
+    const checklist = state.checklists.find(c => c.id === n.id);
+    if (checklist && window.openChecklistWindow) {
+      window.openChecklistWindow(checklist, e.clientX, e.clientY);
+    }
+    return;
+  }
   
   // If clicking on an object, show object-specific menu
   if (n) {
@@ -5937,25 +5966,8 @@ function showObjectContextMenu(x, y, node) {
       </div>
     `;
   } else if (node._type === 'checklist') {
-    menuContent = `
-      <div class="context-menu-item" data-action="quick-view-checklist">
-        <span class="icon">👁️</span>
-        <span class="text">Быстрый просмотр</span>
-      </div>
-      <div class="context-menu-item" data-action="toggle-checklist-items">
-        <span class="icon">✅</span>
-        <span class="text">Ставить галочки</span>
-      </div>
-      <div class="context-menu-separator"></div>
-      <div class="context-menu-item" data-action="edit-checklist">
-        <span class="icon">✏️</span>
-        <span class="text">Редактировать</span>
-      </div>
-      <div class="context-menu-item" data-action="delete-checklist">
-        <span class="icon">🗑️</span>
-        <span class="text">Удалить</span>
-      </div>
-    `;
+    // Для чек-листов не показываем контекстное меню - правый клик сразу открывает окно
+    return;
   } else if (node._type === 'domain') {
     menuContent = `
       <div class="context-menu-item" data-action="edit-domain">
@@ -6028,34 +6040,7 @@ function showObjectContextMenu(x, y, node) {
       case 'edit-note':
         showNoteEditor(node);
         break;
-      case 'quick-view-checklist':
-        const checklist = state.checklists.find(c => c.id === node.id);
-        if (checklist && window.openChecklistWindow) {
-          // Показываем новое окно управления чек-листом
-          window.openChecklistWindow(checklist, contextMenuState.x, contextMenuState.y);
-        }
-        break;
-      case 'toggle-checklist-items':
-        const checklist2 = state.checklists.find(c => c.id === node.id);
-        if (checklist2 && window.openChecklistWindow) {
-          // Показываем новое окно управления чек-листом
-          window.openChecklistWindow(checklist2, contextMenuState.x, contextMenuState.y);
-        }
-        break;
-      case 'edit-checklist':
-        const checklist3 = state.checklists.find(c => c.id === node.id);
-        if (checklist3) {
-          window.showChecklistEditor(checklist3);
-        }
-        break;
-      case 'delete-checklist':
-        if (confirm(`Удалить чек-лист "${node.title}"?`)) {
-          state.checklists = state.checklists.filter(c => c.id !== node.id);
-          saveState();
-          layoutMap();
-          drawMap();
-        }
-        break;
+      // Обработчики для чек-листов удалены - теперь используется прямой правый клик
       case 'delete-task':
         if (confirm(`Удалить задачу "${node.title}"?`)) {
           state.tasks = state.tasks.filter(t => t.id !== node.id);
