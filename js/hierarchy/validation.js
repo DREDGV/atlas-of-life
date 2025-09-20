@@ -440,9 +440,44 @@ import { findObjectById, getObjectType } from '../state.js';
  * @param {Array} allObjects - Все объекты
  * @returns {Array} Массив ID потомков
  */
-function getAllDescendants(parentId, allObjects) {
-  // TODO: Реализовать рекурсивный поиск
-  return [];
+function getAllDescendants(parentId, stateOrAll) {
+  try {
+    const isState = !!(stateOrAll && (Array.isArray(stateOrAll.domains) || Array.isArray(stateOrAll.projects)));
+    const allObjects = isState
+      ? [
+          ...(stateOrAll.domains || []),
+          ...(stateOrAll.projects || []),
+          ...(stateOrAll.tasks || []),
+          ...(stateOrAll.ideas || []),
+          ...(stateOrAll.notes || [])
+        ]
+      : (Array.isArray(stateOrAll) ? stateOrAll : []);
+
+    const byId = new Map(allObjects.map(o => [o.id, o]));
+    const start = isState ? findObjectById(stateOrAll, parentId) : byId.get(parentId);
+    if (!start) return [];
+
+    const result = [];
+    const queue = [parentId];
+    const seen = new Set([parentId]);
+
+    while (queue.length) {
+      const curId = queue.shift();
+      const cur = isState ? findObjectById(stateOrAll, curId) : byId.get(curId);
+      if (!cur || !cur.children) continue;
+      const childIds = Object.values(cur.children).reduce((sum, arr) => sum.concat(arr), []);
+      for (const cid of childIds) {
+        if (seen.has(cid)) continue;
+        seen.add(cid);
+        result.push(cid);
+        queue.push(cid);
+      }
+    }
+
+    return result;
+  } catch (_) {
+    return [];
+  }
 }
 
 /**
@@ -452,8 +487,21 @@ function getAllDescendants(parentId, allObjects) {
  * @returns {Array} Массив ID пути
  */
 function getObjectPath(objId, allObjects) {
-  // TODO: Реализовать построение пути
-  return [];
+  try {
+    const byId = new Map((allObjects || []).map(o => [o.id, o]));
+    const path = [objId];
+    let cur = byId.get(objId);
+    const visited = new Set([objId]);
+    while (cur && cur.parentId) {
+      path.push(cur.parentId);
+      if (visited.has(cur.parentId)) break; // цикл
+      visited.add(cur.parentId);
+      cur = byId.get(cur.parentId);
+    }
+    return path;
+  } catch (_) {
+    return [objId];
+  }
 }
 
 /**
@@ -463,8 +511,21 @@ function getObjectPath(objId, allObjects) {
  * @returns {number} Глубина
  */
 function getObjectDepth(objId, allObjects) {
-  // TODO: Реализовать подсчет глубины
-  return 0;
+  try {
+    const byId = new Map((allObjects || []).map(o => [o.id, o]));
+    let depth = 0;
+    let cur = byId.get(objId);
+    const visited = new Set();
+    while (cur && cur.parentId) {
+      if (visited.has(cur.id)) break; // защита от циклов
+      visited.add(cur.id);
+      depth++;
+      cur = byId.get(cur.parentId);
+    }
+    return depth;
+  } catch (_) {
+    return 0;
+  }
 }
 
 /**
