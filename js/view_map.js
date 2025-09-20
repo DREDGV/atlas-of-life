@@ -98,6 +98,31 @@ function requestDraw() {
   });
 }
 
+// --- Read-only helper: allowed parent types for highlighting (UI-only) ---
+function isValidParentType(childType, parentType) {
+  // Reflect allowed connections (duplicated here intentionally for UI highlighting only)
+  // domain -> project, task, idea, note
+  // project -> task, idea, note
+  // task -> idea, note
+  // idea -> note
+  // note -> []
+  if (!childType || !parentType) return false;
+  switch (parentType) {
+    case 'domain':
+      return childType === 'project' || childType === 'task' || childType === 'idea' || childType === 'note';
+    case 'project':
+      return childType === 'task' || childType === 'idea' || childType === 'note';
+    case 'task':
+      return childType === 'idea' || childType === 'note';
+    case 'idea':
+      return childType === 'note';
+    case 'note':
+      return false;
+    default:
+      return false;
+  }
+}
+
 function onWheel(e) {
   // handle pinch/scroll zoom centered on cursor
   try {
@@ -3066,6 +3091,31 @@ export function drawMap() {
           ctx.setLineDash([]);
         }
       }
+
+      // UI-only: highlight valid parents under cursor for any dragged type
+      try {
+        const childType = draggedNode._type;
+        const candidates = nodes.filter(n => n && n.id !== draggedNode.id);
+        for (const n of candidates) {
+          const parentType = n._type;
+          if (!isValidParentType(childType, parentType)) continue;
+          // quick hit-radius check (screen-space): draw subtle halo
+          const dx = n.x - draggedNode.x;
+          const dy = n.y - draggedNode.y;
+          const dist = Math.hypot(dx, dy);
+          const maxR = (n.r || 20) + (draggedNode.r || 16) + 10 * DPR;
+          if (dist <= Math.max(140 * DPR, maxR * 2)) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, (n.r || 20) + 8 * DPR, 0, Math.PI * 2);
+            ctx.strokeStyle = '#22c55e80';
+            ctx.lineWidth = 2 * DPR;
+            ctx.setLineDash([4 * DPR, 4 * DPR]);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      } catch(_){}
     } catch (e) {}
   }
 
