@@ -1,6 +1,6 @@
 // js/app.js
 import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist } from "./state.js";
-import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
+import { loadState, saveState, exportJson, importJsonV26 as importJson, backupStateSnapshot, listBackups } from "./storage.js";
 import {
   initMap,
   layoutMap,
@@ -105,6 +105,127 @@ function openModal({
   // Не показываем модальное окно при инициализации
   if (title && title !== "Диалог" && title !== "") {
   modal.style.display = "flex";
+  }
+}
+
+// Read-only audit modal for hierarchy (safe)
+function openHierarchyAuditModal() {
+  try {
+    // Lazy import to avoid coupling; use already loaded functions if present
+    const modal = document.getElementById('modal');
+    if (!modal) return;
+
+    // collect stats without mutations
+    const all = [
+      ...(state.domains||[]),
+      ...(state.projects||[]),
+      ...(state.tasks||[]),
+      ...(state.ideas||[]),
+      ...(state.notes||[]),
+    ];
+    const totals = {
+      domains: state.domains?.length||0,
+      projects: state.projects?.length||0,
+      tasks: state.tasks?.length||0,
+      ideas: state.ideas?.length||0,
+      notes: state.notes?.length||0,
+    };
+    let withParent = 0, brokenChildren = 0;
+    const orphaned = [];
+    const byId = new Map(all.map(o=>[o.id,o]));
+
+    all.forEach(o=>{ if (o && o.parentId) withParent++; });
+    // shallow child-parent symmetry check (best-effort, no mutate)
+    all.forEach(p=>{
+      const ch = p && p.children ? Object.values(p.children).flat() : [];
+      ch.forEach(cid=>{
+        const c = byId.get(cid);
+        if (!c || c.parentId !== p.id) brokenChildren++;
+      });
+    });
+
+    // minimal orphan scan: parentId points to missing
+    all.forEach(o=>{
+      if (o && o.parentId && !byId.get(o.parentId)) orphaned.push(o.id);
+    });
+
+    // try use validator if available
+    let validationCount = 0;
+    try {
+      if (typeof window !== 'undefined' && window.state) {
+        // validation.js attaches named export; we imported through state.js earlier
+        // guard: use global function if exposed in bundling
+        if (typeof validateHierarchy === 'function') {
+          const errs = validateHierarchy(state) || [];
+          validationCount = errs.length;
+        }
+      }
+    } catch(_) {}
+
+    const backups = listBackups();
+
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h2>🔍 Проверка иерархии (только чтение)</h2>
+        <div class="stats-grid">
+          <div class="stat-item"><span class="stat-label">Домены:</span><span class="stat-value">${totals.domains}</span></div>
+          <div class="stat-item"><span class="stat-label">Проекты:</span><span class="stat-value">${totals.projects}</span></div>
+          <div class="stat-item"><span class="stat-label">Задачи:</span><span class="stat-value">${totals.tasks}</span></div>
+          <div class="stat-item"><span class="stat-label">Идеи:</span><span class="stat-value">${totals.ideas}</span></div>
+          <div class="stat-item"><span class="stat-label">Заметки:</span><span class="stat-value">${totals.notes}</span></div>
+        </div>
+        <div class="hierarchy-status">
+          <h3>Сводка:</h3>
+          <div class="status-item"><span class="status-icon">🧭</span><span class="status-text">С родителем: ${withParent}</span></div>
+          <div class="status-item"><span class="status-icon">🧩</span><span class="status-text">Несимметричных ссылок: ${brokenChildren}</span></div>
+          <div class="status-item"><span class="status-icon">🪙</span><span class="status-text">Осиротевших: ${orphaned.length}</span></div>
+          <div class="status-item"><span class="status-icon">✅</span><span class="status-text">Ошибок валидатора: ${validationCount}</span></div>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label" style="cursor:default">
+            <input type="checkbox" disabled ${false? 'checked':''}>
+            <span class="checkmark"></span>
+            Автоисправление (недоступно в режиме аудита)
+          </label>
+        </div>
+        <div class="form-group">
+          <div class="hint">Резервные копии (3 последних):<br>${backups.map(b=>`• ${b.key.split('__').pop()}: ${b.savedAt||'нет'}`).join('<br>')}</div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="copyAuditBtn">Скопировать отчёт</button>
+          <button class="btn" id="makeBackupBtn">Создать бэкап</button>
+          <button class="btn primary" id="closeAuditBtn">Закрыть</button>
+        </div>
+      </div>`;
+
+    modal.style.display = 'flex';
+
+    const copyBtn = document.getElementById('copyAuditBtn');
+    if (copyBtn) copyBtn.onclick = () => {
+      const report = {
+        totals,
+        withParent,
+        brokenChildren,
+        orphaned,
+        validationCount,
+        backups
+      };
+      try {
+        navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+        showToast('Отчёт скопирован', 'ok');
+      } catch (e) { showToast('Не удалось скопировать: '+e.message, 'warn'); }
+    };
+
+    const backupBtn = document.getElementById('makeBackupBtn');
+    if (backupBtn) backupBtn.onclick = () => {
+      try { backupStateSnapshot('hierarchy-audit'); showToast('Бэкап создан', 'ok'); }
+      catch(e){ showToast('Ошибка бэкапа: '+e.message, 'warn'); }
+    };
+
+    const closeBtn = document.getElementById('closeAuditBtn');
+    if (closeBtn) closeBtn.onclick = () => { modal.style.display = 'none'; };
+  } catch (e) {
+    showToast('Ошибка аудита: ' + e.message, 'warn');
   }
 }
 
@@ -480,6 +601,9 @@ function openHierarchySettingsModal() {
     <div class="modal-content">
       <h2>🌐 Система иерархии v2</h2>
       <div class="form-group">
+        <button class="btn" id="auditHierarchyBtn">Проверка иерархии (только чтение)</button>
+      </div>
+      <div class="form-group">
         <label class="checkbox-label">
           <input type="checkbox" id="hierarchyToggle" ${isEnabled ? 'checked' : ''}>
           <span class="checkmark"></span>
@@ -508,6 +632,13 @@ function openHierarchySettingsModal() {
   modal.style.display = 'flex';
 
   // Event handlers
+  const auditBtn = document.getElementById('auditHierarchyBtn');
+  if (auditBtn) {
+    auditBtn.onclick = () => {
+      closeModal();
+      openHierarchyAuditModal();
+    };
+  }
   document.getElementById('saveHierarchyBtn').onclick = () => {
     const enabled = document.getElementById('hierarchyToggle').checked;
     // setHierarchyV2Enabled(enabled);

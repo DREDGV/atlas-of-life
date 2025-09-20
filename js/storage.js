@@ -270,3 +270,62 @@ export function debouncedSaveChecklist(checklistId, items) {
     saveChecklist(checklistId, items);
   }, 250);
 }
+
+// --------- Lightweight backups (keep last 3 snapshots) ---------
+// NOTE: Safe utilities, not wired to auto-run to avoid extra writes.
+const BK1_KEY = (typeof adapter !== 'undefined' && adapter.key ? adapter.key : 'atlas_v2_data') + '__backup_1';
+const BK2_KEY = (typeof adapter !== 'undefined' && adapter.key ? adapter.key : 'atlas_v2_data') + '__backup_2';
+const BK3_KEY = (typeof adapter !== 'undefined' && adapter.key ? adapter.key : 'atlas_v2_data') + '__backup_3';
+
+function enrichBackup(raw, reason) {
+  try {
+    const obj = JSON.parse(raw);
+    const meta = {
+      savedAt: new Date().toISOString(),
+      reason: String(reason || 'manual')
+    };
+    obj.__backup = meta;
+    return JSON.stringify(obj);
+  } catch (_) {
+    // If parsing fails, store raw
+    return raw;
+  }
+}
+
+export function backupStateSnapshot(reason = 'manual') {
+  try {
+    const raw = adapter.load();
+    if (!raw) return false;
+    const ls = window && window.localStorage ? window.localStorage : null;
+    if (!ls) return false;
+    // rotate
+    try { ls.setItem(BK3_KEY, ls.getItem(BK2_KEY) || ''); } catch (_) {}
+    try { ls.setItem(BK2_KEY, ls.getItem(BK1_KEY) || ''); } catch (_) {}
+    try { ls.setItem(BK1_KEY, enrichBackup(raw, reason)); } catch (_) { return false; }
+    return true;
+  } catch (e) {
+    console.warn('backupStateSnapshot error', e);
+    return false;
+  }
+}
+
+export function listBackups() {
+  try {
+    const ls = window && window.localStorage ? window.localStorage : null;
+    if (!ls) return [];
+    const keys = [BK1_KEY, BK2_KEY, BK3_KEY];
+    return keys.map((k) => {
+      const raw = ls.getItem(k);
+      if (!raw) return { key: k, size: 0, savedAt: null };
+      try {
+        const obj = JSON.parse(raw);
+        const meta = obj && obj.__backup ? obj.__backup : null;
+        return { key: k, size: raw.length, savedAt: meta && meta.savedAt ? meta.savedAt : null };
+      } catch (_) {
+        return { key: k, size: raw.length, savedAt: null };
+      }
+    });
+  } catch (_) {
+    return [];
+  }
+}
