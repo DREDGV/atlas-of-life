@@ -123,6 +123,9 @@ function isValidParentType(childType, parentType) {
   }
 }
 
+// Currently focused drop target (visual-only)
+let currentDropHint = null; // { type, id, node }
+
 function onWheel(e) {
   // handle pinch/scroll zoom centered on cursor
   try {
@@ -713,7 +716,6 @@ function drawNeonStyle(ctx, x, y, radius, color, type) {
   
   ctx.restore();
 }
-
 function drawTechStyle(ctx, x, y, radius, color, type) {
   ctx.save();
   
@@ -1502,7 +1504,6 @@ function hideContextMenu() {
   contextMenuState.isVisible = false;
   contextMenu.style.display = 'none';
 }
-
 // Creation functions for different object types
 function createTaskAtPosition(x, y) {
   const newTask = {
@@ -1967,7 +1968,6 @@ function calculateDomainRadius(projects) {
   // Возвращаем максимальное значение между базовым радиусом и вычисленным
   return Math.max(baseRadius, radiusFromArea);
 }
-
 export function layoutMap() {
   // Prevent recursive layout calls
   if (isLayouting) {
@@ -2455,7 +2455,6 @@ export function layoutMap() {
   // Reset layouting flag
   isLayouting = false;
 }
-
 export function drawMap() {
   if (!ctx) return;
   
@@ -3140,7 +3139,6 @@ export function drawMap() {
       console.log(`Task ${i}: ${n.id}, pos: (${n.x}, ${n.y}), r: ${n.r}, inView: ${inViewport}`);
     });
   }
-  
   taskNodes.forEach((n) => {
       const __skipCull3 = window.DEBUG_EDGE_TASKS === true;
       if (!__skipCull3 && !inView(n.x, n.y, n.r + 20 * DPR)) return;
@@ -3839,14 +3837,20 @@ function onMouseMove(e) {
       }
     }
     
+    // reset hint
+    currentDropHint = null;
+    
     if (hitNode) {
       if (draggedNode._type === "task" && hitNode._type === "project") {
         dropTargetProjectId = hitNode.id;
         canvas.style.cursor = "copy"; // Visual feedback for valid drop
+        currentDropHint = { type: 'project', id: hitNode.id, node: hitNode };
       } else if (targetDomain) {
         // Use precise domain detection instead of hitNode
         dropTargetDomainId = targetDomain.id;
         canvas.style.cursor = "copy"; // Visual feedback for valid drop
+        const dNode = nodes.find(n => n._type === 'domain' && n.id === targetDomain.id);
+        if (dNode) currentDropHint = { type: 'domain', id: targetDomain.id, node: dNode };
       } else {
         canvas.style.cursor = "not-allowed"; // Visual feedback for invalid drop
       }
@@ -3915,7 +3919,6 @@ function onMouseLeave() {
   dropTargetDomainId = null;
   drawMap();
 }
-
 function onMouseUp(e) {
   // Разрешаем вызывать повторно (если уже idle — просто выходим)
   if (mouse.phase === 'idle') return;
@@ -4695,7 +4698,6 @@ function showProjectExtractConfirmation(project, projectNode) {
     }, 20);
   }
 }
-
 // Task move confirmation functions
 function showTaskMoveConfirmation(task, fromProjectId, toProjectId) {
   const fromProject = fromProjectId ? state.projects.find(p => p.id === fromProjectId)?.title : "независимая";
@@ -5465,7 +5467,6 @@ export function cancelAttach() {
   layoutMap();
   drawMap();
 }
-
 // Confirm detach task from its current project (uses pendingDetach)
 function confirmDetach() {
   try {
@@ -6044,7 +6045,7 @@ function showObjectContextMenu(x, y, node) {
       </div>
     `;
   } else if (node._type === 'checklist') {
-    // Чек-листы теперь обрабатываются через правый клик на иконку
+    // Чек-листы теперь обрабатываются через правый клик
     return;
   }
   
@@ -6129,7 +6130,6 @@ function showObjectContextMenu(x, y, node) {
     hideContextMenu();
   });
 }
-
 // Old function - will be removed
 function onContextMenuOld(e) {
   e.preventDefault(); // Prevent default browser context menu
@@ -6863,7 +6863,6 @@ function drawIdeas() {
     ctx.restore();
   });
 }
-
 function drawNotes() {
   if (!state.notes) {
     state.notes = [];
