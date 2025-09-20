@@ -2814,7 +2814,7 @@ function setupHeader() {
           '<div style="display:flex;flex-direction:column;gap:8px">' +
           `<div><strong>Версия:</strong> ${APP_VERSION}</div>` +
           `<div><a href="CHANGELOG.md" target="_blank" rel="noopener">📝 Открыть CHANGELOG</a></div>` +
-          `<div><a href="IDEAS.md" target="_blank" rel="noopener">🚀 Открыть IDEAS</a></div>` +
+          `<div><a href="ideas/IDEAS.md" target="_blank" rel="noopener">🚀 Открыть IDEAS</a></div>` +
           `<div><a href="REQUESTS.md" target="_blank" rel="noopener">📋 Открыть REQUESTS</a></div>` +
           '<div style="margin-top:12px;padding:8px;background:var(--panel-2);border-radius:4px;">' +
           '<strong>⚙️ Настройки:</strong><br/>' +
