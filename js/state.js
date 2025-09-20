@@ -38,6 +38,11 @@ export const state = {
       fitProject: 'ctrl+2'
     }
   },
+  ui: {
+    features: {
+      checklist: true // Фичефлаг для системы чек-листов
+    }
+  },
   domains:[],
   projects:[],
   tasks:[],
@@ -929,9 +934,9 @@ export function createChecklist(title, projectId = null, domainId = null) {
     title: title,
     projectId: projectId,
     domainId: domainId,
-    x: Math.random() * 2000 - 1000,
-    y: Math.random() * 2000 - 1000,
-    r: 16,
+    x: 0, // Центр экрана по X
+    y: 0, // Центр экрана по Y
+    r: 20, // Увеличиваем размер для лучшей видимости
     color: getRandomProjectColor(),
     opacity: 0.9,
     items: [], // Массив элементов чек-листа
@@ -939,6 +944,7 @@ export function createChecklist(title, projectId = null, domainId = null) {
     updatedAt: Date.now()
   };
   state.checklists.push(checklist);
+  console.log('✅ Checklist created:', checklist.title, 'ID:', checklist.id, 'Total checklists:', state.checklists.length); // Debug
   
   // Сохраняем состояние и обновляем карту
   saveState();

@@ -542,16 +542,16 @@ export function openInspectorFor(obj) {
       <div class="list">
         <h4>Задачи (${tks.length})</h4>
         ${tks
-          .map(
-            (t) => `
-          <div class="card">
+        .map(
+          (t) => `
+        <div class="card">
             <div>${statusPill(t.status).text} <strong>${t.title}</strong></div>
             <div class="meta">#${(t.tags || []).join(" #")} · обновл. ${daysSince(
-              t.updatedAt
-            )} дн.</div>
-          </div>
-        `
-          )
+            t.updatedAt
+          )} дн.</div>
+        </div>
+      `
+        )
           .join("")}
         
         <h4>Чек-листы (${getChecklistsOfProject(obj.id).length})</h4>

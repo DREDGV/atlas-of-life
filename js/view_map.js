@@ -3419,6 +3419,8 @@ export function drawMap() {
       }
     });
 
+  // Иконки чек-листа убраны - они не нужны
+
   // Visualize pending attach (dashed connector + highlights)
   if (pendingAttach) {
     try {
@@ -3959,11 +3961,16 @@ function onPointerDown(e) {
 function onPointerMove(e) {
   try { e.preventDefault(); } catch(_) {}
   if (isModalOpen) return;
-  if (NAV.mode === 'idle') return;
+  
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
   const worldPos = screenToWorld(x, y);
+  
+  // Обработка наведения на чек-листы - ВСЕГДА вызываем
+  handleChecklistHover(x, y, worldPos);
+  
+  if (NAV.mode === 'idle') return;
   const moved = Math.hypot(e.clientX - NAV.downCX, e.clientY - NAV.downCY);
   if (NAV.mode === 'pending') {
     if (moved > MOVE_SLOP) {
@@ -4002,73 +4009,305 @@ function onPointerMove(e) {
     if (window.DEBUG_MOUSE) console.log('[NAV] drag move');
     return;
   }
-  
-  // Обработка наведения на чек-листы
-  handleChecklistHover(x, y, worldPos);
 }
 
-// Функция обработки наведения на чек-листы
+// Простая система для чек-листов - курсор + быстрый просмотр
+let currentHoveredChecklist = null;
+let quickViewTimer = null;
+
 function handleChecklistHover(screenX, screenY, worldPos) {
-  if (!state.checklists || state.checklists.length === 0) return;
-  
-  // Проверяем наведение на чек-листы
-  let hoveredChecklist = null;
-  
+  if (!state.checklists || state.checklists.length === 0) {
+    return;
+  }
+
+  // Ищем чек-лист под курсором
+  let found = null;
   for (const checklist of state.checklists) {
     const distance = Math.hypot(worldPos.x - checklist.x, worldPos.y - checklist.y);
-    const radius = checklist.r + 10; // Увеличиваем зону наведения
-    
-    if (distance <= radius) {
-      hoveredChecklist = checklist;
-      console.log('🎯 Hovering over checklist:', checklist.title, 'distance:', distance, 'radius:', radius);
+    if (distance <= checklist.r + 20) {
+      found = checklist;
       break;
     }
   }
   
-  // Если навели на чек-лист
-  if (hoveredChecklist) {
-    if (!hoveredChecklist._hover) {
-      // Начали наводить
-      hoveredChecklist._hover = true;
-      hoveredChecklist._hoverTime = Date.now();
-      console.log('🎯 Starting hover on checklist:', hoveredChecklist.title);
+  // Если нашли чек-лист
+  if (found) {
+    canvas.style.cursor = 'pointer';
+    
+    // Если это новый чек-лист
+    if (currentHoveredChecklist !== found) {
+      // Очищаем предыдущий таймер
+      if (quickViewTimer) {
+        clearTimeout(quickViewTimer);
+      }
       
-      // Устанавливаем таймаут для показа попапа
-      hoveredChecklist._hoverTimeout = setTimeout(() => {
-        if (hoveredChecklist._hover) {
-          console.log('🎯 Showing popup for checklist:', hoveredChecklist.title);
-          const rect = canvas.getBoundingClientRect();
-          // Исправляем координаты - используем screenX и screenY из параметров функции
-          const x = rect.left + screenX;
-          const y = rect.top + screenY;
-          console.log('🎯 Popup coordinates:', x, y);
-          window.showChecklistPopup(hoveredChecklist, x, y);
+      currentHoveredChecklist = found;
+      
+      // Показываем быстрый просмотр через 1 секунду
+      quickViewTimer = setTimeout(() => {
+        if (currentHoveredChecklist === found) {
+          showQuickChecklistView(found, screenX, screenY);
         }
-      }, 500); // Задержка 500мс
-      
-      // Меняем курсор
-      canvas.style.cursor = 'pointer';
+      }, 1000);
     }
   } else {
-    // Убираем наведение со всех чек-листов
-    for (const checklist of state.checklists) {
-      if (checklist._hover) {
-        checklist._hover = false;
-        checklist._hoverTime = 0;
-        
-        if (checklist._hoverTimeout) {
-          clearTimeout(checklist._hoverTimeout);
-          checklist._hoverTimeout = null;
-        }
-        
-        // Скрываем попап
-        window.hideChecklistPopup();
+    // Если убрали курсор
+    if (currentHoveredChecklist) {
+      canvas.style.cursor = 'grab';
+      currentHoveredChecklist = null;
+      
+      // Очищаем таймер
+      if (quickViewTimer) {
+        clearTimeout(quickViewTimer);
+        quickViewTimer = null;
       }
+      
+      // Скрываем быстрый просмотр
+      hideQuickChecklistView();
+    }
+  }
+}
+
+// Простой быстрый просмотр чек-листа
+function showQuickChecklistView(checklist, screenX, screenY) {
+  // Создаем простой div для быстрого просмотра
+  let quickView = document.getElementById('quickChecklistView');
+  if (!quickView) {
+    quickView = document.createElement('div');
+    quickView.id = 'quickChecklistView';
+    quickView.style.cssText = `
+      position: fixed;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      max-width: 300px;
+      z-index: 1000;
+      pointer-events: none;
+      font-family: system-ui, -apple-system, sans-serif;
+    `;
+    document.body.appendChild(quickView);
+  }
+  
+  // Заполняем содержимое
+  const progress = getChecklistProgress(checklist.id);
+  const itemsText = checklist.items && checklist.items.length > 0 
+    ? checklist.items.slice(0, 3).map(item => `${item.completed ? '✓' : '○'} ${item.text}`).join('\n')
+    : 'Нет элементов';
+  
+  quickView.innerHTML = `
+    <div style="font-weight: bold; margin-bottom: 8px;">${checklist.title}</div>
+    <div style="color: #60a5fa; margin-bottom: 8px;">Прогресс: ${progress}%</div>
+    <div style="white-space: pre-line; font-size: 12px;">${itemsText}</div>
+    <div style="margin-top: 8px; font-size: 11px; color: #9ca3af;">Левый клик - редактировать</div>
+  `;
+  
+  // Позиционируем рядом с курсором
+  quickView.style.left = `${screenX + 20}px`;
+  quickView.style.top = `${screenY - 10}px`;
+  quickView.style.display = 'block';
+}
+
+function hideQuickChecklistView() {
+  const quickView = document.getElementById('quickChecklistView');
+  if (quickView) {
+    quickView.style.display = 'none';
+  }
+}
+
+// Полноценное окно чек-листа с вкладками
+function showChecklistToggleView(checklist, screenX, screenY) {
+  // Создаем полноценное окно
+  let toggleView = document.getElementById('checklistToggleView');
+  if (!toggleView) {
+    toggleView = document.createElement('div');
+    toggleView.id = 'checklistToggleView';
+    toggleView.style.cssText = `
+      position: fixed;
+      background: rgba(15, 15, 15, 0.98);
+      color: white;
+      border-radius: 16px;
+      font-size: 14px;
+      width: 450px;
+      max-height: 600px;
+      z-index: 1001;
+      font-family: system-ui, -apple-system, sans-serif;
+      border: 2px solid #3b82f6;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+    `;
+    document.body.appendChild(toggleView);
+  }
+  
+  // Заполняем содержимое
+  const progress = getChecklistProgress(checklist.id);
+  const completedItems = checklist.items ? checklist.items.filter(item => item.completed) : [];
+  const pendingItems = checklist.items ? checklist.items.filter(item => !item.completed) : [];
+  
+  toggleView.innerHTML = `
+    <div style="padding: 20px;">
+      <!-- Заголовок -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <div style="font-weight: bold; font-size: 18px; margin-bottom: 4px;">${checklist.title}</div>
+          <div style="color: #60a5fa; font-size: 13px;">Прогресс: ${progress}% (${completedItems.length}/${checklist.items?.length || 0})</div>
+        </div>
+        <button onclick="hideChecklistToggleView()" style="background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 20px; padding: 4px;">×</button>
+      </div>
+      
+      <!-- Вкладки -->
+      <div style="display: flex; margin-bottom: 16px; border-bottom: 1px solid #374151;">
+        <button id="tab-pending" onclick="switchChecklistTab('pending')" 
+                style="flex: 1; background: #3b82f6; color: white; border: none; padding: 12px; cursor: pointer; font-size: 14px; border-radius: 8px 8px 0 0; font-weight: 500;">
+          📋 Невыполненные (${pendingItems.length})
+        </button>
+        <button id="tab-completed" onclick="switchChecklistTab('completed')" 
+                style="flex: 1; background: #374151; color: #9ca3af; border: none; padding: 12px; cursor: pointer; font-size: 14px; border-radius: 8px 8px 0 0; font-weight: 500;">
+          ✅ Выполненные (${completedItems.length})
+        </button>
+      </div>
+      
+      <!-- Содержимое вкладок -->
+      <div id="tab-content" style="max-height: 400px; overflow-y: auto;">
+        ${renderChecklistTabContent('pending', pendingItems, checklist.id)}
+      </div>
+      
+      <!-- Кнопки действий -->
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #374151; display: flex; gap: 12px;">
+        <button onclick="window.showChecklistEditor(state.checklists.find(c => c.id === '${checklist.id}'))" 
+                style="flex: 1; background: #3b82f6; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">
+          ✏️ Редактировать
+        </button>
+        <button onclick="hideChecklistToggleView()" 
+                style="flex: 1; background: #6b7280; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">
+          Закрыть
+        </button>
+      </div>
+    </div>
+  `;
+  
+  // Позиционируем по центру экрана
+  const centerX = (window.innerWidth - 450) / 2;
+  const centerY = (window.innerHeight - 600) / 2;
+  toggleView.style.left = `${Math.max(20, centerX)}px`;
+  toggleView.style.top = `${Math.max(20, centerY)}px`;
+  toggleView.style.display = 'block';
+  
+  // Сохраняем данные для переключения вкладок
+  window.currentChecklistData = {
+    checklist: checklist,
+    pendingItems: pendingItems,
+    completedItems: completedItems
+  };
+}
+
+function hideChecklistToggleView() {
+  const toggleView = document.getElementById('checklistToggleView');
+  if (toggleView) {
+    toggleView.style.display = 'none';
+  }
+  // Очищаем данные
+  window.currentChecklistData = null;
+}
+
+// Рендеринг содержимого вкладки
+function renderChecklistTabContent(tabType, items, checklistId) {
+  if (!items || items.length === 0) {
+    return `
+      <div style="text-align: center; color: #9ca3af; font-style: italic; padding: 40px 20px;">
+        ${tabType === 'pending' ? 'Нет невыполненных задач' : 'Нет выполненных задач'}
+      </div>
+    `;
+  }
+  
+  return items.map(item => `
+    <div style="display: flex; align-items: center; margin: 12px 0; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; transition: all 0.2s;" 
+         onmouseover="this.style.background='rgba(255,255,255,0.1)'" 
+         onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+      <input type="checkbox" ${item.completed ? 'checked' : ''} 
+             style="margin-right: 12px; transform: scale(1.3); cursor: pointer;" 
+             onchange="toggleChecklistItemFromView('${checklistId}', '${item.id}')">
+      <span style="flex: 1; font-size: 15px; line-height: 1.4; ${item.completed ? 'text-decoration: line-through; opacity: 0.6; color: #9ca3af;' : ''}">${escapeChecklistHtml(item.text)}</span>
+    </div>
+  `).join('');
+}
+
+// Переключение вкладок
+function switchChecklistTab(tabType) {
+  if (!window.currentChecklistData) return;
+  
+  const { checklist, pendingItems, completedItems } = window.currentChecklistData;
+  const tabContent = document.getElementById('tab-content');
+  const tabPending = document.getElementById('tab-pending');
+  const tabCompleted = document.getElementById('tab-completed');
+  
+  if (!tabContent || !tabPending || !tabCompleted) return;
+  
+  // Обновляем активную вкладку
+  if (tabType === 'pending') {
+    tabPending.style.background = '#3b82f6';
+    tabPending.style.color = 'white';
+    tabCompleted.style.background = '#374151';
+    tabCompleted.style.color = '#9ca3af';
+    tabContent.innerHTML = renderChecklistTabContent('pending', pendingItems, checklist.id);
+  } else {
+    tabPending.style.background = '#374151';
+    tabPending.style.color = '#9ca3af';
+    tabCompleted.style.background = '#3b82f6';
+    tabCompleted.style.color = 'white';
+    tabContent.innerHTML = renderChecklistTabContent('completed', completedItems, checklist.id);
+  }
+}
+
+// Функция для переключения элементов из просмотра
+function toggleChecklistItemFromView(checklistId, itemId) {
+  const completed = toggleChecklistItem(checklistId, itemId);
+  
+  // Обновляем данные
+  if (window.currentChecklistData) {
+    const { checklist } = window.currentChecklistData;
+    const item = checklist.items.find(i => i.id === itemId);
+    if (item) {
+      item.completed = completed;
     }
     
-    // Возвращаем обычный курсор
-    canvas.style.cursor = 'grab';
+    // Пересчитываем списки
+    window.currentChecklistData.pendingItems = checklist.items.filter(item => !item.completed);
+    window.currentChecklistData.completedItems = checklist.items.filter(item => item.completed);
+    
+    // Обновляем заголовок с прогрессом
+    const progress = getChecklistProgress(checklistId);
+    const progressEl = document.querySelector('#checklistToggleView div[style*="color: #60a5fa"]');
+    if (progressEl) {
+      progressEl.textContent = `Прогресс: ${progress}% (${window.currentChecklistData.completedItems.length}/${checklist.items.length})`;
+    }
+    
+    // Обновляем счетчики вкладок
+    const tabPending = document.getElementById('tab-pending');
+    const tabCompleted = document.getElementById('tab-completed');
+    if (tabPending) {
+      tabPending.textContent = `📋 Невыполненные (${window.currentChecklistData.pendingItems.length})`;
+    }
+    if (tabCompleted) {
+      tabCompleted.textContent = `✅ Выполненные (${window.currentChecklistData.completedItems.length})`;
+    }
+    
+    // Обновляем содержимое активной вкладки
+    const tabContent = document.getElementById('tab-content');
+    const activeTab = document.querySelector('#checklistToggleView button[style*="background: #3b82f6"]');
+    if (tabContent && activeTab) {
+      const isPendingActive = activeTab.id === 'tab-pending';
+      const items = isPendingActive ? window.currentChecklistData.pendingItems : window.currentChecklistData.completedItems;
+      tabContent.innerHTML = renderChecklistTabContent(isPendingActive ? 'pending' : 'completed', items, checklistId);
+    }
   }
+  
+  // Сохраняем и обновляем карту
+  try {
+    saveState();
+  } catch (_) {}
+  if (window.drawMap) window.drawMap();
 }
 
 function onPointerUp(e) {
@@ -4116,7 +4355,9 @@ function onPointerLeave(e) {
     }
     
     // Скрываем попап
-    window.hideChecklistPopup();
+    if (window.hideQuickChecklistView) {
+      window.hideQuickChecklistView();
+    }
     
     // Возвращаем обычный курсор
     canvas.style.cursor = 'grab';
@@ -5482,6 +5723,11 @@ try {
   window.fitAll = fitAll;
   window.fitActiveDomain = fitActiveDomain;
   window.fitActiveProject = fitActiveProject;
+  window.showChecklistToggleView = showChecklistToggleView;
+  window.hideChecklistToggleView = hideChecklistToggleView;
+  window.toggleChecklistItemFromView = toggleChecklistItemFromView;
+  window.switchChecklistTab = switchChecklistTab;
+  window.renderChecklistTabContent = renderChecklistTabContent;
 } catch(_) {}
 
 // small modal helper (reuse existing modal structure in index.html)
@@ -5690,6 +5936,26 @@ function showObjectContextMenu(x, y, node) {
         <span class="text">Удалить проект</span>
       </div>
     `;
+  } else if (node._type === 'checklist') {
+    menuContent = `
+      <div class="context-menu-item" data-action="quick-view-checklist">
+        <span class="icon">👁️</span>
+        <span class="text">Быстрый просмотр</span>
+      </div>
+      <div class="context-menu-item" data-action="toggle-checklist-items">
+        <span class="icon">✅</span>
+        <span class="text">Ставить галочки</span>
+      </div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" data-action="edit-checklist">
+        <span class="icon">✏️</span>
+        <span class="text">Редактировать</span>
+      </div>
+      <div class="context-menu-item" data-action="delete-checklist">
+        <span class="icon">🗑️</span>
+        <span class="text">Удалить</span>
+      </div>
+    `;
   } else if (node._type === 'domain') {
     menuContent = `
       <div class="context-menu-item" data-action="edit-domain">
@@ -5724,16 +5990,8 @@ function showObjectContextMenu(x, y, node) {
       </div>
     `;
   } else if (node._type === 'checklist') {
-    menuContent = `
-      <div class="context-menu-item" data-action="edit-checklist">
-        <span class="icon">✏️</span>
-        <span class="text">Редактировать чек-лист</span>
-      </div>
-      <div class="context-menu-item" data-action="delete-checklist">
-        <span class="icon">🗑️</span>
-        <span class="text">Удалить чек-лист</span>
-      </div>
-    `;
+    // Чек-листы теперь обрабатываются через правый клик на иконку
+    return;
   }
   
   contextMenu.innerHTML = menuContent;
@@ -5770,10 +6028,24 @@ function showObjectContextMenu(x, y, node) {
       case 'edit-note':
         showNoteEditor(node);
         break;
-      case 'edit-checklist':
+      case 'quick-view-checklist':
         const checklist = state.checklists.find(c => c.id === node.id);
-        if (checklist) {
-          window.showChecklistEditor(checklist);
+        if (checklist && window.openChecklistWindow) {
+          // Показываем новое окно управления чек-листом
+          window.openChecklistWindow(checklist, contextMenuState.x, contextMenuState.y);
+        }
+        break;
+      case 'toggle-checklist-items':
+        const checklist2 = state.checklists.find(c => c.id === node.id);
+        if (checklist2 && window.openChecklistWindow) {
+          // Показываем новое окно управления чек-листом
+          window.openChecklistWindow(checklist2, contextMenuState.x, contextMenuState.y);
+        }
+        break;
+      case 'edit-checklist':
+        const checklist3 = state.checklists.find(c => c.id === node.id);
+        if (checklist3) {
+          window.showChecklistEditor(checklist3);
         }
         break;
       case 'delete-checklist':
@@ -6011,11 +6283,11 @@ function onClick(e) {
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
   if (!n) {
-    // click on empty space: show all domains
+    // click on empty space: show all domains (но НЕ сбрасываем зум)
     state.activeDomain = null;
     layoutMap();
     drawMap();
-    try { fitAll(); } catch(_) {}
+    // Убрали fitAll() - теперь зум не сбрасывается при клике в пустое место
     return;
   }
   hoverNodeId = n.id;
@@ -6894,6 +7166,7 @@ function drawChecklists() {
   if (!state.checklists) {
     state.checklists = [];
   }
+  
   
   if (W <= 0 || H <= 0) return;
   

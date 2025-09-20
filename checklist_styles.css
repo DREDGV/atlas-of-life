@@ -1,0 +1,236 @@
+/* Окно управления чек-листом */
+.checklist-window {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  max-height: 60vh;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: none;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.checklist-window.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.checklist-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #333;
+}
+
+.checklist-window-title {
+  margin: 0;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.checklist-window-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checklist-window-close:hover {
+  color: #fff;
+}
+
+.checklist-window-tabs {
+  display: flex;
+  border-bottom: 1px solid #333;
+}
+
+.checklist-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #888;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.checklist-tab.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.checklist-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.checklist-window-content {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.checklist-tab-content {
+  display: none;
+  padding: 16px;
+}
+
+.checklist-tab-content.active {
+  display: block;
+}
+
+.checklist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.checklist-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.checklist-item-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  cursor: pointer;
+}
+
+.checklist-item-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #3b82f6;
+}
+
+.checklist-item-text {
+  color: #fff;
+  font-size: 14px;
+  flex: 1;
+  word-break: break-word;
+}
+
+.checklist-item-text.completed {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.checklist-item-edit {
+  background: #333;
+  border: 1px solid #555;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  flex: 1;
+}
+
+.checklist-item-edit:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.checklist-item-delete {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.checklist-item-delete:hover {
+  color: #ff4444;
+  background: rgba(255, 68, 68, 0.1);
+}
+
+.checklist-window-footer {
+  padding: 16px;
+  border-top: 1px solid #333;
+}
+
+.add-item-form {
+  display: flex;
+  gap: 8px;
+}
+
+.add-item-form input {
+  flex: 1;
+  background: #333;
+  border: 1px solid #555;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.add-item-form input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.add-item-form input::placeholder {
+  color: #888;
+}
+
+.add-item-form button {
+  background: #3b82f6;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.add-item-form button:hover {
+  background: #2563eb;
+}
+
+/* Скроллбар для окна чек-листа */
+.checklist-window-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.checklist-window-content::-webkit-scrollbar-track {
+  background: #333;
+  border-radius: 3px;
+}
+
+.checklist-window-content::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
+.checklist-window-content::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}

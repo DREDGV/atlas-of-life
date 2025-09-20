@@ -48,9 +48,15 @@ export function loadState(){
     state.domains = data.domains;
     state.projects = data.projects;
     state.tasks = data.tasks;
+    
+    // Загружаем чек-листы если есть
+    if (data.checklists) {
+      state.checklists = data.checklists;
+    }
     // Загружаем новые поля
     if(Array.isArray(data.ideas)) state.ideas = data.ideas;
     if(Array.isArray(data.notes)) state.notes = data.notes;
+    if(Array.isArray(data.checklists)) state.checklists = data.checklists;
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -96,6 +102,7 @@ export function saveState(){
       tasks: state.tasks,
       ideas: state.ideas || [],
       notes: state.notes || [],
+      checklists: state.checklists || [],
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,
@@ -223,4 +230,38 @@ export function importJsonV26(file){
     };
     reader.readAsText(file);
   });
+}
+
+// Методы для работы с чек-листами
+export async function getChecklist(entityKey) {
+  try {
+    const checklists = state.checklists || {};
+    return checklists[entityKey] || [];
+  } catch (error) {
+    console.error('Ошибка загрузки чек-листа:', error);
+    return [];
+  }
+}
+
+export async function saveChecklist(entityKey, items) {
+  try {
+    if (!state.checklists) {
+      state.checklists = {};
+    }
+    state.checklists[entityKey] = items;
+    await saveState();
+  } catch (error) {
+    console.error('Ошибка сохранения чек-листа:', error);
+  }
+}
+
+// Дебаунс для частых сохранений
+let saveTimeout = null;
+export function debouncedSaveChecklist(entityKey, items) {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+  }
+  saveTimeout = setTimeout(() => {
+    saveChecklist(entityKey, items);
+  }, 250);
 }
