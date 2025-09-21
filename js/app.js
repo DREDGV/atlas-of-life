@@ -471,6 +471,15 @@ function openDisplayModal() {
         <input type="checkbox" id="displayDndHints" ${(state.settings && state.settings.showDndHints) ? 'checked' : ''} style="margin:0;">
         <span>🧲 Подсветка допустимых целей при перетаскивании (DnD)</span>
       </label>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
+        <div style="font-weight:600;">🧩 Вид иконки чек-листа на карте</div>
+        <select id="checklistIconMode" style="width:100%;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--panel-2);border-radius:4px;">
+          <option value="title" ${state.settings && state.settings.checklistIconMode==='title' ? 'selected' : ''}>Только заголовок</option>
+          <option value="minimal" ${state.settings && state.settings.checklistIconMode==='minimal' ? 'selected' : ''}>Минимум: заголовок + процент</option>
+          <option value="preview2" ${state.settings && state.settings.checklistIconMode==='preview2' ? 'selected' : ''}>Превью: первые 2 строки</option>
+          <option value="preview3" ${state.settings && state.settings.checklistIconMode==='preview3' ? 'selected' : ''}>Превью: первые 3 строки</option>
+        </select>
+      </div>
     </div>
     
     <div style="border-top:1px solid var(--panel-2);padding-top:12px;margin-top:8px;">
@@ -500,13 +509,15 @@ function openDisplayModal() {
       const aging = document.getElementById('displayAging').checked;
       const glow = document.getElementById('displayGlow').checked;
       const dndHints = document.getElementById('displayDndHints').checked;
+      const iconMode = (document.getElementById('checklistIconMode') || {}).value || 'title';
       
-      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints)) {
+      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints) || (state.settings && iconMode !== state.settings.checklistIconMode)) {
         state.showLinks = links;
         state.showAging = aging;
         state.showGlow = glow;
         if (!state.settings) state.settings = {};
         state.settings.showDndHints = !!dndHints;
+        state.settings.checklistIconMode = iconMode;
         saveState();
         drawMap();
         showToast("Настройки отображения обновлены", "ok");

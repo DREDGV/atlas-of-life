@@ -23,6 +23,7 @@ export const state = {
     layoutMode: 'auto',
     wipTodayLimit: 5,
     enableHierarchyV2: false, // Флаг для включения новой системы иерархии
+    checklistIconMode: 'title', // 'title' | 'minimal' | 'preview2' | 'preview3'
     hotkeys: {
       newTask: 'ctrl+n',
       newProject: 'ctrl+shift+n', 

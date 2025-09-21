@@ -7365,16 +7365,47 @@ function drawChecklists() {
       ctx.fillText(`${progress}%`, x, progressBarY - 4 * DPR);
     }
 
-    // Отображение количества элементов одной строкой, без списка
-    if (checklist.items && checklist.items.length > 0) {
-      ctx.fillStyle = baseColor;
-      ctx.font = `${8 * DPR}px system-ui`;
-      ctx.textAlign = "center";
-      const infoY = (progress > 0) ? (progressBarY - 10 * DPR) : (contentBottom - 10 * DPR);
-      const completed = (checklist.items.filter(i => i.completed).length) || 0;
-      const total = checklist.items.length;
-      const info = `${completed}/${total}`;
-      ctx.fillText(info, x, infoY);
+    // Режимы отображения содержимого
+    const mode = (state.settings && state.settings.checklistIconMode) || 'title';
+    if (mode === 'minimal') {
+      if (checklist.items && checklist.items.length > 0) {
+        ctx.fillStyle = baseColor;
+        ctx.font = `${8 * DPR}px system-ui`;
+        ctx.textAlign = "center";
+        const infoY = (progress > 0) ? (progressBarY - 10 * DPR) : (contentBottom - 10 * DPR);
+        const completed = (checklist.items.filter(i => i.completed).length) || 0;
+        const total = checklist.items.length;
+        ctx.fillText(`${completed}/${total}`, x, infoY);
+      }
+    } else if (mode === 'preview2' || mode === 'preview3') {
+      const linesToShow = (mode === 'preview3') ? 3 : 2;
+      if (checklist.items && checklist.items.length > 0) {
+        const itemHeight = 10 * DPR;
+        const firstItemY = titleY + 16 * DPR;
+        const bottomLimit = (progress > 0) ? (progressBarY - 8 * DPR) : contentBottom;
+        const maxRows = Math.max(0, Math.floor((bottomLimit - firstItemY) / itemHeight));
+        const maxItems = Math.min(checklist.items.length, Math.min(linesToShow, maxRows));
+        ctx.textAlign = "left";
+        for (let i = 0; i < maxItems; i++) {
+          const item = checklist.items[i];
+          const itemY = firstItemY + i * itemHeight;
+          const checkboxX = contentLeft;
+          const textX = checkboxX + 12 * DPR;
+          ctx.fillStyle = item.completed ? baseColor : '#666666';
+          ctx.font = `${9 * DPR}px system-ui`;
+          ctx.fillText(item.completed ? '•' : '○', checkboxX, itemY);
+          ctx.fillStyle = item.completed ? '#888888' : '#222222';
+          ctx.font = `${7 * DPR}px system-ui`;
+          let s = item.text || '';
+          const maxTextWidth = contentWidth - 12 * DPR;
+          const e = '…';
+          while (ctx.measureText(s).width > maxTextWidth && s.length > 0) {
+            s = s.slice(0, -1);
+            if (ctx.measureText(s + e).width <= maxTextWidth) { s = s + e; break; }
+          }
+          ctx.fillText(s, textX, itemY);
+        }
+      }
     }
 
     ctx.restore();
