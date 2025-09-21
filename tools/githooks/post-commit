@@ -1,5 +1,21 @@
 #!/bin/sh
 # Append last commit subject to CHANGELOG.md under [Unreleased]
+# Cross-platform: try pwsh (PowerShell 7), fallback to Windows powershell.exe, otherwise noop.
 
-pwsh -NoLogo -NoProfile -File "$(git rev-parse --show-toplevel)/tools/append-changelog.ps1" || exit 0
+ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT="$ROOT/tools/append-changelog.ps1"
+
+# If script missing, do nothing
+[ -f "$SCRIPT" ] || exit 0
+
+if command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoLogo -NoProfile -File "$SCRIPT" || true
+elif command -v powershell.exe >/dev/null 2>&1; then
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT" || true
+else
+  # No PowerShell available in PATH – skip silently
+  :
+fi
+
+exit 0
 
