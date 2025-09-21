@@ -3221,6 +3221,39 @@ export function drawMap() {
     } catch (e) {}
   }
 
+  // Подсветка текущей цели (domain/project) во время DnD
+  if (currentDropHint && dndHintsEnabled()) {
+    try {
+      if (currentDropHint.type === 'project') {
+        const p = currentDropHint.node;
+        const t = (performance.now() / 300) % (Math.PI * 2);
+        const pulse = 1 + Math.sin(t) * 0.18;
+        ctx.save();
+        ctx.shadowColor = '#8b5cf6';
+        ctx.shadowBlur = 18 * DPR;
+        ctx.lineWidth = 4 * DPR * pulse;
+        ctx.strokeStyle = '#a78bfa';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r + 16 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else if (currentDropHint.type === 'domain') {
+        const d = currentDropHint.node;
+        const t = (performance.now() / 320) % (Math.PI * 2);
+        const pulse = 1 + Math.sin(t) * 0.14;
+        ctx.save();
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 18 * DPR;
+        ctx.lineWidth = 4 * DPR * pulse;
+        ctx.strokeStyle = '#34d399';
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.r + 20 * DPR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    } catch (_) {}
+  }
+
   // tasks as stars/asteroids
   const taskNodes = nodes.filter((n) => n._type === "task");
   
@@ -3940,30 +3973,38 @@ function onMouseMove(e) {
       }
     }
     
+    // Also do tolerant project detection for tasks (radius * 1.6)
+    let targetProject = null;
+    if (draggedNode._type === 'task') {
+      for (const project of state.projects) {
+        const pNode = nodes.find(n => n._type === 'project' && n.id === project.id);
+        if (!pNode) continue;
+        const dx = pt.x - pNode.x;
+        const dy = pt.y - pNode.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= pNode.r * 1.6) { targetProject = { id: project.id, node: pNode }; break; }
+      }
+    }
+    
     // reset hint
     currentDropHint = null;
     
-    if (hitNode) {
-      if (draggedNode._type === "task" && hitNode._type === "project") {
-        dropTargetProjectId = hitNode.id;
-        canvas.style.cursor = "copy"; // Visual feedback for valid drop
-        currentDropHint = { type: 'project', id: hitNode.id, node: hitNode };
-      } else if (targetDomain) {
-        // Use precise domain detection instead of hitNode
-        dropTargetDomainId = targetDomain.id;
-        canvas.style.cursor = "copy"; // Visual feedback for valid drop
-        const dNode = nodes.find(n => n._type === 'domain' && n.id === targetDomain.id);
-        if (dNode) currentDropHint = { type: 'domain', id: targetDomain.id, node: dNode };
-      } else {
-        canvas.style.cursor = "not-allowed"; // Visual feedback for invalid drop
-      }
+    if (draggedNode._type === 'task' && targetProject) {
+      dropTargetProjectId = targetProject.id;
+      canvas.style.cursor = 'copy';
+      currentDropHint = { type: 'project', id: targetProject.id, node: targetProject.node };
+    } else if (hitNode && draggedNode._type === 'task' && hitNode._type === 'project') {
+      dropTargetProjectId = hitNode.id;
+      canvas.style.cursor = 'copy';
+      currentDropHint = { type: 'project', id: hitNode.id, node: hitNode };
+    } else if (targetDomain) {
+      dropTargetDomainId = targetDomain.id;
+      canvas.style.cursor = 'copy';
+      const dNode = nodes.find(n => n._type === 'domain' && n.id === targetDomain.id);
+      if (dNode) currentDropHint = { type: 'domain', id: targetDomain.id, node: dNode };
     } else {
-      // Check if we're over empty space (for independent tasks)
-      if (draggedNode._type === "task") {
-        canvas.style.cursor = "move"; // Visual feedback for independent placement
-      } else {
-        canvas.style.cursor = "grabbing"; // Default drag cursor
-      }
+      // empty space
+      canvas.style.cursor = draggedNode._type === 'task' ? 'move' : 'grabbing';
     }
     
     requestDraw();
