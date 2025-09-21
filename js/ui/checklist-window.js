@@ -153,6 +153,10 @@ function setupEventListeners() {
   let dragStartX = 0, dragStartY = 0, dragStartLeft = 0, dragStartTop = 0;
   const onPointerDownHeader = (e) => {
     if (e.button !== 0) return; // только ЛКМ
+    // Не начинать перетаскивание, если клик по кнопке закрытия
+    if (closeBtnEl && (e.target === closeBtnEl || closeBtnEl.contains(e.target))) {
+      return;
+    }
     isWindowInteracting = true;
     isDraggingWindow = true;
     dragStartX = e.clientX;
