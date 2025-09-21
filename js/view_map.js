@@ -6655,6 +6655,10 @@ function drawChecklists() {
   const inView = (x, y, r = 0) =>
     x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
   
+  // Порог гистерезиса для стабильного показа превью
+  const PREVIEW_ON = 1.6;
+  const PREVIEW_OFF = 1.4;
+
   state.checklists.forEach((checklist, index) => {
     if (!inView(checklist.x, checklist.y, checklist.r + 20 * DPR)) {
       return;
@@ -6784,26 +6788,16 @@ function drawChecklists() {
     ctx.font = fitted.font;
     ctx.fillText(fitted.text, x, titleY);
 
-    // Бэйдж прогресса (показывается всегда для hybrid/minimal)
-    const progress = getChecklistProgress(checklist.id);
-    if (mode === 'hybrid' || mode === 'minimal') {
-      const badge = Math.max(16 * DPR, Math.min(24 * DPR, 18 * DPR));
-      const bx = x + width/2 - badge - 6 * DPR;
-      const by = y - height/2 + 6 * DPR;
-      ctx.fillStyle = baseColor + '90';
-      ctx.beginPath();
-      drawRoundedRect(ctx, bx, by, badge, badge, 4 * DPR);
-      ctx.fill();
-      ctx.fillStyle = '#0b1020';
-      ctx.font = `${8 * DPR}px system-ui`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(Math.round(progress)), bx + badge/2, by + badge/2);
+    // Превью: определяем, нужно ли показывать (с гистерезисом) для hybrid
+    const scale = viewState.scale || 1;
+    const isHovered = !!(currentHoveredChecklist && currentHoveredChecklist.id === checklist.id);
+    if (mode === 'hybrid') {
+      if (isHovered || scale >= PREVIEW_ON) checklist._preview = true;
+      else if (scale <= PREVIEW_OFF) checklist._preview = false;
     }
 
     // Режимы отображения содержимого
-    const scale = viewState.scale || 1;
-    const showPreview = (mode === 'preview2' || mode === 'preview3') || (mode === 'hybrid' && (scale > 1.5 || (currentHoveredChecklist && currentHoveredChecklist.id === checklist.id)));
+    const showPreview = (mode === 'preview2' || mode === 'preview3') || (mode === 'hybrid' && !!checklist._preview);
     if (showPreview) {
       const linesToShow = (mode === 'preview3') ? 3 : 2;
       if (checklist.items && checklist.items.length > 0) {
@@ -6830,6 +6824,29 @@ function drawChecklists() {
     }
 
     ctx.restore();
+
+    // Бэйдж прогресса — рисуем ПОСЛЕ clip, чтобы располагать над углом и не перекрывать заголовок
+    const progress = getChecklistProgress(checklist.id);
+    if (mode === 'hybrid' || mode === 'minimal') {
+      const badge = Math.max(16 * DPR, Math.min(22 * DPR, 18 * DPR));
+      // Слегка за пределами карточки в правом верхнем углу
+      const bx = x + width/2 - badge * 0.8;
+      const by = y - height/2 - badge * 0.2;
+      ctx.save();
+      ctx.shadowBlur = 6 * DPR;
+      ctx.shadowColor = baseColor + '80';
+      ctx.fillStyle = baseColor + 'E0';
+      ctx.beginPath();
+      drawRoundedRect(ctx, bx, by, badge, badge, 4 * DPR);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#0b1020';
+      ctx.font = `${8 * DPR}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(Math.round(progress)), bx + badge/2, by + badge/2);
+      ctx.restore();
+    }
     
     // Добавляем интерактивность для всплывающего окна
     checklist._hover = false;
