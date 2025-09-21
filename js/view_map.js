@@ -86,6 +86,8 @@ const viewState = {
 };
 // remember last mouse client position for mouseup fallback
 let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
+// Last zoom time to detect zoom+drag perf hotspot
+let _lastZoomTs = 0;
 
 // Focus mode "Black Hole" - hide all except selected domain
 let focusMode = {
@@ -152,6 +154,7 @@ function onWheel(e) {
   const zoomFactor = d > 0 ? 0.9 : 1.1;
   const old = viewState.scale;
   const next = clamp(old * zoomFactor, 0.5, 2.2);
+  _lastZoomTs = performance.now();
   // keep world point under cursor stable
   const dpr = window.devicePixelRatio || 1;
   const cx = (e.offsetX || 0) * dpr;
@@ -1757,7 +1760,7 @@ function startCosmicAnimationLoop() {
   cosmicAnimationRunning = true;
   console.log('Starting cosmic animation loop...');
   let lastUpdate = 0;
-  const targetFPS = 30; // Limit to 30 FPS for better performance
+  const targetFPS = 28; // Чуть ниже — стабильнее при зуме/перетаскивании
   const frameInterval = 1000 / targetFPS;
   
   function animate(currentTime) {
@@ -4214,6 +4217,12 @@ function onPointerMove(e) {
     dropTargetDomainId = null;
     currentDropHint = null;
     
+    // Если только что был зум — пропускаем тяжёлые расчёты 1 кадр
+    if (performance.now() - _lastZoomTs < 50) {
+      requestDraw();
+      return;
+    }
+
     if (draggedNode._type === 'task') {
       // Толерантный хит-поиск проекта для задач
       let bestProject = null;
