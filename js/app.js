@@ -467,6 +467,10 @@ function openDisplayModal() {
         <input type="checkbox" id="displayGlow" ${state.showGlow ? 'checked' : ''} style="margin:0;">
         <span>✨ Показывать свечение элементов</span>
       </label>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
+        <input type="checkbox" id="displayDndHints" ${(state.settings && state.settings.showDndHints) ? 'checked' : ''} style="margin:0;">
+        <span>🧲 Подсветка допустимых целей при перетаскивании (DnD)</span>
+      </label>
     </div>
     
     <div style="border-top:1px solid var(--panel-2);padding-top:12px;margin-top:8px;">
@@ -495,11 +499,14 @@ function openDisplayModal() {
       const links = document.getElementById('displayLinks').checked;
       const aging = document.getElementById('displayAging').checked;
       const glow = document.getElementById('displayGlow').checked;
+      const dndHints = document.getElementById('displayDndHints').checked;
       
-      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow) {
+      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints)) {
         state.showLinks = links;
         state.showAging = aging;
         state.showGlow = glow;
+        if (!state.settings) state.settings = {};
+        state.settings.showDndHints = !!dndHints;
         saveState();
         drawMap();
         showToast("Настройки отображения обновлены", "ok");

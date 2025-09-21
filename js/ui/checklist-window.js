@@ -36,7 +36,7 @@ export async function openChecklistWindow(checklist, x, y) {
     <div id="checklist-window" class="checklist-window show" style="position:fixed; z-index:10000; display:none; opacity:0; max-height:60vh; background:#1a1a1a; border:1px solid #333; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.5); pointer-events:auto;" role="dialog" aria-modal="false" aria-labelledby="checklistTitle">
       <div class="checklist-window-header">
         <h3 id="checklistTitle" class="checklist-window-title">${checklist.title || 'Чек-лист'}</h3>
-        <button class="checklist-window-close" onclick="window.closeChecklistWindow()">×</button>
+        <button type="button" class="checklist-window-close" aria-label="Закрыть">×</button>
       </div>
       
       <div class="checklist-window-tabs">
@@ -148,6 +148,7 @@ function setupEventListeners() {
 
   // Перемещение окна за шапку (pointer events)
   const headerEl = currentChecklistWindow.querySelector('.checklist-window-header');
+  const closeBtnEl = currentChecklistWindow.querySelector('.checklist-window-close');
   let isDraggingWindow = false;
   let dragStartX = 0, dragStartY = 0, dragStartLeft = 0, dragStartTop = 0;
   const onPointerDownHeader = (e) => {
@@ -200,6 +201,17 @@ function setupEventListeners() {
       try { document.removeEventListener('pointermove', onPointerMoveHeader); } catch(_) {}
       try { document.removeEventListener('pointerup', onPointerUpHeader, true); } catch(_) {}
     });
+  }
+
+  // Надёжное закрытие по кнопке «×»
+  if (closeBtnEl) {
+    const onCloseClick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeChecklistWindow();
+    };
+    closeBtnEl.addEventListener('click', onCloseClick);
+    cleanupHandlers.push(() => closeBtnEl.removeEventListener('click', onCloseClick));
   }
   
   // Добавление нового пункта
