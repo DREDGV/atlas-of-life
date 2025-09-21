@@ -4167,6 +4167,8 @@ function onPointerMove(e) {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
   const worldPos = screenToWorld(x, y);
+  // Обновляем lastMouseClient для корректного handleDrop() в pointer-схеме
+  lastMouseClient = { clientX: e.clientX, clientY: e.clientY, offsetX: x, offsetY: y };
   
   // Обработка наведения на чек-листы - ВСЕГДА вызываем
   handleChecklistHover(x, y, worldPos);
@@ -4206,6 +4208,49 @@ function onPointerMove(e) {
   if (NAV.mode === 'drag' && draggedNode) {
     draggedNode.x = worldPos.x - dragOffset.x;
     draggedNode.y = worldPos.y - dragOffset.y;
+    
+    // Определяем цель перетаскивания (подсветка + корректный выбор цели)
+    dropTargetProjectId = null;
+    dropTargetDomainId = null;
+    currentDropHint = null;
+    
+    if (draggedNode._type === 'task') {
+      // Толерантный хит-поиск проекта для задач
+      let bestProject = null;
+      let bestDist = Infinity;
+      for (const project of state.projects) {
+        const pNode = nodes.find(n => n._type === 'project' && n.id === project.id);
+        if (!pNode) continue;
+        const dx = draggedNode.x - pNode.x;
+        const dy = draggedNode.y - pNode.y;
+        const dist = Math.hypot(dx, dy);
+        const hitR = pNode.r * 1.6;
+        if (dist <= hitR && dist < bestDist) { bestDist = dist; bestProject = pNode; }
+      }
+      if (bestProject) {
+        dropTargetProjectId = bestProject.id;
+        currentDropHint = { type: 'project', id: bestProject.id, node: bestProject };
+        canvas.style.cursor = 'copy';
+      } else {
+        // Проверяем домен под курсором (если потребуется для других типов)
+        for (const domain of state.domains) {
+          const dNode = nodes.find(n => n._type === 'domain' && n.id === domain.id);
+          if (!dNode) continue;
+          const dx = draggedNode.x - dNode.x;
+          const dy = draggedNode.y - dNode.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist <= dNode.r) {
+            dropTargetDomainId = domain.id;
+            currentDropHint = { type: 'domain', id: domain.id, node: dNode };
+            canvas.style.cursor = 'copy';
+            break;
+          }
+        }
+      }
+      if (!currentDropHint) {
+        canvas.style.cursor = 'move';
+      }
+    }
     // если перетаскиваем чек-лист — сразу сохраняем координаты в state
     if (draggedNode._type === 'checklist') {
       const cl = state.checklists.find(c => c.id === draggedNode.id);
