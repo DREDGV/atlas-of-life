@@ -4544,7 +4544,49 @@ function onPointerLeave(e) {
 
 // Find drop target based on world coordinates
 function findDropTarget(worldX, worldY) {
-  // Check for domain targets (for projects)
+  // При перетаскивании задачи в приоритете ищем проект, и с расширенным радиусом
+  if (draggedNode && draggedNode._type === 'task') {
+    for (const project of state.projects) {
+      const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+      if (projectNode) {
+        const dx = worldX - projectNode.x;
+        const dy = worldY - projectNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitR = projectNode.r * 1.6; // расширяем площадь захвата
+        if (distance <= hitR) {
+          return { type: 'project', id: project.id, node: projectNode };
+        }
+      }
+    }
+  }
+
+  // Для проектов ищем домен обычным радиусом
+  if (draggedNode && draggedNode._type === 'project') {
+    for (const domain of state.domains) {
+      const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
+      if (domainNode) {
+        const dx = worldX - domainNode.x;
+        const dy = worldY - domainNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= domainNode.r) {
+          return { type: 'domain', id: domain.id, node: domainNode };
+        }
+      }
+    }
+  }
+
+  // Общий резервный поиск (если тип не определен)
+  for (const project of state.projects) {
+    const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+    if (projectNode) {
+      const dx = worldX - projectNode.x;
+      const dy = worldY - projectNode.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= projectNode.r * 1.4) {
+        return { type: 'project', id: project.id, node: projectNode };
+      }
+    }
+  }
   for (const domain of state.domains) {
     const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
     if (domainNode) {
@@ -4553,19 +4595,6 @@ function findDropTarget(worldX, worldY) {
       const distance = Math.sqrt(dx * dx + dy * dy);
       if (distance <= domainNode.r) {
         return { type: 'domain', id: domain.id, node: domainNode };
-      }
-    }
-  }
-  
-  // Check for project targets (for tasks)
-  for (const project of state.projects) {
-    const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
-    if (projectNode) {
-      const dx = worldX - projectNode.x;
-      const dy = worldY - projectNode.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance <= projectNode.r) {
-        return { type: 'project', id: project.id, node: projectNode };
       }
     }
   }
@@ -4640,7 +4669,8 @@ function handleTaskDrop(taskNode, dropTarget) {
   if (dropTarget && dropTarget.type === 'project') {
     // Moving to project
     if (task.projectId !== dropTarget.id) {
-      showTaskMoveConfirmation(task, task.projectId, dropTarget.id);
+      // Если перетаскиваем из одного проекта в другой — сразу спрашиваем о переносе
+      showTaskMoveConfirmation(task, task.projectId || null, dropTarget.id);
     } else {
       // Already in this project, just update position
       task.pos = { x: taskNode.x, y: taskNode.y };
@@ -4651,6 +4681,7 @@ function handleTaskDrop(taskNode, dropTarget) {
   } else {
     // Moving to independent (outside any project)
     if (task.projectId !== null) {
+      // Перетаскивание вне проектов — это именно отвязка
       showTaskDetachConfirmation(task);
     } else {
       // Already independent, just update position
@@ -4834,14 +4865,14 @@ function showProjectExtractConfirmation(project, projectNode) {
 }
 // Task move confirmation functions
 function showTaskMoveConfirmation(task, fromProjectId, toProjectId) {
-  const fromProject = fromProjectId ? state.projects.find(p => p.id === fromProjectId)?.title : "независимая";
+  const fromProject = fromProjectId ? state.projects.find(p => p.id === fromProjectId)?.title : "без проекта";
   const toProject = state.projects.find(p => p.id === toProjectId)?.title;
   
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
     toast.className = "toast attach show";
-    toast.innerHTML = `Переместить задачу "${task.title}" из проекта "${fromProject}" в проект "${toProject}"? <button id="taskMoveOk">Переместить</button> <button id="taskMoveCancel">Отменить</button>`;
+    toast.innerHTML = `Переместить задачу "${task.title}"${fromProjectId ? ` из проекта "${fromProject}"` : ''} в проект "${toProject}"? <button id="taskMoveOk">Переместить</button> <button id="taskMoveCancel">Отменить</button>`;
     isModalOpen = true;
     
     // Set up pending attach
@@ -4879,7 +4910,7 @@ function showTaskDetachConfirmation(task) {
   if (toast) {
     hideToast();
     toast.className = "toast detach show";
-    toast.innerHTML = `Сделать задачу "${task.title}" независимой (отвязать от проекта "${currentProject}")? <button id="taskDetachOk">Отвязать</button> <button id="taskDetachCancel">Отменить</button>`;
+    toast.innerHTML = `Отвязать задачу "${task.title}" от проекта "${currentProject}" (сделать независимой)? <button id="taskDetachOk">Отвязать</button> <button id="taskDetachCancel">Отменить</button>`;
     isModalOpen = true;
     
     // Set up pending detach

@@ -145,6 +145,67 @@ function getChildObjectsFallback(obj) {
   return children;
 }
 
+// Построение полного пути (хлебные крошки) для объекта без зависимости от включенности v2
+function buildHierarchyPath(obj) {
+  if (!obj) return [];
+  const parts = [];
+  try {
+    if (obj._type === 'task') {
+      const proj = obj.projectId ? state.projects.find(p => p.id === obj.projectId) : null;
+      const dom = obj.domainId
+        ? state.domains.find(d => d.id === obj.domainId)
+        : (proj ? state.domains.find(d => d.id === proj.domainId) : null);
+      if (dom) parts.push({ type: 'domain', title: dom.title });
+      if (proj) parts.push({ type: 'project', title: proj.title });
+      parts.push({ type: 'task', title: obj.title });
+      return parts;
+    }
+    if (obj._type === 'project') {
+      const dom = obj.domainId ? state.domains.find(d => d.id === obj.domainId) : null;
+      if (dom) parts.push({ type: 'domain', title: dom.title });
+      parts.push({ type: 'project', title: obj.title });
+      return parts;
+    }
+    if (obj._type === 'idea' || obj._type === 'note') {
+      const proj = obj.projectId ? state.projects.find(p => p.id === obj.projectId) : null;
+      const dom = obj.domainId
+        ? state.domains.find(d => d.id === obj.domainId)
+        : (proj ? state.domains.find(d => d.id === proj.domainId) : null);
+      if (dom) parts.push({ type: 'domain', title: dom.title });
+      if (proj) parts.push({ type: 'project', title: proj.title });
+      parts.push({ type: obj._type, title: obj.title });
+      return parts;
+    }
+    if (obj._type === 'domain') {
+      parts.push({ type: 'domain', title: obj.title });
+      return parts;
+    }
+  } catch (_) {}
+  return [{ type: obj._type || 'object', title: obj.title || 'Объект' }];
+}
+
+function renderPathBreadcrumb(obj) {
+  const path = buildHierarchyPath(obj);
+  if (!path || path.length === 0) return '';
+  const label = path
+    .map(p => {
+      const t = p.type === 'domain' ? 'Домен'
+              : p.type === 'project' ? 'Проект'
+              : p.type === 'task' ? 'Задача'
+              : p.type === 'idea' ? 'Идея'
+              : p.type === 'note' ? 'Заметка' : 'Объект';
+      return `${t} "${p.title}"`;
+    })
+    .join(' → ');
+  return `
+    <div class="hierarchy-item path">
+      <span class="hierarchy-icon">🧭</span>
+      <span class="hierarchy-label">Путь:</span>
+      <span class="hierarchy-value">${label}</span>
+    </div>
+  `;
+}
+
 // Функция для отображения иерархии объекта
 function renderHierarchySection(obj) {
   if (!obj) return '';
@@ -158,6 +219,9 @@ function renderHierarchySection(obj) {
       <h3>🌐 Иерархия</h3>
       <div class="hierarchy-info">
   `;
+  
+  // Полный путь (хлебные крошки)
+  html += renderPathBreadcrumb(obj);
   
   // Показываем родителя
   if (parent) {
