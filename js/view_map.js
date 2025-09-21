@@ -6684,7 +6684,7 @@ function drawChecklists() {
     // Создаем форму чек-листа (прямоугольник с закругленными углами)
     // Более широкое соотношение сторон для лучшей вмещаемости текста
     const width = pulseRadius * 3.8;
-    const height = pulseRadius * 2.1;
+    const height = pulseRadius * 2.4;
     const cornerRadius = pulseRadius * 0.3;
     
     // Тень
@@ -6785,7 +6785,7 @@ function drawChecklists() {
     // Заголовок: положение зависит от режима
     ctx.fillStyle = baseColor;
     ctx.textAlign = "center";
-    const titleY = (mode === 'preview2' || mode === 'preview3' || mode === 'hybrid') ? (contentTop + 10 * DPR) : y;
+    const titleY = (mode === 'preview2' || mode === 'preview3' || mode === 'hybrid') ? (contentTop + 12 * DPR) : y;
     const fitted = fitOneLine(checklist.title, contentWidth, 10 * DPR, 7 * DPR, 'bold');
     ctx.font = fitted.font;
     ctx.fillText(fitted.text, x, titleY);
@@ -6799,12 +6799,12 @@ function drawChecklists() {
     }
 
     // Режимы отображения содержимого
-    const showPreview = (mode === 'preview2' || mode === 'preview3') || (mode === 'hybrid' && !!checklist._preview);
+    const showPreview = (mode === 'preview2' || mode === 'preview3') || (mode === 'hybrid' && (!!checklist._preview || isHovered));
     if (showPreview) {
       const linesToShow = (mode === 'preview3') ? 3 : 2;
       if (checklist.items && checklist.items.length > 0) {
-        const itemHeight = 9 * DPR;
-        const firstItemY = titleY + 12 * DPR;
+        const itemHeight = 10 * DPR;
+        const firstItemY = titleY + 14 * DPR;
         const bottomLimit = contentBottom;
         const maxRows = Math.max(0, Math.floor((bottomLimit - firstItemY) / itemHeight));
         const maxItems = Math.min(checklist.items.length, Math.min((mode==='hybrid'?3:linesToShow), maxRows));
