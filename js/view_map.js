@@ -3075,8 +3075,8 @@ export function drawMap() {
     try {
       // Draw dragged object with enhanced visibility
       ctx.save();
-      ctx.globalAlpha = 0.8;
-      ctx.shadowBlur = 12;
+      ctx.globalAlpha = 0.9;
+      ctx.shadowBlur = 8;
       ctx.shadowColor = '#ffffff';
       
       if (draggedNode._type === "task") {
@@ -3087,10 +3087,10 @@ export function drawMap() {
         ctx.fill();
         
         // Add pulsing border
-        const time = performance.now() * 0.005;
-        const pulse = 1 + Math.sin(time) * 0.2;
+        const time = performance.now() * 0.004;
+        const pulse = 1 + Math.sin(time) * 0.15;
         ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 2 * pulse;
+        ctx.lineWidth = 1.5 * pulse;
         ctx.beginPath();
         ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 4, 0, Math.PI * 2);
         ctx.stroke();
@@ -3150,10 +3150,10 @@ export function drawMap() {
         }
         
         // Add pulsing border
-        const time = performance.now() * 0.005;
-        const pulse = 1 + Math.sin(time) * 0.2;
+        const time = performance.now() * 0.004;
+        const pulse = 1 + Math.sin(time) * 0.15;
         ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 3 * pulse;
+        ctx.lineWidth = 2 * pulse;
         ctx.beginPath();
         ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 6, 0, Math.PI * 2);
         ctx.stroke();
@@ -3226,12 +3226,12 @@ export function drawMap() {
     try {
       if (currentDropHint.type === 'project') {
         const p = currentDropHint.node;
-        const t = (performance.now() / 300) % (Math.PI * 2);
-        const pulse = 1 + Math.sin(t) * 0.18;
+        const t = (performance.now() / 420) % (Math.PI * 2);
+        const pulse = 1 + Math.sin(t) * 0.12;
         ctx.save();
         ctx.shadowColor = '#8b5cf6';
-        ctx.shadowBlur = 18 * DPR;
-        ctx.lineWidth = 4 * DPR * pulse;
+        ctx.shadowBlur = 12 * DPR;
+        ctx.lineWidth = 3 * DPR * pulse;
         ctx.strokeStyle = '#a78bfa';
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r + 16 * DPR, 0, Math.PI * 2);
@@ -3239,12 +3239,12 @@ export function drawMap() {
         ctx.restore();
       } else if (currentDropHint.type === 'domain') {
         const d = currentDropHint.node;
-        const t = (performance.now() / 320) % (Math.PI * 2);
-        const pulse = 1 + Math.sin(t) * 0.14;
+        const t = (performance.now() / 480) % (Math.PI * 2);
+        const pulse = 1 + Math.sin(t) * 0.10;
         ctx.save();
         ctx.shadowColor = '#22c55e';
-        ctx.shadowBlur = 18 * DPR;
-        ctx.lineWidth = 4 * DPR * pulse;
+        ctx.shadowBlur = 12 * DPR;
+        ctx.lineWidth = 3 * DPR * pulse;
         ctx.strokeStyle = '#34d399';
         ctx.beginPath();
         ctx.arc(d.x, d.y, d.r + 20 * DPR, 0, Math.PI * 2);
@@ -4224,7 +4224,7 @@ function onPointerMove(e) {
         const dx = draggedNode.x - pNode.x;
         const dy = draggedNode.y - pNode.y;
         const dist = Math.hypot(dx, dy);
-        const hitR = pNode.r * 1.6;
+        const hitR = pNode.r * 1.35; // чуть меньше радиус — меньше лишних пересчётов
         if (dist <= hitR && dist < bestDist) { bestDist = dist; bestProject = pNode; }
       }
       if (bestProject) {
@@ -4247,9 +4247,7 @@ function onPointerMove(e) {
           }
         }
       }
-      if (!currentDropHint) {
-        canvas.style.cursor = 'move';
-      }
+      if (!currentDropHint) canvas.style.cursor = 'move';
     }
     // если перетаскиваем чек-лист — сразу сохраняем координаты в state
     if (draggedNode._type === 'checklist') {
@@ -4276,7 +4274,6 @@ function handleChecklistHover(screenX, screenY, worldPos) {
   for (const checklist of state.checklists) {
     const rect = getChecklistRectFromBase(checklist.x, checklist.y, checklist.r);
     const isInside = worldPos.x >= rect.x1 && worldPos.x <= rect.x2 && worldPos.y >= rect.y1 && worldPos.y <= rect.y2;
-    console.log(`Hit test: checklist ${checklist.id}, worldPos(${worldPos.x.toFixed(1)}, ${worldPos.y.toFixed(1)}), rect(${rect.x1.toFixed(1)}, ${rect.y1.toFixed(1)} - ${rect.x2.toFixed(1)}, ${rect.y2.toFixed(1)}), inside: ${isInside}`);
     if (isInside) {
       found = checklist;
       break;
@@ -4289,7 +4286,7 @@ function handleChecklistHover(screenX, screenY, worldPos) {
 
     // Устанавливаем флаг для рендера
     found._preview = true;
-    console.log('Hover ON for checklist:', found.id, 'preview set to true');
+    // debug disabled for perf
 
     // Если это новый чек-лист
     if (currentHoveredChecklist !== found) {
@@ -4313,7 +4310,7 @@ function handleChecklistHover(screenX, screenY, worldPos) {
       canvas.style.cursor = 'grab';
       // Сбрасываем флаг для рендера
       currentHoveredChecklist._preview = false;
-      console.log('Hover OFF for checklist:', currentHoveredChecklist.id, 'preview set to false');
+      // debug disabled for perf
       currentHoveredChecklist = null;
 
       // Очищаем таймер
