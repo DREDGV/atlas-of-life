@@ -1268,6 +1268,90 @@ let pendingDetach = null;
 let pendingProjectMove = null;
 let isModalOpen = false; // Flag to block canvas events when toast is shown
 
+// ===== Hierarchy sync helpers (safe, local) =====
+// Обеспечивает наличие полей иерархии без глобальной миграции
+function ensureHierarchyFieldsLocal(obj, type) {
+  if (!obj) return;
+  if (typeof obj.parentId === 'undefined') obj.parentId = null;
+  if (!obj.children) {
+    obj.children = { projects: [], tasks: [], ideas: [], notes: [] };
+  } else {
+    obj.children.projects = obj.children.projects || [];
+    obj.children.tasks = obj.children.tasks || [];
+    obj.children.ideas = obj.children.ideas || [];
+    obj.children.notes = obj.children.notes || [];
+  }
+}
+
+function arrayRemove(arr, id) {
+  if (!Array.isArray(arr)) return;
+  const i = arr.indexOf(id);
+  if (i !== -1) arr.splice(i, 1);
+}
+
+function arrayAddUnique(arr, id) {
+  if (!Array.isArray(arr)) return;
+  if (!arr.includes(id)) arr.push(id);
+}
+
+// Синхронизация связи Проект ↔ Домен (parentId/children)
+function syncProjectDomainLink(projectId, fromDomainId, toDomainId) {
+  try {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    // Обновляем parentId проекта
+    project.parentId = toDomainId || null;
+
+    // Обновляем children у старого домена
+    if (fromDomainId) {
+      const fromDomain = state.domains.find(d => d.id === fromDomainId);
+      if (fromDomain) {
+        ensureHierarchyFieldsLocal(fromDomain, 'domain');
+        arrayRemove(fromDomain.children.projects, projectId);
+      }
+    }
+
+    // Обновляем children у нового домена
+    if (toDomainId) {
+      const toDomain = state.domains.find(d => d.id === toDomainId);
+      if (toDomain) {
+        ensureHierarchyFieldsLocal(toDomain, 'domain');
+        arrayAddUnique(toDomain.children.projects, projectId);
+      }
+    }
+  } catch (_) {}
+}
+
+// Синхронизация связи Задача ↔ Проект (parentId/children)
+function syncTaskProjectLink(taskId, fromProjectId, toProjectId) {
+  try {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // Обновляем parentId задачи
+    task.parentId = toProjectId || null;
+
+    // Старый проект: удалить из children.tasks
+    if (fromProjectId) {
+      const fromProject = state.projects.find(p => p.id === fromProjectId);
+      if (fromProject) {
+        ensureHierarchyFieldsLocal(fromProject, 'project');
+        arrayRemove(fromProject.children.tasks, taskId);
+      }
+    }
+
+    // Новый проект: добавить в children.tasks
+    if (toProjectId) {
+      const toProject = state.projects.find(p => p.id === toProjectId);
+      if (toProject) {
+        ensureHierarchyFieldsLocal(toProject, 'project');
+        arrayAddUnique(toProject.children.tasks, taskId);
+      }
+    }
+  } catch (_) {}
+}
+
 // DnD State Machine
 const DnDState = {
   IDLE: 'idle',
@@ -4591,7 +4675,18 @@ function handleIdeaDrop(ideaNode, dropTarget) {
   
   // Update domain if dropped on a domain
   if (dropTarget && dropTarget.type === 'domain') {
-    idea.domainId = dropTarget.id;
+    const fromDomainId = idea.domainId || null;
+    const toDomainId = dropTarget.id;
+    idea.domainId = toDomainId;
+    // Иерархия: ensure fields and sync children
+    try {
+      ensureHierarchyFieldsLocal(idea, 'idea');
+      const fromDomain = fromDomainId ? state.domains.find(d => d.id === fromDomainId) : null;
+      const toDomain = state.domains.find(d => d.id === toDomainId);
+      if (fromDomain) { ensureHierarchyFieldsLocal(fromDomain, 'domain'); arrayRemove(fromDomain.children.ideas, idea.id); }
+      if (toDomain) { ensureHierarchyFieldsLocal(toDomain, 'domain'); arrayAddUnique(toDomain.children.ideas, idea.id); }
+      idea.parentId = toDomainId;
+    } catch (_) {}
   }
   
   saveState();
@@ -4611,7 +4706,18 @@ function handleNoteDrop(noteNode, dropTarget) {
   
   // Update domain if dropped on a domain
   if (dropTarget && dropTarget.type === 'domain') {
-    note.domainId = dropTarget.id;
+    const fromDomainId = note.domainId || null;
+    const toDomainId = dropTarget.id;
+    note.domainId = toDomainId;
+    // Иерархия: ensure fields and sync children
+    try {
+      ensureHierarchyFieldsLocal(note, 'note');
+      const fromDomain = fromDomainId ? state.domains.find(d => d.id === fromDomainId) : null;
+      const toDomain = state.domains.find(d => d.id === toDomainId);
+      if (fromDomain) { ensureHierarchyFieldsLocal(fromDomain, 'domain'); arrayRemove(fromDomain.children.notes, note.id); }
+      if (toDomain) { ensureHierarchyFieldsLocal(toDomain, 'domain'); arrayAddUnique(toDomain.children.notes, note.id); }
+      note.parentId = toDomainId;
+    } catch (_) {}
   }
   
   saveState();
@@ -4810,6 +4916,10 @@ function confirmTaskMove() {
   const task = state.tasks.find(t => t.id === pendingAttach.taskId);
   if (task) {
     task.projectId = pendingAttach.toProjectId;
+    // Синхронизируем parentId/children в иерархии
+    try {
+      syncTaskProjectLink(task.id, pendingAttach.fromProjectId, pendingAttach.toProjectId);
+    } catch (_) {}
     task.updatedAt = Date.now();
     
     if (pendingAttach.pos) {
@@ -4829,6 +4939,10 @@ function confirmTaskDetach() {
   const task = state.tasks.find(t => t.id === pendingDetach.taskId);
   if (task) {
     task.projectId = null;
+    // Синхронизируем parentId/children
+    try {
+      syncTaskProjectLink(task.id, pendingDetach.fromProjectId, null);
+    } catch (_) {}
     task.updatedAt = Date.now();
     
     if (pendingDetach.pos) {
@@ -5022,6 +5136,10 @@ function confirmProjectMove() {
     console.log("Updating project domain from", p.domainId, "to", item.toDomainId);
     // Update project domain
     p.domainId = item.toDomainId;
+    // Синхронизируем parentId/children
+    try {
+      syncProjectDomainLink(p.id, item.fromDomainId, item.toDomainId);
+    } catch (_) {}
     p.updatedAt = Date.now();
     
     // Update position if provided
