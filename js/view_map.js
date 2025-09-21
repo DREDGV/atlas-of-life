@@ -7322,24 +7322,21 @@ function drawChecklists() {
       return t;
     };
     
-    // Небольшая иконка в левом верхнем углу
-    ctx.fillStyle = baseColor;
-    ctx.font = `${10 * DPR}px system-ui`;
-    ctx.textAlign = "left";
-    ctx.fillText('✓', contentLeft, contentTop + 10 * DPR);
+    // Определяем режим отображения
+    const mode = (state.settings && state.settings.checklistIconMode) || 'title';
     
-    // Заголовок по центру карточки одной строкой
+    // Заголовок: положение зависит от режима
     const titleFontSize = 10 * DPR;
     ctx.fillStyle = baseColor;
     ctx.font = `bold ${titleFontSize}px system-ui`;
     ctx.textAlign = "center";
-    const titleY = y; // центр карточки
+    const titleY = (mode === 'preview2' || mode === 'preview3') ? (contentTop + 12 * DPR) : y;
     ctx.fillText(fitTitle(checklist.title), x, titleY);
 
-    // Прогресс-бар (внутри границ)
+    // Прогресс-бар (только для режима minimal)
     const progress = getChecklistProgress(checklist.id);
     let progressBarY = contentBottom - 8 * DPR;
-    if (progress > 0) {
+    if (mode === 'minimal' && progress > 0) {
       const progressBarWidth = Math.max(10 * DPR, contentWidth * 0.9);
       const progressBarHeight = 4 * DPR;
       const progressBarX = x - progressBarWidth / 2;
@@ -7366,7 +7363,6 @@ function drawChecklists() {
     }
 
     // Режимы отображения содержимого
-    const mode = (state.settings && state.settings.checklistIconMode) || 'title';
     if (mode === 'minimal') {
       if (checklist.items && checklist.items.length > 0) {
         ctx.fillStyle = baseColor;
@@ -7381,8 +7377,8 @@ function drawChecklists() {
       const linesToShow = (mode === 'preview3') ? 3 : 2;
       if (checklist.items && checklist.items.length > 0) {
         const itemHeight = 10 * DPR;
-        const firstItemY = titleY + 16 * DPR;
-        const bottomLimit = (progress > 0) ? (progressBarY - 8 * DPR) : contentBottom;
+        const firstItemY = titleY + 14 * DPR;
+        const bottomLimit = contentBottom;
         const maxRows = Math.max(0, Math.floor((bottomLimit - firstItemY) / itemHeight));
         const maxItems = Math.min(checklist.items.length, Math.min(linesToShow, maxRows));
         ctx.textAlign = "left";
