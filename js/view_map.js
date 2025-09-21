@@ -7309,29 +7309,40 @@ function drawChecklists() {
     // Общие настройки текста
     ctx.textBaseline = 'middle';
     
-    // Функция усечения по доступной ширине
-    const fitTitle = (text) => {
-      let t = text || '';
-      let measured = ctx.measureText(t).width;
+    // Подбор размера шрифта и усечение текста по ширине
+    const fitOneLine = (text, maxWidth, basePx, minPx, weight = 'normal') => {
       const ellipsis = '…';
-      while (measured > contentWidth && t.length > 0) {
-        t = t.slice(0, -1);
-        measured = ctx.measureText(t + ellipsis).width;
-        if (measured <= contentWidth) return t + ellipsis;
+      let size = basePx;
+      let face = `${weight} ${size}px system-ui`;
+      ctx.font = face;
+      let t = text || '';
+      let w = ctx.measureText(t).width;
+      while (w > maxWidth && size > minPx) {
+        size -= 1;
+        face = `${weight} ${size}px system-ui`;
+        ctx.font = face;
+        w = ctx.measureText(t).width;
       }
-      return t;
+      if (w > maxWidth) {
+        // даже на минимальном размере — усекать посимвольно
+        while (t.length > 0 && ctx.measureText(t + ellipsis).width > maxWidth) {
+          t = t.slice(0, -1);
+        }
+        t = t + ellipsis;
+      }
+      return { text: t, font: face };
     };
     
     // Определяем режим отображения
     const mode = (state.settings && state.settings.checklistIconMode) || 'title';
     
     // Заголовок: положение зависит от режима
-    const titleFontSize = 10 * DPR;
     ctx.fillStyle = baseColor;
-    ctx.font = `bold ${titleFontSize}px system-ui`;
     ctx.textAlign = "center";
     const titleY = (mode === 'preview2' || mode === 'preview3') ? (contentTop + 12 * DPR) : y;
-    ctx.fillText(fitTitle(checklist.title), x, titleY);
+    const fitted = fitOneLine(checklist.title, contentWidth, 10 * DPR, 7 * DPR, 'bold');
+    ctx.font = fitted.font;
+    ctx.fillText(fitted.text, x, titleY);
 
     // Прогресс-бар (только для режима minimal)
     const progress = getChecklistProgress(checklist.id);
@@ -7376,7 +7387,7 @@ function drawChecklists() {
     } else if (mode === 'preview2' || mode === 'preview3') {
       const linesToShow = (mode === 'preview3') ? 3 : 2;
       if (checklist.items && checklist.items.length > 0) {
-        const itemHeight = 10 * DPR;
+        const itemHeight = 11 * DPR;
         const firstItemY = titleY + 14 * DPR;
         const bottomLimit = contentBottom;
         const maxRows = Math.max(0, Math.floor((bottomLimit - firstItemY) / itemHeight));
@@ -7385,21 +7396,15 @@ function drawChecklists() {
         for (let i = 0; i < maxItems; i++) {
           const item = checklist.items[i];
           const itemY = firstItemY + i * itemHeight;
-          const checkboxX = contentLeft;
-          const textX = checkboxX + 12 * DPR;
-          ctx.fillStyle = item.completed ? baseColor : '#666666';
-          ctx.font = `${9 * DPR}px system-ui`;
-          ctx.fillText(item.completed ? '•' : '○', checkboxX, itemY);
-          ctx.fillStyle = item.completed ? '#888888' : '#222222';
-          ctx.font = `${7 * DPR}px system-ui`;
-          let s = item.text || '';
-          const maxTextWidth = contentWidth - 12 * DPR;
-          const e = '…';
-          while (ctx.measureText(s).width > maxTextWidth && s.length > 0) {
-            s = s.slice(0, -1);
-            if (ctx.measureText(s + e).width <= maxTextWidth) { s = s + e; break; }
-          }
-          ctx.fillText(s, textX, itemY);
+          const bulletX = contentLeft + 2 * DPR;
+          const textX = bulletX + 10 * DPR;
+          ctx.fillStyle = item.completed ? baseColor : '#6b7280';
+          ctx.font = `${8 * DPR}px system-ui`;
+          ctx.fillText('•', bulletX, itemY);
+          ctx.fillStyle = item.completed ? '#9ca3af' : '#e5e7eb';
+          const fittedItem = fitOneLine(item.text || '', contentWidth - 12 * DPR, 8 * DPR, 6 * DPR, 'normal');
+          ctx.font = fittedItem.font;
+          ctx.fillText(fittedItem.text, textX, itemY);
         }
       }
     }
