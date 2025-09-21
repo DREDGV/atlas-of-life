@@ -6682,8 +6682,9 @@ function drawChecklists() {
     const alpha = Math.max(0.9, checklist.opacity || 1.0);
     
     // Создаем форму чек-листа (прямоугольник с закругленными углами)
-    const width = pulseRadius * 3.0;
-    const height = pulseRadius * 2.5;
+    // Более широкое соотношение сторон для лучшей вмещаемости текста
+    const width = pulseRadius * 3.8;
+    const height = pulseRadius * 2.1;
     const cornerRadius = pulseRadius * 0.3;
     
     // Тень
@@ -6722,7 +6723,8 @@ function drawChecklists() {
     // Акцентная полоса сверху
     ctx.fillStyle = baseColor + '80';
     ctx.beginPath();
-    drawRoundedRect(ctx, x - width/2, y - height/2, width, pulseRadius * 0.15, cornerRadius, cornerRadius, 0, 0);
+    const stripeH = Math.max(6 * DPR, Math.min(height * 0.18, pulseRadius * 0.18));
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, stripeH, cornerRadius, cornerRadius, 0, 0);
     ctx.fill();
     
     // Обводка
