@@ -7293,94 +7293,120 @@ function drawChecklists() {
     drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
     ctx.stroke();
     
-    // Прогресс-бар
+    // Внутренние отступы и клиппинг, чтобы содержимое не выходило за границы
+    const padding = 10 * DPR;
+    const contentLeft = x - width / 2 + padding;
+    const contentRight = x + width / 2 - padding;
+    const contentTop = y - height / 2 + padding;
+    const contentBottom = y + height / 2 - padding;
+    const contentWidth = contentRight - contentLeft;
+
+    ctx.save();
+    ctx.beginPath();
+    drawRoundedRect(ctx, x - width/2, y - height/2, width, height, cornerRadius);
+    ctx.clip();
+
+    // Название внутри карточки
+    ctx.fillStyle = baseColor;
+    ctx.font = `bold ${11 * DPR}px system-ui`;
+    ctx.textAlign = "center";
+    const fitTitle = (text) => {
+      let t = text || '';
+      let measured = ctx.measureText(t).width;
+      const ellipsis = '…';
+      while (measured > contentWidth && t.length > 0) {
+        t = t.slice(0, -1);
+        measured = ctx.measureText(t + ellipsis).width;
+        if (measured <= contentWidth) return t + ellipsis;
+      }
+      return t;
+    };
+    const titleY = contentTop + 14 * DPR;
+    ctx.fillText(fitTitle(checklist.title), x, titleY);
+
+    // Иконка чек‑листа под заголовком
+    ctx.fillStyle = baseColor;
+    ctx.font = `${12 * DPR}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.fillText('✓', x, titleY + 14 * DPR);
+
+    // Прогресс-бар (внутри границ)
     const progress = getChecklistProgress(checklist.id);
+    let progressBarY = contentBottom - 8 * DPR;
     if (progress > 0) {
-      const progressBarWidth = width * 0.8;
+      const progressBarWidth = Math.max(10 * DPR, contentWidth * 0.9);
       const progressBarHeight = 4 * DPR;
       const progressBarX = x - progressBarWidth / 2;
-      const progressBarY = y + height/2 - 12 * DPR;
       
-      // Фон прогресс-бара
       ctx.fillStyle = baseColor + '30';
       ctx.beginPath();
       drawRoundedRect(ctx, progressBarX, progressBarY, progressBarWidth, progressBarHeight, progressBarHeight/2);
       ctx.fill();
       
-      // Заполнение прогресс-бара
       const fillWidth = (progressBarWidth * progress) / 100;
       if (fillWidth > 0) {
         const progressGradient = ctx.createLinearGradient(progressBarX, progressBarY, progressBarX + fillWidth, progressBarY);
         progressGradient.addColorStop(0, baseColor);
         progressGradient.addColorStop(1, baseColor + 'CC');
-        
         ctx.fillStyle = progressGradient;
         ctx.beginPath();
         drawRoundedRect(ctx, progressBarX, progressBarY, fillWidth, progressBarHeight, progressBarHeight/2);
         ctx.fill();
       }
-      
-      // Текст прогресса
       ctx.fillStyle = baseColor;
       ctx.font = `${8 * DPR}px system-ui`;
       ctx.textAlign = "center";
       ctx.fillText(`${progress}%`, x, progressBarY - 4 * DPR);
     }
-    
-    // Иконка чек-листа
-    ctx.fillStyle = baseColor;
-    ctx.font = `${12 * DPR}px system-ui`;
-    ctx.textAlign = "center";
-    ctx.fillText('✓', x, y - 2 * DPR);
-    
-    // Название чек-листа с лучшим позиционированием
-    ctx.fillStyle = baseColor;
-    ctx.font = `bold ${11 * DPR}px system-ui`;
-    ctx.textAlign = "center";
-    
-    // Ограничиваем длину названия
-    const maxTitleLength = 12;
-    const displayTitle = checklist.title.length > maxTitleLength 
-      ? checklist.title.substring(0, maxTitleLength) + '...' 
-      : checklist.title;
-    
-    ctx.fillText(displayTitle, x, y - height/2 - 12 * DPR);
-    
-    // Отображение элементов списка (первые 3 элемента)
+
+    // Список элементов — не выходим за границы контента
     if (checklist.items && checklist.items.length > 0) {
-      const maxItems = Math.min(3, checklist.items.length);
-      const itemHeight = 9 * DPR;
-      const startY = y - height/2 + 25 * DPR;
-      
-      ctx.font = `${8 * DPR}px system-ui`;
+      const itemHeight = 10 * DPR;
+      const firstItemY = titleY + 18 * DPR;
+      const bottomLimit = (progress > 0) ? (progressBarY - 8 * DPR) : contentBottom;
+      const maxRows = Math.max(0, Math.floor((bottomLimit - firstItemY) / itemHeight));
+      const maxItems = Math.min(checklist.items.length, Math.min(3, maxRows));
+
       ctx.textAlign = "left";
-      
       for (let i = 0; i < maxItems; i++) {
         const item = checklist.items[i];
-        const itemY = startY + i * itemHeight;
-        const checkboxX = x - width/2 + 10 * DPR;
+        const itemY = firstItemY + i * itemHeight;
+        const checkboxX = contentLeft;
         const textX = checkboxX + 14 * DPR;
-        
-        // Чекбокс с лучшим стилем
+
+        // Чекбокс символом
         ctx.fillStyle = item.completed ? baseColor : '#666666';
         ctx.font = `${10 * DPR}px system-ui`;
         ctx.fillText(item.completed ? '☑' : '☐', checkboxX, itemY);
-        
-        // Текст элемента с лучшим стилем
+
+        // Текст, укорачиваем по фактической ширине
         ctx.fillStyle = item.completed ? '#888888' : '#222222';
         ctx.font = `${7 * DPR}px system-ui`;
-        const text = item.text.length > 12 ? item.text.substring(0, 12) + '...' : item.text;
-        ctx.fillText(text, textX, itemY);
+        const maxTextWidth = contentWidth - 14 * DPR;
+        const ellipsize = (t) => {
+          let s = t || '';
+          let w = ctx.measureText(s).width;
+          const e = '…';
+          while (w > maxTextWidth && s.length > 0) {
+            s = s.slice(0, -1);
+            w = ctx.measureText(s + e).width;
+            if (w <= maxTextWidth) return s + e;
+          }
+          return s;
+        };
+        ctx.fillText(ellipsize(item.text), textX, itemY);
       }
-      
-      // Показать количество элементов, если их больше 3
-      if (checklist.items.length > 3) {
+
+      if (checklist.items.length > maxItems) {
         ctx.fillStyle = baseColor;
         ctx.font = `bold ${7 * DPR}px system-ui`;
         ctx.textAlign = "center";
-        ctx.fillText(`+${checklist.items.length - 3} еще`, x, startY + maxItems * itemHeight + 6 * DPR);
+        const moreY = Math.min(bottomLimit - 2 * DPR, firstItemY + maxItems * itemHeight + 6 * DPR);
+        ctx.fillText(`+${checklist.items.length - maxItems} еще`, x, moreY);
       }
     }
+
+    ctx.restore();
     
     // Добавляем интерактивность для всплывающего окна
     checklist._hover = false;
