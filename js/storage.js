@@ -67,15 +67,20 @@ export function loadState(){
       state.settings = { 
         layoutMode: data.settings.layoutMode==='manual'?'manual':'auto',
         wipTodayLimit: data.settings.wipTodayLimit || 5,
-        enableHierarchyV2: data.settings.enableHierarchyV2 || false,
-        hotkeys: data.settings.hotkeys || state.settings.hotkeys
+        enableHierarchyV2: !!data.settings.enableHierarchyV2,
+        hotkeys: data.settings.hotkeys || state.settings.hotkeys,
+        // Новые настройки отображения
+        showDndHints: !!data.settings.showDndHints,
+        checklistIconMode: data.settings.checklistIconMode || 'title'
       };
     }else{
       state.settings = { 
         layoutMode:'auto',
         wipTodayLimit: 5,
         enableHierarchyV2: false,
-        hotkeys: state.settings.hotkeys
+        hotkeys: state.settings.hotkeys,
+        showDndHints: false,
+        checklistIconMode: 'title'
       };
     }
     // migration: ensure independent tasks (projectId null/undefined) have domainId
@@ -108,7 +113,7 @@ export function saveState(){
       showAging: !!state.showAging,
       showGlow: !!state.showGlow,
       view: state.view,
-      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false }
+      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, checklistIconMode:'title' }
     };
     const text = JSON.stringify(data);
     if (!text) {
