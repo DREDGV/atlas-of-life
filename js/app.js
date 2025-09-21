@@ -595,7 +595,8 @@ function openHierarchySettingsModal() {
   const modal = document.getElementById('modal');
   if (!modal) return;
 
-  // const isEnabled = isHierarchyV2Enabled();
+  // Safe default (we keep v2 off by default for stability)
+  const isEnabled = false;
   
   modal.innerHTML = `
     <div class="modal-content">
@@ -4206,6 +4207,8 @@ async function init() {
   
   // Initialize hotkeys
   initializeHotkeys();
+  // Ensure DnD hints are off by default for stability
+  try { if (!state.settings) state.settings = {}; if (typeof state.settings.showDndHints==='undefined') state.settings.showDndHints = false; } catch(_){}
   
   // Initialize autocomplete
   console.log('About to initialize autocomplete...');
