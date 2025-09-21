@@ -4821,566 +4821,6 @@ function confirmTaskDetach() {
   pendingDetach = null;
 }
 
-// DISABLED: Legacy mouseup handler - CONFLICTS WITH NEW GPT-5 SYSTEM
-/*
-window.addEventListener("mouseup", (e) => {
-  // Block canvas events when modal is open
-  if (isModalOpen) {
-    return;
-  }
-  
-  // Clear any pending project move if user clicks elsewhere
-  if (!draggedNode && pendingProjectMove) {
-    pendingProjectMove = null;
-    hideToast();
-  }
-  
-  // Handle panning (when no drag started)
-  if (!draggedNode && !pendingDragNode) {
-    viewState.dragging = false;
-    return;
-  }
-  
-  // if drag never started, clear any pending drag
-  if (!draggedNode && pendingDragNode) {
-    pendingDragNode = null;
-    viewState.dragging = false;
-    return;
-  }
-  if (!draggedNode) return;
-  let moved = false;
-  // record before state for undo
-  const before = {};
-  if (draggedNode._type === "task") {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t) {
-      before.fromProjectId = t.projectId;
-      before.fromPos = t._pos ? { x: t._pos.x, y: t._pos.y } : null;
-    }
-  }
-  if (draggedNode._type === "project") {
-    const p = state.projects.find((x) => x.id === draggedNode.id);
-    if (p) {
-      before.fromPos = p._pos ? { x: p._pos.x, y: p._pos.y } : null;
-      before.fromDomainId = p.domainId;
-    }
-  }
-
-  // DnD: если есть dropTargetProjectId и он отличается от текущего projectId — переносим задачу
-  // If mouseup occurred outside canvas, ensure we compute hit from last known mouse position
-  if (!dropTargetProjectId && draggedNode && draggedNode._type === "task") {
-    // attempt to compute target under last mouse
-    const offX = lastMouseClient.offsetX;
-    const offY = lastMouseClient.offsetY;
-    if (typeof offX === "number") {
-      const ptCheck = screenToWorld(offX, offY);
-      const hitNodeCheck = hitExcluding(ptCheck.x, ptCheck.y, draggedNode.id);
-      if (hitNodeCheck && hitNodeCheck._type === "project")
-        dropTargetProjectId = hitNodeCheck.id;
-    }
-  }
-
-  if (dropTargetProjectId && draggedNode._type === "task") {
-    const task = state.tasks.find((t) => t.id === draggedNode.id);
-    if (task && task.projectId !== dropTargetProjectId) {
-      // Найдём все задачи, которые уже принадлежат этому проекту
-      const projectTasks = state.tasks.filter(
-        (t) => t.projectId === dropTargetProjectId && t.id !== draggedNode.id
-      );
-      const pNode = nodes.find(
-        (n) => n._type === "project" && n.id === dropTargetProjectId
-      );
-      let pos = { x: draggedNode.x, y: draggedNode.y };
-      if (pNode) {
-        // Определяем угол для новой задачи
-        const idx = projectTasks.length;
-        const total = projectTasks.length + 1;
-        const angle = (idx / total) * 2 * Math.PI;
-        // Радиус размещения — по краю круга проекта с небольшим отступом внутрь
-        const taskRadius = sizeByImportance(task) * DPR;
-        const r = pNode.r - taskRadius - 8 * DPR;
-        pos = {
-          x: pNode.x + Math.cos(angle) * r,
-          y: pNode.y + Math.sin(angle) * r,
-        };
-      }
-      pendingAttach = {
-        taskId: draggedNode.id,
-        fromProjectId: task.projectId,
-        toProjectId: dropTargetProjectId,
-        pos,
-      };
-      // update inspector so user sees confirm/cancel immediately
-      try {
-        const obj = state.tasks.find((t) => t.id === draggedNode.id);
-        obj._type = "task";
-        openInspectorFor(obj);
-      } catch (e) {}
-      // show attach toast with buttons
-      const toast = document.getElementById("toast");
-      if (toast) {
-        toast.className = "toast attach show";
-        toast.innerHTML = `Привязать задачу к проекту? <button id="attachOk">Привязать</button> <button id="attachCancel">Отменить</button>`;
-        toast.style.display = "block";
-        toast.style.opacity = "1";
-        
-        // Position toast near the dragged task
-        // Use CSS class for positioning
-        // handlers
-        setTimeout(() => {
-          const ok = document.getElementById("attachOk");
-          const cancel = document.getElementById("attachCancel");
-          if (ok)
-            ok.onclick = () => {
-                confirmAttach();
-            };
-          if (cancel)
-            cancel.onclick = () => {
-                cancelAttach();
-            };
-        }, 20);
-      }
-    }
-  }
-
-  // For projects: if dropped over a domain, move project to that domain; if dropped outside, make independent
-  if (draggedNode._type === "project") {
-    const p = state.projects.find((x) => x.id === draggedNode.id);
-    if (p) {
-      console.log("Project move logic - dropTargetDomainId:", dropTargetDomainId, "p.domainId:", p.domainId);
-      if (dropTargetDomainId) {
-        const targetDomain = state.domains.find(d => d.id === dropTargetDomainId);
-        if (targetDomain) {
-          // Move project to domain (only if it's actually moving to a different domain)
-          if (p.domainId !== targetDomain.id) {
-            const currentDomain = p.domainId ? state.domains.find(d => d.id === p.domainId)?.title : "независимый";
-            const newDomain = targetDomain.title;
-            console.log("Project move - showing confirmation:", currentDomain, "->", newDomain);
-            
-            // Set up pending project move
-            pendingProjectMove = {
-              projectId: draggedNode.id,
-              fromDomainId: p.domainId,
-              toDomainId: targetDomain.id,
-              pos: { x: draggedNode.x, y: draggedNode.y }
-            };
-            
-            // Show toast with buttons
-            const toast = document.getElementById("toast");
-            console.log("Project move toast - toast element:", toast);
-            if (toast) {
-              // Clear any existing content and handlers
-              console.log("About to clear existing toast...");
-              hideToast();
-              console.log("Toast cleared, now setting up new toast...");
-              
-              // Set up toast content
-              toast.className = "toast attach show";
-              toast.innerHTML = `Переместить проект "${p.title}" из домена "${currentDomain}" в домен "${newDomain}"? <button id="projectMoveOk">Переместить</button> <button id="projectMoveCancel">Отменить</button>`;
-              
-              // Set modal flag to block canvas events
-              isModalOpen = true;
-              
-              // Use CSS class for positioning - no manual style overrides
-              
-              console.log("Project move toast - displayed:", toast.style.display, "opacity:", toast.style.opacity);
-              console.log("Project move toast - className:", toast.className);
-              console.log("Project move toast - computed style:", window.getComputedStyle(toast).display);
-              
-              // Set up handlers
-              setTimeout(() => {
-                const ok = document.getElementById("projectMoveOk");
-                const cancel = document.getElementById("projectMoveCancel");
-                if (ok) {
-                  ok.onclick = () => {
-                    confirmProjectMove();
-                    hideToast();
-            };
-          }
-          if (cancel) {
-            cancel.onclick = () => {
-                    pendingProjectMove = null;
-                    hideToast();
-            };
-          }
-        }, 20);
-      }
-          } else {
-            // Project is already in this domain, just update position
-            p.pos = { x: draggedNode.x, y: draggedNode.y };
-            p.updatedAt = Date.now();
-            saveState();
-            
-            const toast = document.getElementById("toast");
-            if (toast) {
-              toast.className = "toast ok show";
-              toast.textContent = `Позиция проекта "${p.title}" в домене "${targetDomain.title}" обновлена`;
-              toast.style.display = "block";
-              toast.style.opacity = "1";
-              
-              // Position toast near the dragged project
-              // Use CSS class for positioning
-              
-              setTimeout(() => {
-                toast.style.transition = "opacity .3s linear";
-                toast.style.opacity = "0";
-                setTimeout(() => {
-                  toast.className = "toast";
-                    hideToast();
-                  toast.style.transition = "";
-                }, 320);
-              }, 1400);
-            }
-            
-            layoutMap();
-            drawMap();
-          }
-        } else {
-          // Extract project from domain (make independent) - when dropped outside any domain
-          console.log("Project extract logic - p.domainId:", p.domainId, "dropTargetDomainId:", dropTargetDomainId);
-          if (p.domainId !== null) {
-            const currentDomain = state.domains.find(d => d.id === p.domainId)?.title;
-            console.log("Project extract - showing confirmation for:", currentDomain);
-            
-            // Set up pending project extraction
-            pendingProjectMove = {
-              projectId: draggedNode.id,
-              fromDomainId: p.domainId,
-              toDomainId: null,
-              pos: { x: draggedNode.x, y: draggedNode.y }
-            };
-            
-            // Show toast with buttons
-            const toast = document.getElementById("toast");
-            console.log("Project extract toast - toast element:", toast);
-            if (toast) {
-              toast.className = "toast detach show";
-              toast.innerHTML = `Извлечь проект "${p.title}" из домена "${currentDomain}" и сделать его независимым? <button id="projectExtractOk">Извлечь</button> <button id="projectExtractCancel">Отменить</button>`;
-              toast.style.setProperty("display", "block", "important");
-              toast.style.setProperty("opacity", "1", "important");
-              toast.style.setProperty("z-index", "1000", "important");
-              toast.style.setProperty("visibility", "visible", "important");
-              console.log("Project extract toast - displayed:", toast.style.display, "opacity:", toast.style.opacity);
-              
-              // Position toast near the dragged project
-              // Use CSS class for positioning
-              
-              // Fallback: if positioning failed, use center positioning
-              setTimeout(() => {
-                if (toast.style.left === '' || toast.style.top === '') {
-                  toast.style.position = 'fixed';
-                  toast.style.left = '50%';
-                  toast.style.top = '50%';
-                  toast.style.transform = 'translate(-50%, -50%)';
-                  toast.style.right = 'auto';
-                }
-              }, 10);
-              
-              // Set up handlers
-              setTimeout(() => {
-                const ok = document.getElementById("projectExtractOk");
-                const cancel = document.getElementById("projectExtractCancel");
-                if (ok) {
-                  ok.onclick = () => {
-                    confirmProjectMove();
-                  };
-                }
-                if (cancel) {
-                  cancel.onclick = () => {
-                    pendingProjectMove = null;
-                    toast.className = "toast";
-                    toast.className = "toast";
-                    hideToast();
-      };
-    }
-        }, 20);
-      }
-    }
-  }
-      }
-    }
-  }
-
-  // For tasks: if dropped over a domain, ask to move into that domain (select project or keep independent)
-  if (draggedNode._type === "task" && dropTargetDomainId) {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    const curDomain = t?.projectId
-      ? state.projects.find((p) => p.id === t.projectId)?.domainId
-      : t?.domainId;
-    if (t && dropTargetDomainId && dropTargetDomainId !== curDomain) {
-      // Если задача была полностью независимой (без domainId), сразу прикрепляем к домену
-      if (!t.domainId && !t.projectId) {
-        t.domainId = dropTargetDomainId;
-        t.updatedAt = Date.now();
-        saveState();
-        const toast = document.getElementById("toast");
-        if (toast) {
-          toast.className = "toast ok show";
-          toast.textContent = "Задача прикреплена к домену";
-          toast.style.display = "block";
-          toast.style.opacity = "1";
-          
-          // Position toast near the dragged task
-          // Use CSS class for positioning
-          
-          setTimeout(() => {
-            toast.style.transition = "opacity .3s linear";
-            toast.style.opacity = "0";
-            setTimeout(() => {
-              toast.className = "toast";
-                    hideToast();
-              toast.style.transition = "";
-            }, 320);
-          }, 1400);
-        }
-        layoutMap();
-        drawMap();
-      } else {
-        // Для остальных случаев показываем модалку выбора
-        openMoveTaskModal(t, dropTargetDomainId, draggedNode.x, draggedNode.y);
-      }
-    }
-  }
-
-  // If task dropped outside any domain and beyond its project circle, propose detach
-  if (draggedNode._type === "task" && !dropTargetDomainId) {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t && t.projectId) {
-      const pNode = nodes.find(
-        (n) => n._type === "project" && n.id === t.projectId
-      );
-      if (pNode) {
-        const dx = draggedNode.x - pNode.x;
-        const dy = draggedNode.y - pNode.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > pNode.r + 12 * DPR) {
-          // mirror pendingDetach flow used elsewhere
-          pendingDetach = {
-            taskId: draggedNode.id,
-            fromProjectId: t.projectId,
-            pos: { x: draggedNode.x, y: draggedNode.y },
-          };
-          const toast = document.getElementById("toast");
-          if (toast) {
-            toast.className = "toast detach";
-            toast.innerHTML = `Отвязать задачу от проекта? <button id="detachOk">Отвязать</button> <button id="detachCancel">Отмена</button>`;
-            toast.style.display = "block";
-            toast.style.opacity = "1";
-            
-            // Position toast near the dragged task
-            // Use CSS class for positioning
-            setTimeout(() => {
-              const ok = document.getElementById("detachOk");
-              if (ok) {
-                ok.onclick = () => {
-                  try { 
-                    confirmDetach();
-                  } catch (e) {
-                    console.error("Error in detach confirm:", e);
-                  }
-                };
-              }
-              const cancel = document.getElementById("detachCancel");
-              if (cancel) {
-                cancel.onclick = () => {
-                    pendingDetach = null;
-                    toast.className = "toast";
-                    toast.className = "toast";
-                    hideToast();
-                };
-              }
-            }, 10);
-          }
-        }
-      }
-    } else if (t && !t.projectId && !t.domainId) {
-      // Task is already independent, just update position
-      t.pos = { x: draggedNode.x, y: draggedNode.y };
-      t.updatedAt = Date.now();
-      saveState();
-      
-      const toast = document.getElementById("toast");
-      if (toast) {
-        toast.className = "toast ok show";
-        toast.textContent = "Позиция задачи обновлена";
-        toast.style.display = "block";
-        toast.style.opacity = "1";
-        
-        // Position toast near the dragged task
-        // Use CSS class for positioning
-        
-        setTimeout(() => {
-          toast.style.transition = "opacity .3s linear";
-          toast.style.opacity = "0";
-          setTimeout(() => {
-            toast.className = "toast";
-                    hideToast();
-            toast.style.transition = "";
-          }, 320);
-        }, 1400);
-      }
-      
-      layoutMap();
-      drawMap();
-    }
-  }
-
-
-  // persist visual position back to state
-  if (draggedNode._type === "task") {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t) {
-      // if there is a pendingAttach for this task, don't persist yet (wait for confirm)
-      if (pendingAttach && pendingAttach.taskId === t.id) {
-        // keep transient pending visualization; actual save occurs on confirmAttach
-      } else {
-        t.pos = { x: draggedNode.x, y: draggedNode.y };
-        saveState();
-      }
-    }
-  }
-  if (draggedNode._type === "project") {
-    const p = state.projects.find((x) => x.id === draggedNode.id);
-    if (p) {
-      // if there is a pendingProjectMove for this project, don't persist yet (wait for confirm)
-      if (pendingProjectMove && pendingProjectMove.projectId === p.id) {
-        // keep transient pending visualization; actual save occurs on confirmProjectMove
-      } else {
-      p.pos = { x: draggedNode.x, y: draggedNode.y };
-        p.updatedAt = Date.now();
-      saveState();
-      }
-      
-      // Show feedback for independent project position update (only if no pending move)
-      if (!p.domainId && !(pendingProjectMove && pendingProjectMove.projectId === p.id)) {
-        const toast = document.getElementById("toast");
-        if (toast) {
-          toast.className = "toast ok show";
-          toast.textContent = "Позиция независимого проекта обновлена";
-          toast.style.display = "block";
-          toast.style.opacity = "1";
-          
-          // Position toast near the dragged project
-          // Use CSS class for positioning
-          
-          setTimeout(() => {
-            toast.style.transition = "opacity .3s linear";
-            toast.style.opacity = "0";
-            setTimeout(() => {
-              toast.className = "toast";
-                    hideToast();
-              toast.style.transition = "";
-            }, 320);
-          }, 1400);
-        }
-      }
-    }
-  }
-
-  // record after state and push undo entry if relevant
-  const after = {};
-  if (draggedNode._type === "task") {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t) {
-      after.toProjectId = t.projectId;
-      after.toPos = t.pos ? { x: t.pos.x, y: t.pos.y } : null;
-    }
-    if (
-      before.fromProjectId !== after.toProjectId ||
-      (before.fromPos &&
-        after.toPos &&
-        (before.fromPos.x !== after.toPos.x ||
-          before.fromPos.y !== after.toPos.y)) ||
-      (!before.fromPos && after.toPos)
-    ) {
-      undoStack.push({
-        type: "task",
-        id: draggedNode.id,
-        fromProjectId: before.fromProjectId,
-        toProjectId: after.toProjectId,
-        fromPos: before.fromPos,
-        toPos: after.toPos,
-      });
-      // cap undo stack
-      if (undoStack.length > 50) undoStack.shift();
-    }
-  }
-  if (draggedNode._type === "project") {
-    const p = state.projects.find((x) => x.id === draggedNode.id);
-    if (p) {
-      after.toPos = p.pos ? { x: p.pos.x, y: p.pos.y } : null;
-      after.toDomainId = p.domainId;
-      if (
-        before.fromPos ||
-        after.toPos ||
-        before.fromDomainId !== after.toDomainId
-      ) {
-        undoStack.push({
-          type: "project",
-          id: draggedNode.id,
-          fromPos: before.fromPos,
-          toPos: after.toPos,
-          fromDomainId: before.fromDomainId,
-          toDomainId: after.toDomainId,
-        });
-        if (undoStack.length > 50) undoStack.shift();
-      }
-    }
-  }
-
-  draggedNode = null;
-  dropTargetProjectId = null;
-  dropTargetDomainId = null;
-  canvas.style.cursor = "";
-  
-  // Reset visual effects
-  canvas.style.filter = "";
-  canvas.style.transition = "";
-  
-  layoutMap();
-  drawMap();
-
-  // Показываем toast при успешном переносе
-  if (moved) {
-    const toast = document.getElementById("toast");
-    if (toast) {
-      toast.className = "toast ok show";
-      toast.textContent = "Задача перенесена";
-      toast.style.display = "block";
-      toast.style.opacity = "1";
-      setTimeout(() => {
-        toast.style.transition = "opacity .3s linear";
-        toast.style.opacity = "0";
-        setTimeout(() => {
-              toast.className = "toast";
-                    hideToast();
-          toast.style.transition = "";
-        }, 320);
-      }, 1800);
-    }
-  }
-  // toast for project move
-  if (typeof projectMoved !== "undefined" && projectMoved) {
-    const toast = document.getElementById("toast");
-    if (toast) {
-      toast.className = "toast ok show";
-      toast.textContent = "Проект перенесён";
-      toast.style.display = "block";
-      toast.style.opacity = "1";
-      setTimeout(() => {
-        toast.style.transition = "opacity .3s linear";
-        toast.style.opacity = "0";
-        setTimeout(() => {
-              toast.className = "toast";
-                    hideToast();
-          toast.style.transition = "";
-        }, 320);
-      }, 1800);
-    }
-  }
-});
-*/
-
 // Export requestDraw function
 export { requestDraw };
 
@@ -7238,8 +6678,8 @@ function drawChecklists() {
     const alpha = Math.max(0.9, checklist.opacity || 1.0);
     
     // Создаем форму чек-листа (прямоугольник с закругленными углами)
-    const width = pulseRadius * 2.5;
-    const height = pulseRadius * 1.8;
+    const width = pulseRadius * 3.0;
+    const height = pulseRadius * 2.5;
     const cornerRadius = pulseRadius * 0.3;
     
     // Тень
@@ -7294,7 +6734,7 @@ function drawChecklists() {
     ctx.stroke();
     
     // Внутренние отступы и клиппинг, чтобы содержимое не выходило за границы
-    const padding = 10 * DPR;
+    const padding = 8 * DPR;
     const contentLeft = x - width / 2 + padding;
     const contentRight = x + width / 2 - padding;
     const contentTop = y - height / 2 + padding;
@@ -7334,75 +6774,55 @@ function drawChecklists() {
     };
     
     // Определяем режим отображения
-    const mode = (state.settings && state.settings.checklistIconMode) || 'title';
+    const mode = (state.settings && state.settings.checklistIconMode) || 'hybrid';
     
     // Заголовок: положение зависит от режима
     ctx.fillStyle = baseColor;
     ctx.textAlign = "center";
-    const titleY = (mode === 'preview2' || mode === 'preview3') ? (contentTop + 12 * DPR) : y;
+    const titleY = (mode === 'preview2' || mode === 'preview3' || mode === 'hybrid') ? (contentTop + 10 * DPR) : y;
     const fitted = fitOneLine(checklist.title, contentWidth, 10 * DPR, 7 * DPR, 'bold');
     ctx.font = fitted.font;
     ctx.fillText(fitted.text, x, titleY);
 
-    // Прогресс-бар (только для режима minimal)
+    // Бэйдж прогресса (показывается всегда для hybrid/minimal)
     const progress = getChecklistProgress(checklist.id);
-    let progressBarY = contentBottom - 8 * DPR;
-    if (mode === 'minimal' && progress > 0) {
-      const progressBarWidth = Math.max(10 * DPR, contentWidth * 0.9);
-      const progressBarHeight = 4 * DPR;
-      const progressBarX = x - progressBarWidth / 2;
-      
-      ctx.fillStyle = baseColor + '30';
+    if (mode === 'hybrid' || mode === 'minimal') {
+      const badge = Math.max(16 * DPR, Math.min(24 * DPR, 18 * DPR));
+      const bx = x + width/2 - badge - 6 * DPR;
+      const by = y - height/2 + 6 * DPR;
+      ctx.fillStyle = baseColor + '90';
       ctx.beginPath();
-      drawRoundedRect(ctx, progressBarX, progressBarY, progressBarWidth, progressBarHeight, progressBarHeight/2);
+      drawRoundedRect(ctx, bx, by, badge, badge, 4 * DPR);
       ctx.fill();
-      
-      const fillWidth = (progressBarWidth * progress) / 100;
-      if (fillWidth > 0) {
-        const progressGradient = ctx.createLinearGradient(progressBarX, progressBarY, progressBarX + fillWidth, progressBarY);
-        progressGradient.addColorStop(0, baseColor);
-        progressGradient.addColorStop(1, baseColor + 'CC');
-        ctx.fillStyle = progressGradient;
-        ctx.beginPath();
-        drawRoundedRect(ctx, progressBarX, progressBarY, fillWidth, progressBarHeight, progressBarHeight/2);
-        ctx.fill();
-      }
-      ctx.fillStyle = baseColor;
+      ctx.fillStyle = '#0b1020';
       ctx.font = `${8 * DPR}px system-ui`;
-      ctx.textAlign = "center";
-      ctx.fillText(`${progress}%`, x, progressBarY - 4 * DPR);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(Math.round(progress)), bx + badge/2, by + badge/2);
     }
 
     // Режимы отображения содержимого
-    if (mode === 'minimal') {
-      if (checklist.items && checklist.items.length > 0) {
-        ctx.fillStyle = baseColor;
-        ctx.font = `${8 * DPR}px system-ui`;
-        ctx.textAlign = "center";
-        const infoY = (progress > 0) ? (progressBarY - 10 * DPR) : (contentBottom - 10 * DPR);
-        const completed = (checklist.items.filter(i => i.completed).length) || 0;
-        const total = checklist.items.length;
-        ctx.fillText(`${completed}/${total}`, x, infoY);
-      }
-    } else if (mode === 'preview2' || mode === 'preview3') {
+    const scale = viewState.scale || 1;
+    const showPreview = (mode === 'preview2' || mode === 'preview3') || (mode === 'hybrid' && (scale > 1.5 || (currentHoveredChecklist && currentHoveredChecklist.id === checklist.id)));
+    if (showPreview) {
       const linesToShow = (mode === 'preview3') ? 3 : 2;
       if (checklist.items && checklist.items.length > 0) {
-        const itemHeight = 11 * DPR;
-        const firstItemY = titleY + 14 * DPR;
+        const itemHeight = 9 * DPR;
+        const firstItemY = titleY + 12 * DPR;
         const bottomLimit = contentBottom;
         const maxRows = Math.max(0, Math.floor((bottomLimit - firstItemY) / itemHeight));
-        const maxItems = Math.min(checklist.items.length, Math.min(linesToShow, maxRows));
+        const maxItems = Math.min(checklist.items.length, Math.min((mode==='hybrid'?3:linesToShow), maxRows));
         ctx.textAlign = "left";
         for (let i = 0; i < maxItems; i++) {
           const item = checklist.items[i];
           const itemY = firstItemY + i * itemHeight;
-          const bulletX = contentLeft + 2 * DPR;
-          const textX = bulletX + 10 * DPR;
+          const bulletX = contentLeft;
+          const textX = bulletX + 8 * DPR;
           ctx.fillStyle = item.completed ? baseColor : '#6b7280';
           ctx.font = `${8 * DPR}px system-ui`;
           ctx.fillText('•', bulletX, itemY);
           ctx.fillStyle = item.completed ? '#9ca3af' : '#e5e7eb';
-          const fittedItem = fitOneLine(item.text || '', contentWidth - 12 * DPR, 8 * DPR, 6 * DPR, 'normal');
+          const fittedItem = fitOneLine(item.text || '', contentWidth - 8 * DPR, 8 * DPR, 6 * DPR, 'normal');
           ctx.font = fittedItem.font;
           ctx.fillText(fittedItem.text, textX, itemY);
         }

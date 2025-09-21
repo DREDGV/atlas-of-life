@@ -474,6 +474,7 @@ function openDisplayModal() {
       <div style="display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
         <div style="font-weight:600;">🧩 Вид иконки чек-листа на карте</div>
         <select id="checklistIconMode" style="width:100%;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--panel-2);border-radius:4px;">
+          <option value="hybrid" ${state.settings && state.settings.checklistIconMode==='hybrid' ? 'selected' : ''}>Гибрид: заголовок + бэйдж, превью на зуме/ховере</option>
           <option value="title" ${state.settings && state.settings.checklistIconMode==='title' ? 'selected' : ''}>Только заголовок</option>
           <option value="minimal" ${state.settings && state.settings.checklistIconMode==='minimal' ? 'selected' : ''}>Минимум: заголовок + процент</option>
           <option value="preview2" ${state.settings && state.settings.checklistIconMode==='preview2' ? 'selected' : ''}>Превью: первые 2 строки</option>
