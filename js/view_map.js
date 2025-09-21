@@ -15,6 +15,13 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+// Compute stable checklist rect from center and base radius (without pulse)
+function getChecklistRectFromBase(x, y, r) {
+  const width = r * 3.8;
+  const height = r * 2.4;
+  return { x1: x - width / 2, y1: y - height / 2, x2: x + width / 2, y2: y + height / 2, w: width, h: height };
+}
+
 import {
   state,
   byId,
@@ -4089,11 +4096,11 @@ function handleChecklistHover(screenX, screenY, worldPos) {
     return;
   }
 
-  // Ищем чек-лист под курсором
+  // Ищем чек-лист под курсором — точным прямоугольным хит-тестом по стабильным размерам
   let found = null;
   for (const checklist of state.checklists) {
-    const distance = Math.hypot(worldPos.x - checklist.x, worldPos.y - checklist.y);
-    if (distance <= checklist.r + 20) {
+    const rect = getChecklistRectFromBase(checklist.x, checklist.y, checklist.r);
+    if (worldPos.x >= rect.x1 && worldPos.x <= rect.x2 && worldPos.y >= rect.y1 && worldPos.y <= rect.y2) {
       found = checklist;
       break;
     }
@@ -6660,7 +6667,10 @@ function drawChecklists() {
   const PREVIEW_OFF = 1.4;
 
   state.checklists.forEach((checklist, index) => {
-    if (!inView(checklist.x, checklist.y, checklist.r + 20 * DPR)) {
+    // Используем прямоугольную область для culling, чтобы текст превью не пропадал на границе
+    const rect = getChecklistRectFromBase(checklist.x, checklist.y, checklist.r);
+    const inViewRect = !(rect.x2 < vx0 || rect.x1 > vx1 || rect.y2 < vy0 || rect.y1 > vy1);
+    if (!inViewRect) {
       return;
     }
     
@@ -6807,7 +6817,7 @@ function drawChecklists() {
         const firstItemY = titleY + 14 * DPR;
         const bottomLimit = contentBottom;
         const maxRows = Math.max(0, Math.floor((bottomLimit - firstItemY) / itemHeight));
-        const maxItems = Math.min(checklist.items.length, Math.min((mode==='hybrid'?3:linesToShow), maxRows));
+        const maxItems = Math.min(checklist.items.length, Math.min(3, maxRows));
         ctx.textAlign = "left";
         for (let i = 0; i < maxItems; i++) {
           const item = checklist.items[i];
