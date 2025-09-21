@@ -15,10 +15,15 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
-// Compute stable checklist rect from center and base radius (without pulse)
+// Compute stable checklist rect from center and base radius (with pulse for hit-test)
 function getChecklistRectFromBase(x, y, r) {
-  const width = r * 3.8;
-  const height = r * 2.4;
+  // Используем пульсирующий радиус для хит-теста, как в рендере
+  const time = performance.now() * 0.002;
+  const pulse = 1 + Math.sin(time + x * 0.01) * 0.1;
+  const pulseRadius = r * pulse;
+  
+  const width = pulseRadius * 3.8;
+  const height = pulseRadius * 2.4;
   return { x1: x - width / 2, y1: y - height / 2, x2: x + width / 2, y2: y + height / 2, w: width, h: height };
 }
 
@@ -4100,25 +4105,31 @@ function handleChecklistHover(screenX, screenY, worldPos) {
   let found = null;
   for (const checklist of state.checklists) {
     const rect = getChecklistRectFromBase(checklist.x, checklist.y, checklist.r);
-    if (worldPos.x >= rect.x1 && worldPos.x <= rect.x2 && worldPos.y >= rect.y1 && worldPos.y <= rect.y2) {
+    const isInside = worldPos.x >= rect.x1 && worldPos.x <= rect.x2 && worldPos.y >= rect.y1 && worldPos.y <= rect.y2;
+    console.log(`Hit test: checklist ${checklist.id}, worldPos(${worldPos.x.toFixed(1)}, ${worldPos.y.toFixed(1)}), rect(${rect.x1.toFixed(1)}, ${rect.y1.toFixed(1)} - ${rect.x2.toFixed(1)}, ${rect.y2.toFixed(1)}), inside: ${isInside}`);
+    if (isInside) {
       found = checklist;
       break;
     }
   }
-  
+
   // Если нашли чек-лист
   if (found) {
     canvas.style.cursor = 'pointer';
-    
+
+    // Устанавливаем флаг для рендера
+    found._preview = true;
+    console.log('Hover ON for checklist:', found.id, 'preview set to true');
+
     // Если это новый чек-лист
     if (currentHoveredChecklist !== found) {
       // Очищаем предыдущий таймер
       if (quickViewTimer) {
         clearTimeout(quickViewTimer);
       }
-      
+
       currentHoveredChecklist = found;
-      
+
       // Показываем быстрый просмотр через 1 секунду
       quickViewTimer = setTimeout(() => {
         if (currentHoveredChecklist === found) {
@@ -4130,14 +4141,17 @@ function handleChecklistHover(screenX, screenY, worldPos) {
     // Если убрали курсор
     if (currentHoveredChecklist) {
       canvas.style.cursor = 'grab';
+      // Сбрасываем флаг для рендера
+      currentHoveredChecklist._preview = false;
+      console.log('Hover OFF for checklist:', currentHoveredChecklist.id, 'preview set to false');
       currentHoveredChecklist = null;
-      
+
       // Очищаем таймер
       if (quickViewTimer) {
         clearTimeout(quickViewTimer);
         quickViewTimer = null;
       }
-      
+
       // Скрываем быстрый просмотр
       hideQuickChecklistView();
     }
@@ -6791,6 +6805,8 @@ function drawChecklists() {
     
     // Определяем режим отображения
     const mode = (state.settings && state.settings.checklistIconMode) || 'hybrid';
+    if (!state.settings) state.settings = {};
+    if (!state.settings.checklistIconMode) state.settings.checklistIconMode = 'hybrid';
     
     // Заголовок: положение зависит от режима
     ctx.fillStyle = baseColor;
@@ -6809,7 +6825,8 @@ function drawChecklists() {
     }
 
     // Режимы отображения содержимого
-    const showPreview = (mode === 'preview2' || mode === 'preview3') || (mode === 'hybrid' && (!!checklist._preview || isHovered));
+    const showPreview = (mode === 'preview2' || mode === 'preview3') || (mode === 'hybrid' && !!checklist._preview);
+    console.log('Checklist render:', checklist.id, 'mode:', mode || 'undefined', 'preview:', !!checklist._preview, 'showPreview:', showPreview);
     if (showPreview) {
       const linesToShow = (mode === 'preview3') ? 3 : 2;
       if (checklist.items && checklist.items.length > 0) {
