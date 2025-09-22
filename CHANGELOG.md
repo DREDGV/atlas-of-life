@@ -659,6 +659,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: update app version and improve WORKFLOW with automatic date handling (2023528)
 - docs: update dates to September 22, 2025 in all documentation files (2b57d03)
 - feat(workflow): complete inbox system implementation with full documentation (493f0f6)
 - fix: export requestLayout function to resolve map display issue (9c4e58e)
