@@ -603,11 +603,62 @@ function showInboxListModal() {
     `;
   } else {
     content.innerHTML = `
-      <div style="margin-bottom: 16px;">
-        <h3 style="margin: 0 0 8px 0; color: var(--text);">📥 Инбокс (${items.length})</h3>
-        <p style="margin: 0; color: var(--text-2); font-size: 14px;">
-          Разложите элементы по проектам и доменам
-        </p>
+      <div style="margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+          <div>
+            <h3 style="margin: 0 0 8px 0; color: var(--text); font-size: 20px;">📥 Инбокс (${items.length})</h3>
+            <p style="margin: 0; color: var(--text-2); font-size: 14px;">
+              Разложите элементы по проектам и доменам
+            </p>
+          </div>
+          <button id="inbox-help-toggle" title="Показать справку по горячим клавишам" style="
+            padding: 8px 12px;
+            border: 1px solid var(--panel-2);
+            border-radius: 8px;
+            background: var(--panel);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          " onmouseover="this.style.background='var(--panel-2)'" 
+             onmouseout="this.style.background='var(--panel)'">❓ Справка</button>
+        </div>
+        
+        <!-- Help Panel -->
+        <div id="inbox-help-panel" style="
+          display: none;
+          padding: 16px;
+          background: var(--panel-2);
+          border-radius: 8px;
+          border: 1px solid var(--panel-2);
+          margin-bottom: 16px;
+        ">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div>
+              <h4 style="margin: 0 0 8px 0; color: var(--text); font-size: 14px;">🎯 Быстрые действия:</h4>
+              <div style="font-size: 12px; color: var(--text-2); line-height: 1.5;">
+                <div><strong>1-4:</strong> Установить приоритет p1-p4</div>
+                <div><strong>A:</strong> Назначить проект</div>
+                <div><strong>T:</strong> Добавить тег</div>
+                <div><strong>D:</strong> Установить дату</div>
+                <div><strong>Enter:</strong> Выделить/снять элемент</div>
+                <div><strong>Esc:</strong> Закрыть окно</div>
+              </div>
+            </div>
+            <div>
+              <h4 style="margin: 0 0 8px 0; color: var(--text); font-size: 14px;">📦 Пакетные операции:</h4>
+              <div style="font-size: 12px; color: var(--text-2); line-height: 1.5;">
+                <div><strong>Выделите элементы</strong> чекбоксами</div>
+                <div><strong>📋 Задачи:</strong> Создать задачи</div>
+                <div><strong>💡 Идеи:</strong> Создать идеи</div>
+                <div><strong>📝 Заметки:</strong> Создать заметки</div>
+                <div><strong>🗑️ Удалить:</strong> Удалить выбранные</div>
+                <div><strong>❌ Снять:</strong> Снять выделение</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
       <!-- Batch Operations Panel -->
@@ -713,76 +764,168 @@ function showInboxListModal() {
       <div id="inbox-items-list" style="margin-bottom: 20px;">
         ${items.map(item => `
           <div class="inbox-item" data-id="${item.id}" style="
-            padding: 12px;
-            border: 1px solid var(--panel-2);
-            border-radius: 4px;
-            margin-bottom: 8px;
-            background: var(--panel);
-            transition: all 0.2s ease;
-          ">
+            padding: 16px;
+            border: 2px solid var(--panel-2);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--panel) 0%, var(--panel-2) 100%);
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            cursor: pointer;
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 16px rgba(0, 0, 0, 0.1)'" 
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0, 0, 0, 0.05)'">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-              <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1;">
-                <input type="checkbox" class="inbox-item-checkbox" data-id="${item.id}" style="
-                  margin-top: 2px;
-                  width: 16px;
-                  height: 16px;
-                  cursor: pointer;
-                ">
+              <div style="display: flex; align-items: flex-start; gap: 12px; flex: 1;">
+                <div style="position: relative;">
+                  <input type="checkbox" class="inbox-item-checkbox" data-id="${item.id}" style="
+                    margin-top: 2px;
+                    width: 20px;
+                    height: 20px;
+                    cursor: pointer;
+                    accent-color: var(--accent);
+                    transform: scale(1.2);
+                  ">
+                </div>
                 <div style="flex: 1;">
-                  <div style="font-weight: 500; margin-bottom: 4px;">${item.text}</div>
-                  <div style="font-size: 12px; color: var(--text-2);">
-                    ${item.metadata.tags.length > 0 ? `Теги: ${item.metadata.tags.join(', ')}` : ''}
-                    ${item.metadata.priority ? ` • Приоритет: ${item.metadata.priority}` : ''}
-                    ${item.metadata.dueDate ? ` • Срок: ${item.metadata.dueDate}` : ''}
+                  <div style="
+                    font-weight: 600; 
+                    margin-bottom: 8px; 
+                    font-size: 15px;
+                    line-height: 1.4;
+                    color: var(--text);
+                  ">${item.text}</div>
+                  <div style="
+                    display: flex;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                    align-items: center;
+                  ">
+                    ${item.metadata.tags.length > 0 ? `
+                      <div style="
+                        display: flex;
+                        gap: 4px;
+                        align-items: center;
+                      ">
+                        <span style="font-size: 11px; color: var(--text-2);">🏷️</span>
+                        ${item.metadata.tags.map(tag => `
+                          <span style="
+                            padding: 2px 8px;
+                            background: rgba(59, 130, 246, 0.1);
+                            color: #3b82f6;
+                            border-radius: 12px;
+                            font-size: 11px;
+                            font-weight: 500;
+                          ">${tag}</span>
+                        `).join('')}
+                      </div>
+                    ` : ''}
+                    ${item.metadata.priority ? `
+                      <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                      ">
+                        <span style="font-size: 11px; color: var(--text-2);">⚡</span>
+                        <span style="
+                          padding: 2px 8px;
+                          background: ${item.metadata.priority === 'p1' ? 'rgba(239, 68, 68, 0.1)' : 
+                                       item.metadata.priority === 'p2' ? 'rgba(245, 158, 11, 0.1)' : 
+                                       item.metadata.priority === 'p3' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(107, 114, 128, 0.1)'};
+                          color: ${item.metadata.priority === 'p1' ? '#ef4444' : 
+                                  item.metadata.priority === 'p2' ? '#f59e0b' : 
+                                  item.metadata.priority === 'p3' ? '#3b82f6' : '#6b7280'};
+                          border-radius: 12px;
+                          font-size: 11px;
+                          font-weight: 600;
+                          text-transform: uppercase;
+                        ">${item.metadata.priority}</span>
+                      </div>
+                    ` : ''}
+                    ${item.metadata.dueDate ? `
+                      <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                      ">
+                        <span style="font-size: 11px; color: var(--text-2);">📅</span>
+                        <span style="
+                          padding: 2px 8px;
+                          background: rgba(16, 185, 129, 0.1);
+                          color: #10b981;
+                          border-radius: 12px;
+                          font-size: 11px;
+                          font-weight: 500;
+                        ">${item.metadata.dueDate}</span>
+                      </div>
+                    ` : ''}
                   </div>
                 </div>
               </div>
-              <div style="display: flex; gap: 4px; margin-left: 12px; flex-wrap: wrap;">
-                <button class="inbox-item-quick-task" data-id="${item.id}" title="Быстро создать задачу" style="
-                  padding: 4px 6px;
-                  border: 1px solid #3b82f6;
-                  border-radius: 4px;
-                  background: #3b82f6;
-                  color: white;
-                  cursor: pointer;
-                  font-size: 11px;
-                ">📋</button>
-                <button class="inbox-item-quick-idea" data-id="${item.id}" title="Быстро создать идею" style="
-                  padding: 4px 6px;
-                  border: 1px solid #f59e0b;
-                  border-radius: 4px;
-                  background: #f59e0b;
-                  color: white;
-                  cursor: pointer;
-                  font-size: 11px;
-                ">💡</button>
-                <button class="inbox-item-quick-note" data-id="${item.id}" title="Быстро создать заметку" style="
-                  padding: 4px 6px;
-                  border: 1px solid #10b981;
-                  border-radius: 4px;
-                  background: #10b981;
-                  color: white;
-                  cursor: pointer;
-                  font-size: 11px;
-                ">📝</button>
-                <button class="inbox-item-distribute" data-id="${item.id}" title="Полное распределение" style="
-                  padding: 4px 8px;
-                  border: 1px solid var(--accent);
-                  border-radius: 4px;
-                  background: var(--accent);
+              <div style="display: flex; gap: 6px; margin-left: 16px; flex-wrap: wrap;">
+                <button class="inbox-item-quick-task" data-id="${item.id}" title="Быстро создать задачу (1)" style="
+                  padding: 8px 10px;
+                  border: none;
+                  border-radius: 8px;
+                  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
                   color: white;
                   cursor: pointer;
                   font-size: 12px;
-                ">⚙️</button>
-                <button class="inbox-item-delete" data-id="${item.id}" title="Удалить" style="
-                  padding: 4px 6px;
-                  border: 1px solid var(--danger);
-                  border-radius: 4px;
+                  font-weight: 500;
+                  transition: all 0.2s ease;
+                  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+                " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(59, 130, 246, 0.3)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(59, 130, 246, 0.2)'">📋</button>
+                <button class="inbox-item-quick-idea" data-id="${item.id}" title="Быстро создать идею (2)" style="
+                  padding: 8px 10px;
+                  border: none;
+                  border-radius: 8px;
+                  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                  color: white;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-weight: 500;
+                  transition: all 0.2s ease;
+                  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+                " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(245, 158, 11, 0.3)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(245, 158, 11, 0.2)'">💡</button>
+                <button class="inbox-item-quick-note" data-id="${item.id}" title="Быстро создать заметку (3)" style="
+                  padding: 8px 10px;
+                  border: none;
+                  border-radius: 8px;
+                  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                  color: white;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-weight: 500;
+                  transition: all 0.2s ease;
+                  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+                " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(16, 185, 129, 0.3)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(16, 185, 129, 0.2)'">📝</button>
+                <button class="inbox-item-distribute" data-id="${item.id}" title="Полное распределение (Enter)" style="
+                  padding: 8px 12px;
+                  border: none;
+                  border-radius: 8px;
+                  background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+                  color: white;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-weight: 500;
+                  transition: all 0.2s ease;
+                  box-shadow: 0 2px 4px rgba(124, 58, 237, 0.2);
+                " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(124, 58, 237, 0.3)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(124, 58, 237, 0.2)'">⚙️</button>
+                <button class="inbox-item-delete" data-id="${item.id}" title="Удалить элемент (Del)" style="
+                  padding: 8px 10px;
+                  border: 2px solid var(--danger);
+                  border-radius: 8px;
                   background: transparent;
                   color: var(--danger);
                   cursor: pointer;
-                  font-size: 11px;
-                ">🗑️</button>
+                  font-size: 12px;
+                  font-weight: 500;
+                  transition: all 0.2s ease;
+                " onmouseover="this.style.background='var(--danger)'; this.style.color='white'; this.style.transform='translateY(-1px)'" 
+                   onmouseout="this.style.background='transparent'; this.style.color='var(--danger)'; this.style.transform='translateY(0)'">🗑️</button>
               </div>
             </div>
           </div>
@@ -813,6 +956,18 @@ function showInboxListModal() {
   modal.onclick = (e) => {
     if (e.target === modal) cleanup();
   };
+  
+  // Help toggle button
+  const helpToggle = document.getElementById('inbox-help-toggle');
+  const helpPanel = document.getElementById('inbox-help-panel');
+  if (helpToggle && helpPanel) {
+    helpToggle.onclick = (e) => {
+      e.stopPropagation();
+      const isVisible = helpPanel.style.display !== 'none';
+      helpPanel.style.display = isVisible ? 'none' : 'block';
+      helpToggle.textContent = isVisible ? '❓ Справка' : '❌ Скрыть';
+    };
+  }
   
   // Quick action buttons
   document.querySelectorAll('.inbox-item-quick-task').forEach(btn => {
@@ -995,6 +1150,11 @@ function showInboxListModal() {
     if (e.key === 'Escape') {
       e.preventDefault();
       cleanup();
+    } else if (e.key === 'F1' || (e.key === '?' && e.shiftKey)) {
+      // Toggle help panel
+      e.preventDefault();
+      const helpToggle = document.getElementById('inbox-help-toggle');
+      if (helpToggle) helpToggle.click();
     } else if (e.key === 'Enter' && !e.ctrlKey && !e.altKey) {
       // Enter to select/deselect current item
       e.preventDefault();
@@ -1102,8 +1262,65 @@ function showInboxListModal() {
           showInboxListModal(); // Refresh
         }
       }
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      // Navigate between items
+      e.preventDefault();
+      const items = Array.from(document.querySelectorAll('.inbox-item'));
+      const currentIndex = items.findIndex(item => item === document.activeElement);
+      
+      if (currentIndex !== -1) {
+        let nextIndex;
+        if (e.key === 'ArrowDown') {
+          nextIndex = (currentIndex + 1) % items.length;
+        } else {
+          nextIndex = currentIndex === 0 ? items.length - 1 : currentIndex - 1;
+        }
+        
+        if (items[nextIndex]) {
+          items[nextIndex].focus();
+          items[nextIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      } else if (items.length > 0) {
+        // Focus first item if none focused
+        items[0].focus();
+      }
+    } else if (e.key === 'Home') {
+      // Focus first item
+      e.preventDefault();
+      const firstItem = document.querySelector('.inbox-item');
+      if (firstItem) firstItem.focus();
+    } else if (e.key === 'End') {
+      // Focus last item
+      e.preventDefault();
+      const items = document.querySelectorAll('.inbox-item');
+      if (items.length > 0) {
+        items[items.length - 1].focus();
+      }
     }
   };
+  
+  // Make items focusable and add focus styles
+  document.querySelectorAll('.inbox-item').forEach((item, index) => {
+    item.setAttribute('tabindex', '0');
+    item.style.outline = 'none';
+    
+    // Add focus styles
+    item.addEventListener('focus', () => {
+      item.style.borderColor = 'var(--accent)';
+      item.style.boxShadow = '0 0 0 2px rgba(124, 58, 237, 0.2)';
+    });
+    
+    item.addEventListener('blur', () => {
+      item.style.borderColor = 'var(--panel-2)';
+      item.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.05)';
+    });
+  });
+  
+  // Focus first item on open
+  setTimeout(() => {
+    const firstItem = document.querySelector('.inbox-item');
+    if (firstItem) firstItem.focus();
+  }, 100);
 }
 
 // Initialize on load
