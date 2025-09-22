@@ -4183,7 +4183,17 @@ function onMouseLeave() {
     canvas.style.transition = "";
   }
   dropTargetProjectId = null;
-  // Скрываем информационную панель при уходе с карты
+  
+  // Очищаем таймеры подсказок
+  if (tooltipTimeout) {
+    clearTimeout(tooltipTimeout);
+    tooltipTimeout = null;
+  }
+  currentHoveredObject = null;
+  hoverNodeId = null;
+  tooltip.style.opacity = 0;
+  
+  // Скрываем информационную панель
   if (window.hideInfoPanel) {
     window.hideInfoPanel();
   }
@@ -4417,11 +4427,26 @@ function onPointerMove(e) {
 let currentHoveredChecklist = null;
 let quickViewTimer = null;
 
+// Глобальные переменные для управления задержкой подсказок
+let tooltipTimeout = null;
+let currentHoveredObject = null;
+
 function handleObjectHover(screenX, screenY, worldPos) {
   const n = hit(worldPos.x, worldPos.y);
+  
+  // Если объект изменился, сбрасываем таймер
+  if (currentHoveredObject !== n?.id) {
+    if (tooltipTimeout) {
+      clearTimeout(tooltipTimeout);
+      tooltipTimeout = null;
+    }
+    currentHoveredObject = n?.id;
+  }
+  
   if (!n) {
     hoverNodeId = null;
     tooltip.style.opacity = 0;
+    currentHoveredObject = null;
     // Скрываем информационную панель
     if (window.hideInfoPanel) {
       window.hideInfoPanel();
@@ -4429,11 +4454,55 @@ function handleObjectHover(screenX, screenY, worldPos) {
     return;
   }
   
+  // Если уже показываем подсказку для этого объекта, не создаем новую
+  if (hoverNodeId === n.id && tooltip.style.opacity === "1") {
+    return;
+  }
+  
+  hoverNodeId = n.id;
+  
+  // Задержка для всплывающей подсказки (настраиваемая)
+  const delay = (state.settings && state.settings.tooltipDelay !== undefined) ? state.settings.tooltipDelay : 500;
+  tooltipTimeout = setTimeout(() => {
+    showTooltipForObject(n, screenX, screenY);
+  }, delay);
+  
+  // Сразу показываем детальную информацию в нижней панели
+  showDetailedInfoForObject(n);
+}
+
+function showTooltipForObject(n, screenX, screenY) {
   tooltip.style.left = screenX + "px";
   tooltip.style.top = screenY + "px";
   tooltip.style.opacity = 1;
-  hoverNodeId = n.id;
   
+  // Краткая информация для всплывающей подсказки
+  if (n._type === "task") {
+    const t = state.tasks.find((x) => x.id === n.id);
+    const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
+    tooltip.innerHTML = `🪐 <b>${t.title}</b><br/><span class="hint">${t.status}${est}</span>`;
+  } else if (n._type === "project") {
+    const p = state.projects.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🛰 <b>${p.title}</b><br/><span class="hint">Проект</span>`;
+  } else if (n._type === "idea") {
+    const idea = state.ideas.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🌌 <b>${idea.title}</b><br/><span class="hint">Идея</span>`;
+  } else if (n._type === "note") {
+    const note = state.notes.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🪨 <b>${note.title}</b><br/><span class="hint">Заметка</span>`;
+  } else if (n._type === "checklist") {
+    const checklist = state.checklists.find((x) => x.id === n.id);
+    const progress = getChecklistProgress(checklist.id);
+    const progressText = progress.total > 0 ? `${progress.completed}/${progress.total}` : '0/0';
+    tooltip.innerHTML = `✓ <b>${checklist.title}</b><br/><span class="hint">${progressText}</span>`;
+  } else {
+    const d = state.domains.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🌍 <b>${d.title}</b><br/><span class="hint">Домен</span>`;
+  }
+}
+
+function showDetailedInfoForObject(n) {
+  // Детальная информация для нижней панели
   if (n._type === "task") {
     const t = state.tasks.find((x) => x.id === n.id);
     const tags = (t.tags || []).map((s) => `#${s}`).join(" ");
@@ -4443,7 +4512,6 @@ function handleObjectHover(screenX, screenY, worldPos) {
     }${est}<br/><span class="hint">обновл. ${daysSince(
       t.updatedAt
     )} дн. ${tags}</span>`;
-    tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
     console.log('🎯 Task hover:', t.title, 'showInfoPanel available:', !!window.showInfoPanel);
     if (window.showInfoPanel) {
@@ -4457,7 +4525,6 @@ function handleObjectHover(screenX, screenY, worldPos) {
     const tooltipText = `🛰 Проект: <b>${p.title}</b>${
       tags ? `<br/><span class="hint">${tags}</span>` : ""
     }`;
-    tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
     console.log('🎯 Project hover:', p.title, 'showInfoPanel available:', !!window.showInfoPanel);
     if (window.showInfoPanel) {
@@ -4469,7 +4536,6 @@ function handleObjectHover(screenX, screenY, worldPos) {
     const idea = state.ideas.find((x) => x.id === n.id);
     const content = idea.content ? `<br/><span class="hint">${idea.content.substring(0, 100)}${idea.content.length > 100 ? '...' : ''}</span>` : "";
     const tooltipText = `🌌 Идея: <b>${idea.title}</b>${content}<br/><span class="hint">создана ${daysSince(idea.createdAt)} дн. назад</span>`;
-    tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '🌌', true);
@@ -4478,7 +4544,6 @@ function handleObjectHover(screenX, screenY, worldPos) {
     const note = state.notes.find((x) => x.id === n.id);
     const content = note.content ? `<br/><span class="hint">${note.content.substring(0, 80)}${note.content.length > 80 ? '...' : ''}</span>` : "";
     const tooltipText = `🪨 Заметка: <b>${note.title}</b>${content}<br/><span class="hint">создана ${daysSince(note.createdAt)} дн. назад</span>`;
-    tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '🪨', true);
@@ -4488,7 +4553,6 @@ function handleObjectHover(screenX, screenY, worldPos) {
     const progress = getChecklistProgress(checklist.id);
     const progressText = progress.total > 0 ? `${progress.completed}/${progress.total} (${Math.round(progress.completed/progress.total*100)}%)` : '0/0 (0%)';
     const tooltipText = `✓ Чек-лист: <b>${checklist.title}</b><br/><span class="hint">прогресс: ${progressText}</span>`;
-    tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '✓', true);
@@ -4498,7 +4562,6 @@ function handleObjectHover(screenX, screenY, worldPos) {
     const mood = n.mood || 'balance';
     const moodDescription = n.moodDescription || 'Баланс: стабильное состояние';
     const tooltipText = `🌌 Домен: <b>${d.title}</b><br/><span class="hint">${moodDescription}</span>`;
-    tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '🌌', true);

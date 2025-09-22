@@ -633,6 +633,9 @@ I18N/UX
 
 ## [Unreleased]
 
+- docs: add rich object tooltips feature to ideas and requests (3f9593a)
+- fix: add object hover handling to pointer events (1bc2bd6)
+- fix(inbox): resolve critical bugs with map freezing and data persistence (acce777)
 - fix: show map object tooltips in info panel (641852a)
 - feat(inbox): implement full distributor with quick actions and multiline support (3420c18)
 - feat: add comprehensive tooltips for all UI elements (b402261)

@@ -486,6 +486,16 @@ function openDisplayModal() {
           <option value="preview3" ${state.settings && state.settings.checklistIconMode==='preview3' ? 'selected' : ''}>Превью: первые 3 строки</option>
         </select>
       </div>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
+        <div style="font-weight:600;">⏱️ Задержка всплывающих подсказок (мс)</div>
+        <select id="tooltipDelay" style="width:100%;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--panel-2);border-radius:4px;">
+          <option value="0" ${state.settings && state.settings.tooltipDelay===0 ? 'selected' : ''}>Мгновенно (0мс)</option>
+          <option value="200" ${state.settings && state.settings.tooltipDelay===200 ? 'selected' : ''}>Быстро (200мс)</option>
+          <option value="500" ${state.settings && state.settings.tooltipDelay===500 ? 'selected' : ''}>Средне (500мс) - по умолчанию</option>
+          <option value="1000" ${state.settings && state.settings.tooltipDelay===1000 ? 'selected' : ''}>Медленно (1000мс)</option>
+          <option value="2000" ${state.settings && state.settings.tooltipDelay===2000 ? 'selected' : ''}>Очень медленно (2000мс)</option>
+        </select>
+      </div>
     </div>
     
     <div style="border-top:1px solid var(--panel-2);padding-top:12px;margin-top:8px;">
@@ -517,8 +527,9 @@ function openDisplayModal() {
       const dndHints = document.getElementById('displayDndHints').checked;
       const inbox = document.getElementById('displayInbox').checked;
       const iconMode = (document.getElementById('checklistIconMode') || {}).value || 'title';
+      const tooltipDelay = parseInt((document.getElementById('tooltipDelay') || {}).value || '500');
       
-      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints) || (state.settings && inbox !== !!state.settings.showInbox) || (state.settings && iconMode !== state.settings.checklistIconMode)) {
+      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints) || (state.settings && inbox !== !!state.settings.showInbox) || (state.settings && iconMode !== state.settings.checklistIconMode) || (state.settings && tooltipDelay !== state.settings.tooltipDelay)) {
         state.showLinks = links;
         state.showAging = aging;
         state.showGlow = glow;
@@ -526,6 +537,7 @@ function openDisplayModal() {
         state.settings.showDndHints = !!dndHints;
         state.settings.showInbox = !!inbox;
         state.settings.checklistIconMode = iconMode;
+        state.settings.tooltipDelay = tooltipDelay;
         saveState();
         drawMap();
         showToast("Настройки отображения обновлены", "ok");
@@ -4361,11 +4373,12 @@ async function init() {
   
   // Initialize hotkeys
   initializeHotkeys();
-  // Ensure DnD hints are off by default, Inbox is ON by default
+  // Ensure DnD hints are off by default, Inbox is ON by default, tooltip delay is 500ms
   try { 
     if (!state.settings) state.settings = {}; 
     if (typeof state.settings.showDndHints==='undefined') state.settings.showDndHints = false;
     if (typeof state.settings.showInbox==='undefined') state.settings.showInbox = true; // ON by default
+    if (typeof state.settings.tooltipDelay==='undefined') state.settings.tooltipDelay = 500; // 500ms by default
   } catch(_){}
   
   // Initialize autocomplete
