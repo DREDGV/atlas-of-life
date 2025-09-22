@@ -2926,6 +2926,101 @@ kbd {
   border-bottom: 1px solid #333;
 }
 
+.checklist-window-actions {
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  background: #222;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.quick-action-btn {
+  background: #333;
+  border: 1px solid #555;
+  color: #ccc;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.quick-action-btn:hover:not(:disabled) {
+  background: #444;
+  border-color: #666;
+  color: #fff;
+}
+
+.quick-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quick-action-btn.active {
+  background: #4CAF50;
+  border-color: #4CAF50;
+  color: #fff;
+}
+
+.search-box {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-box input {
+  flex: 1;
+  background: #333;
+  border: 1px solid #555;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.search-box input::placeholder {
+  color: #888;
+}
+
+#clear-search {
+  background: #555;
+  border: 1px solid #666;
+  color: #ccc;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+#clear-search:hover {
+  background: #666;
+  color: #fff;
+}
+
+/* Подсветка результатов поиска */
+.checklist-item.search-highlight {
+  background: rgba(76, 175, 80, 0.1);
+  border-left: 3px solid #4CAF50;
+}
+
+.checklist-item.search-highlight .checklist-item-text {
+  color: #4CAF50;
+  font-weight: 500;
+}
+
 .checklist-tab {
   flex: 1;
   background: none;

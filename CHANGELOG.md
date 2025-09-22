@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- docs(inbox): add Inbox concept to ideas; add request entry; planned note in changelog (b7375e2)
 - docs: обновлен CHANGELOG и IDEAS после оптимизации производительности (984945c)
 - perf: масштабная оптимизация производительности Canvas и рендеринга (c9fea47)
 - fix: исправлены критические проблемы с Toast-уведомлениями (5a0db92)

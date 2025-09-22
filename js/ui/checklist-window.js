@@ -48,6 +48,27 @@ export async function openChecklistWindow(checklist, x, y) {
         </button>
       </div>
       
+      <div class="checklist-window-actions">
+        <div class="quick-actions">
+          <button class="quick-action-btn" id="mark-all-complete" title="Отметить все как выполненные (Ctrl+A)">
+            ✓ Все
+          </button>
+          <button class="quick-action-btn" id="mark-all-pending" title="Снять отметки со всех (Ctrl+Shift+A)">
+            ○ Все
+          </button>
+          <button class="quick-action-btn" id="delete-completed" title="Удалить выполненные (Ctrl+D)">
+            🗑 Выполненные
+          </button>
+          <button class="quick-action-btn" id="duplicate-item" title="Дублировать выбранный (Ctrl+Shift+D)" disabled>
+            📋 Дублировать
+          </button>
+        </div>
+        <div class="search-box">
+          <input type="text" id="checklist-search" placeholder="Поиск по пунктам..." />
+          <button id="clear-search" title="Очистить поиск (Esc)">×</button>
+        </div>
+      </div>
+      
       <div class="checklist-window-content">
         <div class="checklist-tab-content active" id="pending-content">
           <div class="checklist-items" id="pending-items"></div>
@@ -327,6 +348,12 @@ function setupEventListeners() {
   };
   document.addEventListener('keydown', onTrap);
   cleanupHandlers.push(() => document.removeEventListener('keydown', onTrap));
+
+  // Быстрые действия
+  setupQuickActions();
+  
+  // Поиск
+  setupSearch();
 }
 
 /**
@@ -369,8 +396,7 @@ async function renderItems() {
   const completedItems = items.filter(item => item.completed);
   
   // Обновляем счетчики
-  document.getElementById('pending-count').textContent = pendingItems.length;
-  document.getElementById('completed-count').textContent = completedItems.length;
+  updateCounts(pendingItems.length, completedItems.length);
   
   // Рендерим невыполненные
   renderItemList('pending-items', pendingItems);
@@ -630,6 +656,265 @@ async function editItemText(itemId, textElement) {
 }
 
 // Функция saveChecklist удалена - теперь используется debouncedSaveChecklist
+
+/**
+ * Обновляет счетчики и состояние кнопок
+ */
+function updateCounts(pendingCount, completedCount) {
+  const pendingCountEl = document.getElementById('pending-count');
+  const completedCountEl = document.getElementById('completed-count');
+  const duplicateBtn = currentChecklistWindow?.querySelector('#duplicate-item');
+  
+  if (pendingCountEl) pendingCountEl.textContent = pendingCount;
+  if (completedCountEl) completedCountEl.textContent = completedCount;
+  
+  // Обновляем состояние кнопки дублирования
+  if (duplicateBtn) {
+    const hasSelectedItem = document.activeElement?.closest('.checklist-item');
+    duplicateBtn.disabled = !hasSelectedItem;
+  }
+}
+
+/**
+ * Настраивает быстрые действия
+ */
+function setupQuickActions() {
+  // Отметить все как выполненные
+  const markAllCompleteBtn = currentChecklistWindow.querySelector('#mark-all-complete');
+  if (markAllCompleteBtn) {
+    const onClick = async () => await markAllComplete();
+    markAllCompleteBtn.addEventListener('click', onClick);
+    cleanupHandlers.push(() => markAllCompleteBtn.removeEventListener('click', onClick));
+  }
+
+  // Снять отметки со всех
+  const markAllPendingBtn = currentChecklistWindow.querySelector('#mark-all-pending');
+  if (markAllPendingBtn) {
+    const onClick = async () => await markAllPending();
+    markAllPendingBtn.addEventListener('click', onClick);
+    cleanupHandlers.push(() => markAllPendingBtn.removeEventListener('click', onClick));
+  }
+
+  // Удалить выполненные
+  const deleteCompletedBtn = currentChecklistWindow.querySelector('#delete-completed');
+  if (deleteCompletedBtn) {
+    const onClick = async () => await deleteCompleted();
+    deleteCompletedBtn.addEventListener('click', onClick);
+    cleanupHandlers.push(() => deleteCompletedBtn.removeEventListener('click', onClick));
+  }
+
+  // Дублировать выбранный
+  const duplicateBtn = currentChecklistWindow.querySelector('#duplicate-item');
+  if (duplicateBtn) {
+    const onClick = async () => await duplicateSelected();
+    duplicateBtn.addEventListener('click', onClick);
+    cleanupHandlers.push(() => duplicateBtn.removeEventListener('click', onClick));
+  }
+
+  // Горячие клавиши
+  const onKeyDown = (e) => {
+    if (!currentChecklistWindow) return;
+    
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key) {
+        case 'a':
+          if (e.shiftKey) {
+            e.preventDefault();
+            markAllPending();
+          } else {
+            e.preventDefault();
+            markAllComplete();
+          }
+          break;
+        case 'd':
+          e.preventDefault();
+          deleteCompleted();
+          break;
+        case 'Shift':
+          if (e.key === 'd') {
+            e.preventDefault();
+            duplicateSelected();
+          }
+          break;
+      }
+    }
+    
+    if (e.key === 'Escape') {
+      const searchInput = currentChecklistWindow.querySelector('#checklist-search');
+      if (searchInput && document.activeElement === searchInput) {
+        clearSearch();
+      }
+    }
+  };
+  
+  document.addEventListener('keydown', onKeyDown);
+  cleanupHandlers.push(() => document.removeEventListener('keydown', onKeyDown));
+
+  // Обновляем состояние кнопки дублирования при изменении фокуса
+  const onFocusChange = () => {
+    if (currentChecklistWindow) {
+      const duplicateBtn = currentChecklistWindow.querySelector('#duplicate-item');
+      if (duplicateBtn) {
+        const hasSelectedItem = document.activeElement?.closest('.checklist-item');
+        duplicateBtn.disabled = !hasSelectedItem;
+      }
+    }
+  };
+  
+  document.addEventListener('focusin', onFocusChange);
+  document.addEventListener('focusout', onFocusChange);
+  cleanupHandlers.push(() => {
+    document.removeEventListener('focusin', onFocusChange);
+    document.removeEventListener('focusout', onFocusChange);
+  });
+}
+
+/**
+ * Настраивает поиск
+ */
+function setupSearch() {
+  const searchInput = currentChecklistWindow.querySelector('#checklist-search');
+  const clearBtn = currentChecklistWindow.querySelector('#clear-search');
+  
+  if (searchInput) {
+    const onInput = (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      filterItems(query);
+    };
+    searchInput.addEventListener('input', onInput);
+    cleanupHandlers.push(() => searchInput.removeEventListener('input', onInput));
+  }
+  
+  if (clearBtn) {
+    const onClick = () => clearSearch();
+    clearBtn.addEventListener('click', onClick);
+    cleanupHandlers.push(() => clearBtn.removeEventListener('click', onClick));
+  }
+}
+
+/**
+ * Отмечает все пункты как выполненные
+ */
+async function markAllComplete() {
+  if (!currentChecklist) return;
+  
+  const items = await getChecklist(currentChecklist.id);
+  const updatedItems = items.map(item => ({ ...item, completed: true, updatedAt: Date.now() }));
+  
+  await debouncedSaveChecklist(currentChecklist.id, updatedItems);
+  await renderItems();
+}
+
+/**
+ * Снимает отметки со всех пунктов
+ */
+async function markAllPending() {
+  if (!currentChecklist) return;
+  
+  const items = await getChecklist(currentChecklist.id);
+  const updatedItems = items.map(item => ({ ...item, completed: false, updatedAt: Date.now() }));
+  
+  await debouncedSaveChecklist(currentChecklist.id, updatedItems);
+  await renderItems();
+}
+
+/**
+ * Удаляет все выполненные пункты
+ */
+async function deleteCompleted() {
+  if (!currentChecklist) return;
+  
+  const items = await getChecklist(currentChecklist.id);
+  const pendingItems = items.filter(item => !item.completed);
+  
+  if (pendingItems.length === items.length) {
+    showToast('Нет выполненных пунктов для удаления', 'info');
+    return;
+  }
+  
+  if (confirm(`Удалить ${items.length - pendingItems.length} выполненных пунктов?`)) {
+    await debouncedSaveChecklist(currentChecklist.id, pendingItems);
+    await renderItems();
+    showToast(`Удалено ${items.length - pendingItems.length} выполненных пунктов`, 'ok');
+  }
+}
+
+/**
+ * Дублирует выбранный пункт
+ */
+async function duplicateSelected() {
+  if (!currentChecklist) return;
+  
+  const activeEl = document.activeElement;
+  const itemEl = activeEl?.closest('.checklist-item');
+  
+  if (!itemEl) {
+    showToast('Выберите пункт для дублирования', 'warn');
+    return;
+  }
+  
+  const itemId = itemEl.dataset.itemId;
+  const items = await getChecklist(currentChecklist.id);
+  const item = items.find(i => i.id === itemId);
+  
+  if (!item) return;
+  
+  const newItem = {
+    id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+    text: item.text + ' (копия)',
+    completed: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  const updatedItems = [...items, newItem];
+  await debouncedSaveChecklist(currentChecklist.id, updatedItems);
+  await renderItems();
+  showToast('Пункт дублирован', 'ok');
+}
+
+/**
+ * Фильтрует пункты по поисковому запросу
+ */
+function filterItems(query) {
+  if (!currentChecklistWindow) return;
+  
+  const pendingItems = currentChecklistWindow.querySelectorAll('#pending-items .checklist-item');
+  const completedItems = currentChecklistWindow.querySelectorAll('#completed-items .checklist-item');
+  
+  const allItems = [...pendingItems, ...completedItems];
+  
+  allItems.forEach(item => {
+    const text = item.querySelector('.checklist-item-text')?.textContent?.toLowerCase() || '';
+    const matches = query === '' || text.includes(query);
+    
+    item.style.display = matches ? 'flex' : 'none';
+    
+    if (matches && query !== '') {
+      item.classList.add('search-highlight');
+    } else {
+      item.classList.remove('search-highlight');
+    }
+  });
+  
+  // Обновляем состояние кнопки очистки поиска
+  const clearBtn = currentChecklistWindow.querySelector('#clear-search');
+  if (clearBtn) {
+    clearBtn.style.display = query ? 'block' : 'none';
+  }
+}
+
+/**
+ * Очищает поиск
+ */
+function clearSearch() {
+  const searchInput = currentChecklistWindow.querySelector('#checklist-search');
+  if (searchInput) {
+    searchInput.value = '';
+    filterItems('');
+    searchInput.focus();
+  }
+}
 
 // Делаем функции доступными глобально
 window.openChecklistWindow = openChecklistWindow;
