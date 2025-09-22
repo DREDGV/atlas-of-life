@@ -628,6 +628,26 @@ I18N/UX
 
 ## [Unreleased]
 
+- perf(zoom+drag): skip heavy hit-tests right after zoom; debounce pointer redraw; reduce glow/pulse and FPS a bit (eb2a0b3)
+- perf(dnd): reduce animations and logs; stabilize pointer move detection; lighter glow/line widths; fewer trig calls (c93b790)
+- fix(dnd): live drop-target detection on pointermove; update lastMouseClient; enable project highlight and task attach between projects (3b21a7c)
+- fix(dnd): highlight drop targets, tolerant project hit for tasks, correct move-confirm prompt; improve drag visuals (f616a67)
+- fix(hierarchy-ui): correct task move vs detach prompts; widen project hit area for task DnD; keep domain/project info accurate during moves (638817e)
+- feat(hierarchy): keep parentId/children in sync for projectdomain, taskproject, idea/notedomain moves (7341427)
+- fix(hierarchy): sync parentId/children on moves; add safe helpers (17666c2)
+- fix(checklist-icon): stable preview via rect-based culling and hit-test; taller card and spacing; always up to 3 lines (64e2068)
+- fix(checklist-icon): ensure preview lines render  taller card, larger spacing, preview also on hover in hybrid mode (1a99399)
+- feat(checklist-icon): wider aspect ratio (3.8x vs 2.1x) to fit more text; adjust top stripe height (2efbdb9)
+- fix(checklist-icon): progress badge no longer overlaps text; add zoom hysteresis for stable preview; draw badge above card (54d6deb)
+- feat(checklist-icon): hybrid mode  title+progress badge always; preview appears on hover or zoom; settings option added (902ae8a)
+- fix(checklist-icon): smarter text fitting  dynamic font size and ellipsis; preview 2/3 shows readable first line (4c0e704)
+- fix(checklist-icon): cleaner modes  title centered for title/minimal; preview modes show only 23 bullets without progress bar (2368b22)
+- fix(settings): persist showDndHints and checklistIconMode in storage load/save (8aa91fa)
+- feat(checklist-icon): add display modes (title|minimal|preview2|preview3) and settings toggle; clean text layout to avoid overlaps (b55a01f)
+- fix(checklist-icon): prevent text clutter; center title; show progress and counts; clip to card (402ec4c)
+- feat(checklist-icon): card layout with padding + clip; safe text truncation; internal progress bar; avoid overflow (9a8f53e)
+- fix(checklist-pkm): close button works reliably  ignore drag when clicking (ac10937)
+- chore(ci): make post-commit hook robust (fallback to powershell.exe, skip if missing) (c8fbe33)
 См. [IDEAS.md](./IDEAS.md) для планов и идей.
 
 ### Added

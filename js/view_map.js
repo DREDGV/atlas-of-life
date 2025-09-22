@@ -4129,10 +4129,16 @@ function hideToast() {
       btn.onclick = null;
     });
     
-    // Hide toast
+    // Hide toast with proper cleanup
+    toast.classList.remove("show");
     toast.className = "toast";
-    toast.style.display = "none";
     toast.innerHTML = "";
+    
+    // Clear any inline styles that might interfere
+    toast.style.display = "";
+    toast.style.opacity = "";
+    toast.style.visibility = "";
+    toast.style.zIndex = "";
     
     // Clear modal flag
     isModalOpen = false;
@@ -4852,13 +4858,19 @@ function showToast(message, type = "ok") {
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
-    toast.className = `toast ${type} show`;
+    
+    // Set up toast content and classes
+    toast.className = `toast ${type}`;
     toast.innerHTML = message;
+    
+    // Show toast
+    toast.classList.add("show");
     isModalOpen = true;
     
+    // Auto-hide after 3 seconds
     setTimeout(() => {
       hideToast();
-    }, 2000);
+    }, 3000);
   }
 }
 
@@ -4870,16 +4882,21 @@ function showProjectMoveConfirmation(project, fromDomainId, toDomainId) {
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
-    toast.className = "toast attach show";
-    toast.innerHTML = `Переместить проект "${project.title}" из домена "${fromDomain}" в домен "${toDomain}"? <button id="projectMoveOk">Переместить</button> <button id="projectMoveCancel">Отменить</button>`;
     
-    // Center toast reliably
-    toast.style.position = "fixed";
-    toast.style.left = "50%";
-    toast.style.top = "50%";
-    toast.style.transform = "translate(-50%, -50%)";
-    toast.style.right = "auto";
+    // Set up toast content with better styling
+    toast.className = "toast attach";
+    toast.innerHTML = `
+      <div style="margin-bottom: 12px; font-weight: 500; line-height: 1.4;">
+        Переместить проект "${project.title}" из домена "${fromDomain}" в домен "${toDomain}"?
+      </div>
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button id="projectMoveOk" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">Переместить</button>
+        <button id="projectMoveCancel" style="background: #666; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">Отменить</button>
+      </div>
+    `;
     
+    // Show toast using CSS classes
+    toast.classList.add("show");
     isModalOpen = true;
     
     // Set up pending move
@@ -4916,16 +4933,21 @@ function showProjectExtractConfirmation(project, projectNode) {
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
-    toast.className = "toast detach show";
-    toast.innerHTML = `Сделать проект "${project.title}" независимым (извлечь из домена "${currentDomain}")? <button id="projectExtractOk">Извлечь</button> <button id="projectExtractCancel">Отменить</button>`;
     
-    // Center toast reliably
-    toast.style.position = "fixed";
-    toast.style.left = "50%";
-    toast.style.top = "50%";
-    toast.style.transform = "translate(-50%, -50%)";
-    toast.style.right = "auto";
+    // Set up toast content with better styling
+    toast.className = "toast detach";
+    toast.innerHTML = `
+      <div style="margin-bottom: 12px; font-weight: 500; line-height: 1.4;">
+        Сделать проект "${project.title}" независимым (извлечь из домена "${currentDomain}")?
+      </div>
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button id="projectExtractOk" style="background: #FF9800; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">Извлечь</button>
+        <button id="projectExtractCancel" style="background: #666; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">Отменить</button>
+      </div>
+    `;
     
+    // Show toast using CSS classes
+    toast.classList.add("show");
     isModalOpen = true;
     
     // Set up pending extract
