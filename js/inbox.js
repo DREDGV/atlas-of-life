@@ -159,7 +159,7 @@ export function distributeInboxItem(itemId, targetType = 'task', targetProjectId
     console.error('Error saving state after distribution:', error);
   }
   
-  // Trigger map redraw and today update (with safety checks)
+  // Trigger map redraw and today update (with enhanced safety checks)
   try {
     // Check if canvas exists and is ready
     const canvas = document.getElementById('canvas');
@@ -174,31 +174,59 @@ export function distributeInboxItem(itemId, targetType = 'task', targetProjectId
       return true;
     }
     
-    // Check if functions exist and call them directly
-    if (window.drawMap && typeof window.drawMap === 'function') {
-      try {
-        window.drawMap();
-      } catch (drawError) {
-        console.error('Error calling drawMap:', drawError);
-        // Try alternative approach
-        if (window.requestAnimationFrame) {
-          window.requestAnimationFrame(() => {
-            try {
-              if (window.drawMap) window.drawMap();
-            } catch (e) {
-              console.error('Error in requestAnimationFrame drawMap:', e);
-            }
-          });
-        }
-      }
-    } else {
-      console.warn('drawMap function not available');
+    // Additional safety check - ensure state is valid
+    if (!Array.isArray(window.state.tasks) || !Array.isArray(window.state.domains)) {
+      console.warn('State arrays not properly initialized, skipping map redraw');
+      return true;
     }
     
-    if (window.renderToday && typeof window.renderToday === 'function') {
-      window.renderToday();
+    // Use requestAnimationFrame for safer UI updates
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(() => {
+        try {
+          // Check if functions exist and call them
+          if (window.drawMap && typeof window.drawMap === 'function') {
+            window.drawMap();
+          } else {
+            console.warn('drawMap function not available');
+          }
+          
+          if (window.renderToday && typeof window.renderToday === 'function') {
+            window.renderToday();
+          } else {
+            console.warn('renderToday function not available');
+          }
+        } catch (uiError) {
+          console.error('Error in requestAnimationFrame UI update:', uiError);
+          // Try one more time with a delay
+          setTimeout(() => {
+            try {
+              if (window.drawMap && typeof window.drawMap === 'function') {
+                window.drawMap();
+              }
+              if (window.renderToday && typeof window.renderToday === 'function') {
+                window.renderToday();
+              }
+            } catch (retryError) {
+              console.error('Error in retry UI update:', retryError);
+            }
+          }, 200);
+        }
+      });
     } else {
-      console.warn('renderToday function not available');
+      // Fallback for older browsers
+      setTimeout(() => {
+        try {
+          if (window.drawMap && typeof window.drawMap === 'function') {
+            window.drawMap();
+          }
+          if (window.renderToday && typeof window.renderToday === 'function') {
+            window.renderToday();
+          }
+        } catch (fallbackError) {
+          console.error('Error in fallback UI update:', fallbackError);
+        }
+      }, 100);
     }
   } catch (error) {
     console.error('Error updating UI after distribution:', error);
@@ -974,9 +1002,19 @@ function showInboxListModal() {
     btn.onclick = (e) => {
       e.stopPropagation();
       const itemId = btn.dataset.id;
-      distributeInboxItem(itemId, 'task');
-      cleanup();
-      showInboxListModal(); // Refresh
+      try {
+        distributeInboxItem(itemId, 'task');
+        cleanup();
+        // Delay refresh to avoid conflicts
+        setTimeout(() => {
+          if (document.getElementById('inbox-list-modal')) {
+            showInboxListModal();
+          }
+        }, 100);
+      } catch (error) {
+        console.error('Error in quick task distribution:', error);
+        if (window.showToast) window.showToast('Ошибка при создании задачи', 'error');
+      }
     };
   });
   
@@ -984,9 +1022,18 @@ function showInboxListModal() {
     btn.onclick = (e) => {
       e.stopPropagation();
       const itemId = btn.dataset.id;
-      distributeInboxItem(itemId, 'idea');
-      cleanup();
-      showInboxListModal(); // Refresh
+      try {
+        distributeInboxItem(itemId, 'idea');
+        cleanup();
+        setTimeout(() => {
+          if (document.getElementById('inbox-list-modal')) {
+            showInboxListModal();
+          }
+        }, 100);
+      } catch (error) {
+        console.error('Error in quick idea distribution:', error);
+        if (window.showToast) window.showToast('Ошибка при создании идеи', 'error');
+      }
     };
   });
   
@@ -994,9 +1041,18 @@ function showInboxListModal() {
     btn.onclick = (e) => {
       e.stopPropagation();
       const itemId = btn.dataset.id;
-      distributeInboxItem(itemId, 'note');
-      cleanup();
-      showInboxListModal(); // Refresh
+      try {
+        distributeInboxItem(itemId, 'note');
+        cleanup();
+        setTimeout(() => {
+          if (document.getElementById('inbox-list-modal')) {
+            showInboxListModal();
+          }
+        }, 100);
+      } catch (error) {
+        console.error('Error in quick note distribution:', error);
+        if (window.showToast) window.showToast('Ошибка при создании заметки', 'error');
+      }
     };
   });
   
@@ -1070,16 +1126,25 @@ function showInboxListModal() {
     
     if (selectedIds.length === 0) return;
     
-    selectedIds.forEach(itemId => {
-      distributeInboxItem(itemId, 'task');
-    });
-    
-    if (window.showToast) {
-      window.showToast(`Создано ${selectedIds.length} задач`, 'ok');
+    try {
+      selectedIds.forEach(itemId => {
+        distributeInboxItem(itemId, 'task');
+      });
+      
+      if (window.showToast) {
+        window.showToast(`Создано ${selectedIds.length} задач`, 'ok');
+      }
+      
+      cleanup();
+      setTimeout(() => {
+        if (document.getElementById('inbox-list-modal')) {
+          showInboxListModal();
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error in batch task distribution:', error);
+      if (window.showToast) window.showToast('Ошибка при создании задач', 'error');
     }
-    
-    cleanup();
-    showInboxListModal(); // Refresh
   };
   
   document.getElementById('batch-idea').onclick = () => {
@@ -1088,16 +1153,25 @@ function showInboxListModal() {
     
     if (selectedIds.length === 0) return;
     
-    selectedIds.forEach(itemId => {
-      distributeInboxItem(itemId, 'idea');
-    });
-    
-    if (window.showToast) {
-      window.showToast(`Создано ${selectedIds.length} идей`, 'ok');
+    try {
+      selectedIds.forEach(itemId => {
+        distributeInboxItem(itemId, 'idea');
+      });
+      
+      if (window.showToast) {
+        window.showToast(`Создано ${selectedIds.length} идей`, 'ok');
+      }
+      
+      cleanup();
+      setTimeout(() => {
+        if (document.getElementById('inbox-list-modal')) {
+          showInboxListModal();
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error in batch idea distribution:', error);
+      if (window.showToast) window.showToast('Ошибка при создании идей', 'error');
     }
-    
-    cleanup();
-    showInboxListModal(); // Refresh
   };
   
   document.getElementById('batch-note').onclick = () => {
@@ -1106,16 +1180,25 @@ function showInboxListModal() {
     
     if (selectedIds.length === 0) return;
     
-    selectedIds.forEach(itemId => {
-      distributeInboxItem(itemId, 'note');
-    });
-    
-    if (window.showToast) {
-      window.showToast(`Создано ${selectedIds.length} заметок`, 'ok');
+    try {
+      selectedIds.forEach(itemId => {
+        distributeInboxItem(itemId, 'note');
+      });
+      
+      if (window.showToast) {
+        window.showToast(`Создано ${selectedIds.length} заметок`, 'ok');
+      }
+      
+      cleanup();
+      setTimeout(() => {
+        if (document.getElementById('inbox-list-modal')) {
+          showInboxListModal();
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error in batch note distribution:', error);
+      if (window.showToast) window.showToast('Ошибка при создании заметок', 'error');
     }
-    
-    cleanup();
-    showInboxListModal(); // Refresh
   };
   
   document.getElementById('batch-delete').onclick = () => {

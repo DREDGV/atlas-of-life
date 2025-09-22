@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(inbox): complete UI polish with modern design and enhanced UX (50f81ad)
 - fix: restore smooth object dragging and fix recursive requestDrawThrottled call (170ca85)
 - fix: restore smooth map panning and zooming by reverting to requestDraw (32dca25)
 - fix: prevent infinite draw loops during task movement with throttled requests (7d937aa)
