@@ -4110,8 +4110,11 @@ function onMouseMove(e) {
     )} дн. ${tags}</span>`;
     tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
+    console.log('🎯 Task hover:', t.title, 'showInfoPanel available:', !!window.showInfoPanel);
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '🪐', true);
+    } else {
+      console.error('❌ showInfoPanel not available');
     }
   } else if (n._type === "project") {
     const p = state.projects.find((x) => x.id === n.id);
@@ -4121,8 +4124,11 @@ function onMouseMove(e) {
     }`;
     tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
+    console.log('🎯 Project hover:', p.title, 'showInfoPanel available:', !!window.showInfoPanel);
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '🛰', true);
+    } else {
+      console.error('❌ showInfoPanel not available');
     }
   } else if (n._type === "idea") {
     const idea = state.ideas.find((x) => x.id === n.id);
@@ -4311,6 +4317,9 @@ function onPointerMove(e) {
   // Обработка наведения на чек-листы - ВСЕГДА вызываем
   handleChecklistHover(x, y, worldPos);
   
+  // Обработка подсказок для обычных объектов
+  handleObjectHover(x, y, worldPos);
+  
   if (NAV.mode === 'idle') return;
   const moved = Math.hypot(e.clientX - NAV.downCX, e.clientY - NAV.downCY);
   if (NAV.mode === 'pending') {
@@ -4407,6 +4416,95 @@ function onPointerMove(e) {
 // Простая система для чек-листов - курсор + быстрый просмотр
 let currentHoveredChecklist = null;
 let quickViewTimer = null;
+
+function handleObjectHover(screenX, screenY, worldPos) {
+  const n = hit(worldPos.x, worldPos.y);
+  if (!n) {
+    hoverNodeId = null;
+    tooltip.style.opacity = 0;
+    // Скрываем информационную панель
+    if (window.hideInfoPanel) {
+      window.hideInfoPanel();
+    }
+    return;
+  }
+  
+  tooltip.style.left = screenX + "px";
+  tooltip.style.top = screenY + "px";
+  tooltip.style.opacity = 1;
+  hoverNodeId = n.id;
+  
+  if (n._type === "task") {
+    const t = state.tasks.find((x) => x.id === n.id);
+    const tags = (t.tags || []).map((s) => `#${s}`).join(" ");
+    const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
+    const tooltipText = `🪐 <b>${t.title}</b> — ${
+      t.status
+    }${est}<br/><span class="hint">обновл. ${daysSince(
+      t.updatedAt
+    )} дн. ${tags}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    console.log('🎯 Task hover:', t.title, 'showInfoPanel available:', !!window.showInfoPanel);
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🪐', true);
+    } else {
+      console.error('❌ showInfoPanel not available');
+    }
+  } else if (n._type === "project") {
+    const p = state.projects.find((x) => x.id === n.id);
+    const tags = (p.tags || []).map((s) => `#${s}`).join(" ");
+    const tooltipText = `🛰 Проект: <b>${p.title}</b>${
+      tags ? `<br/><span class="hint">${tags}</span>` : ""
+    }`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    console.log('🎯 Project hover:', p.title, 'showInfoPanel available:', !!window.showInfoPanel);
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🛰', true);
+    } else {
+      console.error('❌ showInfoPanel not available');
+    }
+  } else if (n._type === "idea") {
+    const idea = state.ideas.find((x) => x.id === n.id);
+    const content = idea.content ? `<br/><span class="hint">${idea.content.substring(0, 100)}${idea.content.length > 100 ? '...' : ''}</span>` : "";
+    const tooltipText = `🌌 Идея: <b>${idea.title}</b>${content}<br/><span class="hint">создана ${daysSince(idea.createdAt)} дн. назад</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🌌', true);
+    }
+  } else if (n._type === "note") {
+    const note = state.notes.find((x) => x.id === n.id);
+    const content = note.content ? `<br/><span class="hint">${note.content.substring(0, 80)}${note.content.length > 80 ? '...' : ''}</span>` : "";
+    const tooltipText = `🪨 Заметка: <b>${note.title}</b>${content}<br/><span class="hint">создана ${daysSince(note.createdAt)} дн. назад</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🪨', true);
+    }
+  } else if (n._type === "checklist") {
+    const checklist = state.checklists.find((x) => x.id === n.id);
+    const progress = getChecklistProgress(checklist.id);
+    const progressText = progress.total > 0 ? `${progress.completed}/${progress.total} (${Math.round(progress.completed/progress.total*100)}%)` : '0/0 (0%)';
+    const tooltipText = `✓ Чек-лист: <b>${checklist.title}</b><br/><span class="hint">прогресс: ${progressText}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '✓', true);
+    }
+  } else {
+    const d = state.domains.find((x) => x.id === n.id);
+    const mood = n.mood || 'balance';
+    const moodDescription = n.moodDescription || 'Баланс: стабильное состояние';
+    const tooltipText = `🌌 Домен: <b>${d.title}</b><br/><span class="hint">${moodDescription}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🌌', true);
+    }
+  }
+}
 
 function handleChecklistHover(screenX, screenY, worldPos) {
   if (!state.checklists || state.checklists.length === 0) {
