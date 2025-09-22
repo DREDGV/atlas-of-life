@@ -633,6 +633,8 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat: add debugging for checklist duplication and hotkeys (8becbb1)
+- fix: исправлено дублирование строк в чек-листах (dc79e21)
 - feat: добавлены быстрые действия и поиск для чек-листов (36f3de6)
 - docs(inbox): add Inbox concept to ideas; add request entry; planned note in changelog (b7375e2)
 - docs: обновлен CHANGELOG и IDEAS после оптимизации производительности (984945c)

@@ -101,6 +101,8 @@ export function initializeHotkeys() {
       newIdea: 'ctrl+i',
       newNote: 'ctrl+shift+i',
       newChecklist: 'ctrl+shift+c',
+      inboxCapture: 'n',
+      inboxList: 'i',
       search: 'ctrl+f',
       closeInspector: 'escape',
       statusPlan: '1',
@@ -208,6 +210,46 @@ export function initializeHotkeys() {
       console.error('Error in newChecklist hotkey:', error);
     }
   }, 'Создать новый чек-лист');
+
+  // Inbox capture (N key)
+  registerHotkey(hotkeys.inboxCapture, () => {
+    try {
+      // Check if Inbox is enabled
+      if (!state.settings?.showInbox) {
+        showToast('Инбокс отключен в настройках', 'warn');
+        return;
+      }
+      
+      // Open inbox capture overlay
+      if (window.openInboxCapture) {
+        window.openInboxCapture();
+      } else {
+        showToast('Функция Инбокса не инициализирована', 'warn');
+      }
+    } catch (error) {
+      console.error('Error in inboxCapture hotkey:', error);
+    }
+  }, 'Открыть захват Инбокса');
+
+  // Inbox list (I key)
+  registerHotkey(hotkeys.inboxList, () => {
+    try {
+      // Check if Inbox is enabled
+      if (!state.settings?.showInbox) {
+        showToast('Инбокс отключен в настройках', 'warn');
+        return;
+      }
+      
+      // Open inbox list view
+      if (window.openInboxList) {
+        window.openInboxList();
+      } else {
+        showToast('Функция Инбокса не инициализирована', 'warn');
+      }
+    } catch (error) {
+      console.error('Error in inboxList hotkey:', error);
+    }
+  }, 'Открыть список Инбокса');
   
   // Search
   registerHotkey(hotkeys.search, () => {

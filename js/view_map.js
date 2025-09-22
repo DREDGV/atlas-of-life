@@ -101,6 +101,12 @@ let pendingFrame = false;
 let lastDrawTime = 0;
 const MIN_DRAW_INTERVAL = 16; // 60 FPS
 
+// Performance optimization flags
+let isLightMode = false;
+let lastZoomTime = 0;
+const ZOOM_COOLDOWN_MS = 100; // Skip heavy operations after zoom
+const DRAG_THROTTLE_MS = 8; // Throttle during drag
+
 // Debouncing for frequent operations
 let drawTimeout = null;
 let layoutTimeout = null;
@@ -194,6 +200,9 @@ function onWheel(e) {
   const old = viewState.scale;
   const next = clamp(old * zoomFactor, 0.5, 2.2);
   _lastZoomTs = performance.now();
+  lastZoomTime = performance.now(); // Track zoom for performance optimization
+  isLightMode = true; // Enable light mode during zoom
+  
   // keep world point under cursor stable
   const dpr = window.devicePixelRatio || 1;
   const cx = (e.offsetX || 0) * dpr;
@@ -208,6 +217,11 @@ function onWheel(e) {
     logEvent("map_zoom", { scale: Math.round(next * 100) / 100 });
   } catch (_) {}
   requestDraw();
+  
+  // Disable light mode after zoom cooldown
+  setTimeout(() => {
+    isLightMode = false;
+  }, ZOOM_COOLDOWN_MS);
 }
 // DnD state
 let draggedNode = null;
@@ -1797,7 +1811,7 @@ function startCosmicAnimationLoop() {
   cosmicAnimationRunning = true;
   console.log('Starting cosmic animation loop...');
   let lastUpdate = 0;
-  const targetFPS = 28; // Чуть ниже — стабильнее при зуме/перетаскивании
+  const targetFPS = isLightMode ? 60 : 28; // Higher FPS in light mode
   const frameInterval = 1000 / targetFPS;
   
   function animate(currentTime) {
@@ -2611,6 +2625,13 @@ export function drawMap() {
     } catch (_) {}
   }
   const t0 = performance.now();
+  
+  // Light mode optimizations
+  if (isLightMode) {
+    // Skip expensive effects and reduce quality for better performance
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 1;
+  }
   
   // Pre-calculate viewport bounds for efficient culling
   const inv = 1 / Math.max(0.0001, viewState.scale);
@@ -3760,6 +3781,12 @@ export function drawMap() {
   // Reset drawing flag
   isDrawing = false;
   
+  // Restore rendering settings after light mode
+  if (isLightMode) {
+    ctx.shadowBlur = 0; // Reset to default
+    ctx.lineWidth = 1; // Reset to default
+  }
+  
   // Продолжаем анимацию эффекта клика
   if (clickEffectTime > 0) {
     requestDraw();
@@ -4218,6 +4245,17 @@ function onPointerMove(e) {
   const worldPos = screenToWorld(x, y);
   // Обновляем lastMouseClient для корректного handleDrop() в pointer-схеме
   lastMouseClient = { clientX: e.clientX, clientY: e.clientY, offsetX: x, offsetY: y };
+  
+  // Throttle heavy operations during drag
+  const now = performance.now();
+  if (NAV.mode === 'drag' && now - lastDrawTime < DRAG_THROTTLE_MS) {
+    return;
+  }
+  
+  // Skip heavy hit-tests immediately after zoom
+  if (now - lastZoomTime < ZOOM_COOLDOWN_MS) {
+    return;
+  }
   
   // Обработка наведения на чек-листы - ВСЕГДА вызываем
   handleChecklistHover(x, y, worldPos);

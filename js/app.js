@@ -25,6 +25,7 @@ import { AnalyticsDashboard, analyticsDashboard } from "./analytics.js";
 import { CosmicAnimations } from "./cosmic-effects.js";
 import { openChecklist, closeChecklist } from "./ui/checklist.js";
 import { openChecklistWindow, closeChecklistWindow } from "./ui/checklist-window.js";
+import { initInbox } from "./inbox.js";
 
 // I18N
 const I18N = {
@@ -471,6 +472,10 @@ function openDisplayModal() {
         <input type="checkbox" id="displayDndHints" ${(state.settings && state.settings.showDndHints) ? 'checked' : ''} style="margin:0;">
         <span>🧲 Подсветка допустимых целей при перетаскивании (DnD)</span>
       </label>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
+        <input type="checkbox" id="displayInbox" ${(state.settings && state.settings.showInbox) ? 'checked' : ''} style="margin:0;">
+        <span>📥 Инбокс - быстрый захват мыслей (N - захват, I - разбор)</span>
+      </label>
       <div style="display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
         <div style="font-weight:600;">🧩 Вид иконки чек-листа на карте</div>
         <select id="checklistIconMode" style="width:100%;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--panel-2);border-radius:4px;">
@@ -510,14 +515,16 @@ function openDisplayModal() {
       const aging = document.getElementById('displayAging').checked;
       const glow = document.getElementById('displayGlow').checked;
       const dndHints = document.getElementById('displayDndHints').checked;
+      const inbox = document.getElementById('displayInbox').checked;
       const iconMode = (document.getElementById('checklistIconMode') || {}).value || 'title';
       
-      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints) || (state.settings && iconMode !== state.settings.checklistIconMode)) {
+      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints) || (state.settings && inbox !== !!state.settings.showInbox) || (state.settings && iconMode !== state.settings.checklistIconMode)) {
         state.showLinks = links;
         state.showAging = aging;
         state.showGlow = glow;
         if (!state.settings) state.settings = {};
         state.settings.showDndHints = !!dndHints;
+        state.settings.showInbox = !!inbox;
         state.settings.checklistIconMode = iconMode;
         saveState();
         drawMap();
@@ -4226,12 +4233,19 @@ async function init() {
   
   // Initialize hotkeys
   initializeHotkeys();
-  // Ensure DnD hints are off by default for stability
-  try { if (!state.settings) state.settings = {}; if (typeof state.settings.showDndHints==='undefined') state.settings.showDndHints = false; } catch(_){}
+  // Ensure DnD hints and Inbox are off by default for stability
+  try { 
+    if (!state.settings) state.settings = {}; 
+    if (typeof state.settings.showDndHints==='undefined') state.settings.showDndHints = false;
+    if (typeof state.settings.showInbox==='undefined') state.settings.showInbox = false;
+  } catch(_){}
   
   // Initialize autocomplete
   console.log('About to initialize autocomplete...');
   initAutocomplete();
+  
+  // Initialize inbox system
+  initInbox();
   
   // Initialize cosmic animations
   if (!window.cosmicAnimations) {

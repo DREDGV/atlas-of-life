@@ -44,6 +44,7 @@ export const state = {
       checklist: true // Фичефлаг для системы чек-листов
     }
   },
+  inbox: [], // Inbox items for quick capture
   domains:[],
   projects:[],
   tasks:[],

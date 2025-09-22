@@ -71,6 +71,7 @@ export function loadState(){
         hotkeys: data.settings.hotkeys || state.settings.hotkeys,
         // Новые настройки отображения
         showDndHints: !!data.settings.showDndHints,
+        showInbox: !!data.settings.showInbox,
         checklistIconMode: data.settings.checklistIconMode || 'title'
       };
     }else{
@@ -80,6 +81,7 @@ export function loadState(){
         enableHierarchyV2: false,
         hotkeys: state.settings.hotkeys,
         showDndHints: false,
+        showInbox: false,
         checklistIconMode: 'title'
       };
     }
@@ -113,7 +115,7 @@ export function saveState(){
       showAging: !!state.showAging,
       showGlow: !!state.showGlow,
       view: state.view,
-      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, checklistIconMode:'title' }
+      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, showInbox:false, checklistIconMode:'title' }
     };
     const text = JSON.stringify(data);
     if (!text) {
