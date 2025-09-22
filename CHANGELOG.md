@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: aggressive duplicate cleanup and improved positioning algorithm (74f4f6f)
 - feat(inbox): implement batch operations and advanced hotkeys (d1e6138)
 - fix: resolve map visual bugs - duplicate objects, positioning, artifacts (163ca75)
 - fix(settings): resolve tooltip delay not persisting after page refresh (692971b)

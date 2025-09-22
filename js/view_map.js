@@ -2127,6 +2127,12 @@ function calculateDomainRadius(projects) {
 function cleanupDuplicateObjects() {
   console.log('🧹 Очистка дубликатов объектов...');
   
+  // Проверяем, что state инициализирован
+  if (!state || !state.ideas) {
+    console.warn('⚠️ State не инициализирован в cleanupDuplicateObjects, пропускаем очистку');
+    return;
+  }
+  
   // Очищаем дубликаты идей - более агрессивная очистка
   if (state.ideas && state.ideas.length > 0) {
     const originalCount = state.ideas.length;
@@ -2221,6 +2227,11 @@ function cleanupDuplicateObjects() {
 
 // Функция для избежания наложения объектов
 function avoidOverlap(x, y, r, existingNodes, maxAttempts = 20) {
+  // Проверяем, что existingNodes существует
+  if (!existingNodes || !Array.isArray(existingNodes)) {
+    return { x, y };
+  }
+  
   let attempts = 0;
   let currentX = x;
   let currentY = y;

@@ -1499,6 +1499,12 @@ try { window.hideInfoPanel = hideInfoPanel; } catch (_) {}
 window.cleanupDuplicates = function() {
   console.log('🧹 Принудительная очистка дубликатов...');
   
+  // Проверяем, что state инициализирован
+  if (!state || !state.ideas) {
+    console.warn('⚠️ State не инициализирован, пропускаем очистку');
+    return;
+  }
+  
   // Очищаем дубликаты идей - более агрессивная очистка
   if (state.ideas && state.ideas.length > 0) {
     const originalCount = state.ideas.length;
@@ -4466,11 +4472,13 @@ async function init() {
   console.log('About to initialize autocomplete...');
   initAutocomplete();
   
-  // Принудительная очистка дубликатов при загрузке
-  console.log('🧹 Принудительная очистка дубликатов при загрузке...');
-  if (window.cleanupDuplicates) {
-    window.cleanupDuplicates();
-  }
+  // Принудительная очистка дубликатов при загрузке (с задержкой)
+  setTimeout(() => {
+    console.log('🧹 Принудительная очистка дубликатов при загрузке...');
+    if (window.cleanupDuplicates) {
+      window.cleanupDuplicates();
+    }
+  }, 1000); // Задержка 1 секунда для полной инициализации
   
   // Initialize cosmic animations
   if (!window.cosmicAnimations) {
