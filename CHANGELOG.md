@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat: implement two-level tooltip system with configurable delay (dbc5238)
 - docs: add rich object tooltips feature to ideas and requests (3f9593a)
 - fix: add object hover handling to pointer events (1bc2bd6)
 - fix(inbox): resolve critical bugs with map freezing and data persistence (acce777)

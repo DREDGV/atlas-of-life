@@ -488,13 +488,23 @@ function openDisplayModal() {
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;">
         <div style="font-weight:600;">⏱️ Задержка всплывающих подсказок (мс)</div>
-        <select id="tooltipDelay" style="width:100%;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--panel-2);border-radius:4px;">
-          <option value="0" ${state.settings && state.settings.tooltipDelay===0 ? 'selected' : ''}>Мгновенно (0мс)</option>
-          <option value="200" ${state.settings && state.settings.tooltipDelay===200 ? 'selected' : ''}>Быстро (200мс)</option>
-          <option value="500" ${state.settings && state.settings.tooltipDelay===500 ? 'selected' : ''}>Средне (500мс) - по умолчанию</option>
-          <option value="1000" ${state.settings && state.settings.tooltipDelay===1000 ? 'selected' : ''}>Медленно (1000мс)</option>
-          <option value="2000" ${state.settings && state.settings.tooltipDelay===2000 ? 'selected' : ''}>Очень медленно (2000мс)</option>
-        </select>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="number" id="tooltipDelay" min="0" max="10000" step="50" 
+                 value="${state.settings && state.settings.tooltipDelay !== undefined ? state.settings.tooltipDelay : 500}"
+                 style="flex:1;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--panel-2);border-radius:4px;"
+                 placeholder="500"
+                 oninput="this.value = Math.max(0, Math.min(10000, parseInt(this.value) || 0))"
+                 onchange="this.value = Math.max(0, Math.min(10000, parseInt(this.value) || 0))">
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <button type="button" onclick="const input = document.getElementById('tooltipDelay'); input.value='0'; input.dispatchEvent(new Event('change'));" style="padding:4px 8px;font-size:11px;background:var(--panel-2);color:var(--text);border:1px solid var(--panel-2);border-radius:3px;cursor:pointer;">0мс</button>
+            <button type="button" onclick="const input = document.getElementById('tooltipDelay'); input.value='200'; input.dispatchEvent(new Event('change'));" style="padding:4px 8px;font-size:11px;background:var(--panel-2);color:var(--text);border:1px solid var(--panel-2);border-radius:3px;cursor:pointer;">200мс</button>
+            <button type="button" onclick="const input = document.getElementById('tooltipDelay'); input.value='500'; input.dispatchEvent(new Event('change'));" style="padding:4px 8px;font-size:11px;background:var(--panel-2);color:var(--text);border:1px solid var(--panel-2);border-radius:3px;cursor:pointer;">500мс</button>
+            <button type="button" onclick="const input = document.getElementById('tooltipDelay'); input.value='1000'; input.dispatchEvent(new Event('change'));" style="padding:4px 8px;font-size:11px;background:var(--panel-2);color:var(--text);border:1px solid var(--panel-2);border-radius:3px;cursor:pointer;">1000мс</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-2);">
+          💡 Рекомендуемые значения: 0-200мс (быстро), 500мс (по умолчанию), 1000-2000мс (медленно)
+        </div>
       </div>
     </div>
     
@@ -527,9 +537,16 @@ function openDisplayModal() {
       const dndHints = document.getElementById('displayDndHints').checked;
       const inbox = document.getElementById('displayInbox').checked;
       const iconMode = (document.getElementById('checklistIconMode') || {}).value || 'title';
-      const tooltipDelay = parseInt((document.getElementById('tooltipDelay') || {}).value || '500');
+      const tooltipDelayInput = document.getElementById('tooltipDelay');
+      const tooltipDelay = tooltipDelayInput ? Math.max(0, Math.min(10000, parseInt(tooltipDelayInput.value) || 500)) : 500;
       
-      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints) || (state.settings && inbox !== !!state.settings.showInbox) || (state.settings && iconMode !== state.settings.checklistIconMode) || (state.settings && tooltipDelay !== state.settings.tooltipDelay)) {
+      console.log('🔧 Настройки отображения:', {
+        tooltipDelay,
+        currentTooltipDelay: state.settings?.tooltipDelay,
+        settingsChanged: tooltipDelay !== (state.settings?.tooltipDelay || 500)
+      });
+      
+      if (links !== state.showLinks || aging !== state.showAging || glow !== state.showGlow || (state.settings && dndHints !== !!state.settings.showDndHints) || (state.settings && inbox !== !!state.settings.showInbox) || (state.settings && iconMode !== state.settings.checklistIconMode) || (state.settings && tooltipDelay !== (state.settings.tooltipDelay || 500))) {
         state.showLinks = links;
         state.showAging = aging;
         state.showGlow = glow;
@@ -538,9 +555,12 @@ function openDisplayModal() {
         state.settings.showInbox = !!inbox;
         state.settings.checklistIconMode = iconMode;
         state.settings.tooltipDelay = tooltipDelay;
+        console.log('💾 Сохраняем настройки:', state.settings);
         saveState();
         drawMap();
         showToast("Настройки отображения обновлены", "ok");
+      } else {
+        console.log('ℹ️ Настройки не изменились, пропускаем сохранение');
       }
     },
     confirmText: "Применить",

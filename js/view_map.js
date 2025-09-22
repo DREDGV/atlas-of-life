@@ -4463,6 +4463,7 @@ function handleObjectHover(screenX, screenY, worldPos) {
   
   // Задержка для всплывающей подсказки (настраиваемая)
   const delay = (state.settings && state.settings.tooltipDelay !== undefined) ? state.settings.tooltipDelay : 500;
+  console.log('⏱️ Задержка подсказки:', delay, 'мс для объекта:', n._type, n.id);
   tooltipTimeout = setTimeout(() => {
     showTooltipForObject(n, screenX, screenY);
   }, delay);
