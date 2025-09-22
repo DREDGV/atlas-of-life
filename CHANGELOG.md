@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix(inbox): resolve map disappearing issues during distribution (074cb3b)
 - feat(inbox): complete UI polish with modern design and enhanced UX (50f81ad)
 - fix: restore smooth object dragging and fix recursive requestDrawThrottled call (170ca85)
 - fix: restore smooth map panning and zooming by reverting to requestDraw (32dca25)

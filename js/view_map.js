@@ -1602,8 +1602,8 @@ export function initMap(canvasEl, tooltipEl) {
     try { fitAll(); } catch(_) {}
   }, 100);
   
-  // Start cosmic animation loop
-  startCosmicAnimationLoop();
+  // Start cosmic animation loop - TEMPORARILY DISABLED FOR PERFORMANCE
+  // startCosmicAnimationLoop();
   
   // Initialize context menu
   initContextMenu();
@@ -2890,10 +2890,10 @@ export function drawMap() {
     edges.forEach((e) => {
       if (!inView(e.a.x, e.a.y, e.a.r) && !inView(e.b.x, e.b.y, e.b.r)) return;
       
-      // Add energy flow effect for connections
-      if (window.cosmicAnimations && Math.random() < 0.1) { // 10% chance per frame
-        window.cosmicAnimations.createEnergyFlow(e.a.x, e.a.y, e.b.x, e.b.y, e.color);
-      }
+      // Add energy flow effect for connections - TEMPORARILY DISABLED FOR PERFORMANCE
+      // if (window.cosmicAnimations && Math.random() < 0.1) { // 10% chance per frame
+      //   window.cosmicAnimations.createEnergyFlow(e.a.x, e.a.y, e.b.x, e.b.y, e.color);
+      // }
       
       const a = e.a,
         b = e.b;
@@ -6359,10 +6359,10 @@ function onContextMenuOld(e) {
       // Trigger deletion based on type
       if (n._type === 'task') {
         if (confirm("Удалить задачу без возможности восстановления?")) {
-          // Trigger cosmic explosion
-          if (window.cosmicAnimations) {
-            window.cosmicAnimations.animateTaskDeletion(n.x, n.y, n.status);
-          }
+          // Trigger cosmic explosion - TEMPORARILY DISABLED FOR PERFORMANCE
+          // if (window.cosmicAnimations) {
+          //   window.cosmicAnimations.animateTaskDeletion(n.x, n.y, n.status);
+          // }
           // Delete task
           state.tasks = state.tasks.filter((t) => t.id !== n.id);
           saveState();
@@ -6371,10 +6371,10 @@ function onContextMenuOld(e) {
         }
       } else if (n._type === 'project') {
         if (confirm(`Удалить проект "${n.title}" и все его задачи?`)) {
-          // Trigger cosmic explosion
-          if (window.cosmicAnimations) {
-            window.cosmicAnimations.animateTaskDeletion(n.x, n.y, 'project');
-          }
+          // Trigger cosmic explosion - TEMPORARILY DISABLED FOR PERFORMANCE
+          // if (window.cosmicAnimations) {
+          //   window.cosmicAnimations.animateTaskDeletion(n.x, n.y, 'project');
+          // }
           // Delete project and its tasks
           state.tasks = state.tasks.filter((t) => t.projectId !== n.id);
           state.projects = state.projects.filter((p) => p.id !== n.id);
@@ -6390,10 +6390,10 @@ function onContextMenuOld(e) {
         }
       } else if (n._type === 'domain') {
         if (confirm(`Удалить домен "${n.title}" и все его проекты и задачи?`)) {
-          // Trigger cosmic explosion
-          if (window.cosmicAnimations) {
-            window.cosmicAnimations.animateDomainPulse(n.x, n.y, n.r, n.color);
-          }
+          // Trigger cosmic explosion - TEMPORARILY DISABLED FOR PERFORMANCE
+          // if (window.cosmicAnimations) {
+          //   window.cosmicAnimations.animateDomainPulse(n.x, n.y, n.r, n.color);
+          // }
           // Delete domain and all its content
           const projIds = state.projects.filter((p) => p.domainId === n.id).map((p) => p.id);
           state.tasks = state.tasks.filter((t) => !projIds.includes(t.projectId));
