@@ -1325,8 +1325,10 @@ function setupInfoPanelTooltips() {
   if (canvas) {
     let hintIndex = 0;
     canvas.addEventListener('mouseenter', () => {
-      showInfoPanel(navHints[hintIndex].text, navHints[hintIndex].icon);
-      hintIndex = (hintIndex + 1) % navHints.length;
+      // Временно отключено для тестирования новых подсказок
+      // showInfoPanel(navHints[hintIndex].text, navHints[hintIndex].icon);
+      // hintIndex = (hintIndex + 1) % navHints.length;
+      console.log('🎯 Canvas hover - showing new tooltips instead of old nav hints');
     });
     canvas.addEventListener('mouseleave', hideInfoPanel);
   }
