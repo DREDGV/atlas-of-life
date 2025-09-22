@@ -155,7 +155,7 @@ function requestDrawThrottled() {
     return; // Пропускаем слишком частые вызовы
   }
   lastRequestDrawTime = now;
-  requestDrawThrottled();
+  requestDraw(); // Исправляем рекурсивный вызов
 }
 
 function requestLayout() {
@@ -165,7 +165,7 @@ function requestLayout() {
   layoutTimeout = setTimeout(() => {
     if (!isLayouting) {
       layoutMap();
-      requestDrawThrottled();
+      requestDraw(); // Используем requestDraw() для обновления после layout
     }
   }, LAYOUT_DEBOUNCE_MS);
 }
@@ -4108,7 +4108,7 @@ function onMouseMove(e) {
     mouse.target.x = wx - mouse.dragOffsetX;
     mouse.target.y = wy - mouse.dragOffsetY;
     mouse.lastX = sx; mouse.lastY = sy;
-    requestDrawThrottled();
+    requestDraw(); // Возвращаем requestDraw() для плавного перетаскивания объектов
     return;
   }
 
@@ -4565,7 +4565,7 @@ function onPointerMove(e) {
       const cl = state.checklists.find(c => c.id === draggedNode.id);
       if (cl) { cl.x = draggedNode.x; cl.y = draggedNode.y; }
     }
-    requestDrawThrottled(); // Используем throttled версию для предотвращения фризов
+    requestDraw(); // Возвращаем requestDraw() для плавного перетаскивания объектов
     if (window.DEBUG_MOUSE) console.log('[NAV] drag move');
     return;
   }

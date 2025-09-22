@@ -613,62 +613,101 @@ function showInboxListModal() {
       <!-- Batch Operations Panel -->
       <div id="batch-operations-panel" style="
         display: none;
-        padding: 12px;
-        background: var(--panel-2);
-        border-radius: 6px;
-        margin-bottom: 16px;
-        border: 1px solid var(--accent);
+        padding: 16px;
+        background: linear-gradient(135deg, var(--panel-2) 0%, var(--panel) 100%);
+        border-radius: 12px;
+        margin-bottom: 20px;
+        border: 2px solid var(--accent);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        animation: slideDown 0.3s ease-out;
       ">
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-          <span style="font-weight: 600; color: var(--text);">📦 Пакетные операции:</span>
-          <span id="selected-count" style="color: var(--accent); font-weight: 500;">0 выбрано</span>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+          <div style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: var(--accent);
+            border-radius: 20px;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+          ">
+            📦 Пакетные операции
+          </div>
+          <div id="selected-count" style="
+            padding: 4px 12px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 13px;
+          ">0 выбрано</div>
         </div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button id="batch-task" title="Создать задачи из выбранных" style="
-            padding: 6px 12px;
-            border: 1px solid #3b82f6;
-            border-radius: 4px;
-            background: #3b82f6;
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button id="batch-task" title="Создать задачи из выбранных элементов (Ctrl+1)" style="
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
             color: white;
             cursor: pointer;
-            font-size: 12px;
-          ">📋 Задачи</button>
-          <button id="batch-idea" title="Создать идеи из выбранных" style="
-            padding: 6px 12px;
-            border: 1px solid #f59e0b;
-            border-radius: 4px;
-            background: #f59e0b;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(59, 130, 246, 0.4)'" 
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(59, 130, 246, 0.3)'">📋 Задачи</button>
+          <button id="batch-idea" title="Создать идеи из выбранных элементов (Ctrl+2)" style="
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
             color: white;
             cursor: pointer;
-            font-size: 12px;
-          ">💡 Идеи</button>
-          <button id="batch-note" title="Создать заметки из выбранных" style="
-            padding: 6px 12px;
-            border: 1px solid #10b981;
-            border-radius: 4px;
-            background: #10b981;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(245, 158, 11, 0.4)'" 
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(245, 158, 11, 0.3)'">💡 Идеи</button>
+          <button id="batch-note" title="Создать заметки из выбранных элементов (Ctrl+3)" style="
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
             cursor: pointer;
-            font-size: 12px;
-          ">📝 Заметки</button>
-          <button id="batch-delete" title="Удалить выбранные" style="
-            padding: 6px 12px;
-            border: 1px solid var(--danger);
-            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(16, 185, 129, 0.4)'" 
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(16, 185, 129, 0.3)'">📝 Заметки</button>
+          <button id="batch-delete" title="Удалить выбранные элементы (Ctrl+Del)" style="
+            padding: 8px 16px;
+            border: 2px solid var(--danger);
+            border-radius: 8px;
             background: transparent;
             color: var(--danger);
             cursor: pointer;
-            font-size: 12px;
-          ">🗑️ Удалить</button>
-          <button id="batch-clear" title="Снять выделение" style="
-            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          " onmouseover="this.style.background='var(--danger)'; this.style.color='white'; this.style.transform='translateY(-2px)'" 
+             onmouseout="this.style.background='transparent'; this.style.color='var(--danger)'; this.style.transform='translateY(0)'">🗑️ Удалить</button>
+          <button id="batch-clear" title="Снять выделение со всех элементов (Ctrl+D)" style="
+            padding: 8px 16px;
             border: 1px solid var(--panel-2);
-            border-radius: 4px;
+            border-radius: 8px;
             background: var(--panel);
             color: var(--text);
             cursor: pointer;
-            font-size: 12px;
-          ">❌ Снять</button>
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          " onmouseover="this.style.background='var(--panel-2)'; this.style.transform='translateY(-2px)'" 
+             onmouseout="this.style.background='var(--panel)'; this.style.transform='translateY(0)'">❌ Снять</button>
         </div>
       </div>
       <div id="inbox-items-list" style="margin-bottom: 20px;">

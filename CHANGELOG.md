@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: restore smooth map panning and zooming by reverting to requestDraw (32dca25)
 - fix: prevent infinite draw loops during task movement with throttled requests (7d937aa)
 - fix: disable avoidOverlap and cleanupDuplicateObjects to diagnose freezes (1e267f8)
 - fix: add safety checks to prevent map disappearance (509a78e)
