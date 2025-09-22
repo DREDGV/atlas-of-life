@@ -633,6 +633,8 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: show map object tooltips in info panel (641852a)
+- feat(inbox): implement full distributor with quick actions and multiline support (3420c18)
 - feat: add comprehensive tooltips for all UI elements (b402261)
 - feat(inbox): make Inbox visible and accessible by default (4972ae3)
 - fix: temporarily disable old nav hints to test new tooltips (d68c3fe)

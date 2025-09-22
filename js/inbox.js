@@ -13,14 +13,15 @@ export function initInbox() {
   if (isInboxInitialized) return;
   
   // Load inbox items from state
-  if (state.inbox) {
+  if (state.inbox && Array.isArray(state.inbox)) {
     inboxItems = state.inbox;
   } else {
-    state.inbox = inboxItems;
+    state.inbox = [];
+    inboxItems = [];
   }
   
   isInboxInitialized = true;
-  console.log('Inbox system initialized');
+  console.log('Inbox system initialized with', inboxItems.length, 'items');
 }
 
 // Check if inbox is enabled
@@ -59,7 +60,11 @@ export function addToInbox(text, metadata = {}) {
   
   inboxItems.push(item);
   state.inbox = inboxItems;
-  saveState();
+  try {
+    saveState();
+  } catch (error) {
+    console.error('Error saving inbox item:', error);
+  }
   
   if (window.showToast) window.showToast(`Добавлено в Инбокс: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`, 'ok');
   return true;
@@ -76,7 +81,11 @@ export function removeFromInbox(itemId) {
   if (index !== -1) {
     inboxItems.splice(index, 1);
     state.inbox = inboxItems;
-    saveState();
+    try {
+      saveState();
+    } catch (error) {
+      console.error('Error saving after inbox removal:', error);
+    }
     return true;
   }
   return false;
@@ -88,7 +97,11 @@ export function updateInboxItem(itemId, updates) {
   if (item) {
     Object.assign(item.metadata, updates);
     state.inbox = inboxItems;
-    saveState();
+    try {
+      saveState();
+    } catch (error) {
+      console.error('Error saving after inbox update:', error);
+    }
     return true;
   }
   return false;
@@ -114,24 +127,52 @@ export function distributeInboxItem(itemId, targetType = 'task', targetProjectId
     domainId: targetDomainId || item.metadata.domainId
   };
   
-  // Add to appropriate collection
+  // Add to appropriate collection (with duplicate check)
   if (targetType === 'task') {
     if (!state.tasks) state.tasks = [];
-    state.tasks.push(newObject);
+    // Check for duplicates
+    const exists = state.tasks.some(t => t.title === newObject.title && t.createdAt === newObject.createdAt);
+    if (!exists) {
+      state.tasks.push(newObject);
+    }
   } else if (targetType === 'idea') {
     if (!state.ideas) state.ideas = [];
-    state.ideas.push(newObject);
+    const exists = state.ideas.some(i => i.title === newObject.title && i.createdAt === newObject.createdAt);
+    if (!exists) {
+      state.ideas.push(newObject);
+    }
   } else if (targetType === 'note') {
     if (!state.notes) state.notes = [];
-    state.notes.push(newObject);
+    const exists = state.notes.some(n => n.title === newObject.title && n.createdAt === newObject.createdAt);
+    if (!exists) {
+      state.notes.push(newObject);
+    }
   }
   
   // Remove from inbox
   removeFromInbox(itemId);
   
-  // Trigger map redraw and today update
-  if (window.drawMap) window.drawMap();
-  if (window.renderToday) window.renderToday();
+  // Force save state after distribution
+  try {
+    saveState();
+  } catch (error) {
+    console.error('Error saving state after distribution:', error);
+  }
+  
+  // Trigger map redraw and today update (with safety checks and debouncing)
+  try {
+    // Use setTimeout to avoid blocking the UI
+    setTimeout(() => {
+      if (typeof window.drawMap === 'function') {
+        window.drawMap();
+      }
+      if (typeof window.renderToday === 'function') {
+        window.renderToday();
+      }
+    }, 100);
+  } catch (error) {
+    console.error('Error updating UI after distribution:', error);
+  }
   
   if (window.showToast) window.showToast(`Элемент распределен как ${targetType === 'task' ? 'задача' : targetType === 'idea' ? 'идея' : 'заметка'}`, 'ok');
   return true;

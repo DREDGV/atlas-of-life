@@ -57,6 +57,7 @@ export function loadState(){
     if(Array.isArray(data.ideas)) state.ideas = data.ideas;
     if(Array.isArray(data.notes)) state.notes = data.notes;
     if(Array.isArray(data.checklists)) state.checklists = data.checklists;
+    if(Array.isArray(data.inbox)) state.inbox = data.inbox;
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -110,6 +111,7 @@ export function saveState(){
       ideas: state.ideas || [],
       notes: state.notes || [],
       checklists: state.checklists || [],
+      inbox: state.inbox || [],
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,
