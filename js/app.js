@@ -1122,6 +1122,7 @@ function analyzeExistingData() {
 
 // Информационная панель
 function showInfoPanel(text, icon = '💡', isHtml = false) {
+  console.log('💡 Showing info panel:', text, icon, isHtml);
   const infoPanel = document.getElementById('infoPanel');
   const infoText = document.getElementById('infoText');
   const infoIcon = infoPanel.querySelector('.info-icon');
@@ -1142,6 +1143,8 @@ function showInfoPanel(text, icon = '💡', isHtml = false) {
         hideInfoPanel();
       }, 10000);
     }
+  } else {
+    console.error('❌ Info panel elements not found:', { infoPanel, infoText });
   }
 }
 
@@ -1155,6 +1158,7 @@ function hideInfoPanel() {
 
 // Настройка подсказок для информационной панели
 function setupInfoPanelTooltips() {
+  console.log('🔧 Setting up info panel tooltips...');
   // Подсказки для кнопок навигации
   const navButtons = [
     { selector: '#btnCenter', text: 'Центрировать карту на текущем виде (горячая клавиша: C)', icon: '🎯' },
