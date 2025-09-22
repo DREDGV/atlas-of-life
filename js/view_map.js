@@ -4088,6 +4088,10 @@ function onMouseMove(e) {
     // clear drop targets when not dragging
     dropTargetProjectId = null;
     dropTargetDomainId = null;
+    // Скрываем информационную панель
+    if (window.hideInfoPanel) {
+      window.hideInfoPanel();
+    }
     requestDraw();
     return;
   }
@@ -4099,35 +4103,65 @@ function onMouseMove(e) {
     const t = state.tasks.find((x) => x.id === n.id);
     const tags = (t.tags || []).map((s) => `#${s}`).join(" ");
     const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
-    tooltip.innerHTML = `🪐 <b>${t.title}</b> — ${
+    const tooltipText = `🪐 <b>${t.title}</b> — ${
       t.status
     }${est}<br/><span class="hint">обновл. ${daysSince(
       t.updatedAt
     )} дн. ${tags}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🪐', true);
+    }
   } else if (n._type === "project") {
     const p = state.projects.find((x) => x.id === n.id);
     const tags = (p.tags || []).map((s) => `#${s}`).join(" ");
-    tooltip.innerHTML = `🛰 Проект: <b>${p.title}</b>${
+    const tooltipText = `🛰 Проект: <b>${p.title}</b>${
       tags ? `<br/><span class="hint">${tags}</span>` : ""
     }`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🛰', true);
+    }
   } else if (n._type === "idea") {
     const idea = state.ideas.find((x) => x.id === n.id);
     const content = idea.content ? `<br/><span class="hint">${idea.content.substring(0, 100)}${idea.content.length > 100 ? '...' : ''}</span>` : "";
-    tooltip.innerHTML = `🌌 Идея: <b>${idea.title}</b>${content}<br/><span class="hint">создана ${daysSince(idea.createdAt)} дн. назад</span>`;
+    const tooltipText = `🌌 Идея: <b>${idea.title}</b>${content}<br/><span class="hint">создана ${daysSince(idea.createdAt)} дн. назад</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🌌', true);
+    }
   } else if (n._type === "note") {
     const note = state.notes.find((x) => x.id === n.id);
     const content = note.content ? `<br/><span class="hint">${note.content.substring(0, 80)}${note.content.length > 80 ? '...' : ''}</span>` : "";
-    tooltip.innerHTML = `🪨 Заметка: <b>${note.title}</b>${content}<br/><span class="hint">создана ${daysSince(note.createdAt)} дн. назад</span>`;
+    const tooltipText = `🪨 Заметка: <b>${note.title}</b>${content}<br/><span class="hint">создана ${daysSince(note.createdAt)} дн. назад</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🪨', true);
+    }
   } else if (n._type === "checklist") {
     const checklist = state.checklists.find((x) => x.id === n.id);
     const progress = getChecklistProgress(checklist.id);
     const progressText = progress.total > 0 ? `${progress.completed}/${progress.total} (${Math.round(progress.completed/progress.total*100)}%)` : '0/0 (0%)';
-    tooltip.innerHTML = `✓ Чек-лист: <b>${checklist.title}</b><br/><span class="hint">прогресс: ${progressText}</span>`;
+    const tooltipText = `✓ Чек-лист: <b>${checklist.title}</b><br/><span class="hint">прогресс: ${progressText}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '✓', true);
+    }
   } else {
     const d = state.domains.find((x) => x.id === n.id);
     const mood = n.mood || 'balance';
     const moodDescription = n.moodDescription || 'Баланс: стабильное состояние';
-    tooltip.innerHTML = `🌌 Домен: <b>${d.title}</b><br/><span class="hint">${moodDescription}</span>`;
+    const tooltipText = `🌌 Домен: <b>${d.title}</b><br/><span class="hint">${moodDescription}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🌌', true);
+    }
   }
   requestDraw();
 }
@@ -4143,6 +4177,10 @@ function onMouseLeave() {
     canvas.style.transition = "";
   }
   dropTargetProjectId = null;
+  // Скрываем информационную панель при уходе с карты
+  if (window.hideInfoPanel) {
+    window.hideInfoPanel();
+  }
   dropTargetDomainId = null;
   requestDraw(); // Use optimized draw request
 }
