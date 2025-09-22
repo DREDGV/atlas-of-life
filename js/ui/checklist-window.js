@@ -545,6 +545,28 @@ function createItemElement(item) {
   const textSpan = div.querySelector('.checklist-item-text');
   textSpan.addEventListener('dblclick', () => editItemText(item.id, textSpan));
   
+  // Добавляем обработчик клика для выбора строки
+  const onItemClick = (e) => {
+    // Не выбираем при клике на чекбокс или кнопку удаления
+    if (e.target.type === 'checkbox' || e.target.classList.contains('checklist-item-delete')) {
+      return;
+    }
+    
+    // Убираем выделение с других строк
+    const allItems = currentChecklistWindow.querySelectorAll('.checklist-item');
+    allItems.forEach(el => el.classList.remove('selected'));
+    
+    // Выделяем текущую строку
+    div.classList.add('selected');
+    div.focus();
+    
+    // Обновляем состояние кнопки дублирования
+    updateDuplicateButtonState();
+  };
+  
+  div.addEventListener('click', onItemClick);
+  div.setAttribute('tabindex', '0'); // Делаем элемент фокусируемым
+  
   return div;
 }
 
@@ -663,16 +685,23 @@ async function editItemText(itemId, textElement) {
 function updateCounts(pendingCount, completedCount) {
   const pendingCountEl = document.getElementById('pending-count');
   const completedCountEl = document.getElementById('completed-count');
-  const duplicateBtn = currentChecklistWindow?.querySelector('#duplicate-item');
   
   if (pendingCountEl) pendingCountEl.textContent = pendingCount;
   if (completedCountEl) completedCountEl.textContent = completedCount;
   
   // Обновляем состояние кнопки дублирования
-  if (duplicateBtn) {
-    const hasSelectedItem = document.activeElement?.closest('.checklist-item');
-    duplicateBtn.disabled = !hasSelectedItem;
-  }
+  updateDuplicateButtonState();
+}
+
+/**
+ * Обновляет состояние кнопки дублирования
+ */
+function updateDuplicateButtonState() {
+  const duplicateBtn = currentChecklistWindow?.querySelector('#duplicate-item');
+  if (!duplicateBtn) return;
+  
+  const hasSelectedItem = currentChecklistWindow?.querySelector('.checklist-item.selected');
+  duplicateBtn.disabled = !hasSelectedItem;
 }
 
 /**
@@ -727,13 +756,12 @@ function setupQuickActions() {
           }
           break;
         case 'd':
-          e.preventDefault();
-          deleteCompleted();
-          break;
-        case 'Shift':
-          if (e.key === 'd') {
+          if (e.shiftKey) {
             e.preventDefault();
             duplicateSelected();
+          } else {
+            e.preventDefault();
+            deleteCompleted();
           }
           break;
       }
@@ -753,11 +781,7 @@ function setupQuickActions() {
   // Обновляем состояние кнопки дублирования при изменении фокуса
   const onFocusChange = () => {
     if (currentChecklistWindow) {
-      const duplicateBtn = currentChecklistWindow.querySelector('#duplicate-item');
-      if (duplicateBtn) {
-        const hasSelectedItem = document.activeElement?.closest('.checklist-item');
-        duplicateBtn.disabled = !hasSelectedItem;
-      }
+      updateDuplicateButtonState();
     }
   };
   
@@ -845,19 +869,22 @@ async function deleteCompleted() {
 async function duplicateSelected() {
   if (!currentChecklist) return;
   
-  const activeEl = document.activeElement;
-  const itemEl = activeEl?.closest('.checklist-item');
+  // Ищем выбранную строку
+  const selectedItem = currentChecklistWindow?.querySelector('.checklist-item.selected');
   
-  if (!itemEl) {
-    showToast('Выберите пункт для дублирования', 'warn');
+  if (!selectedItem) {
+    showToast('Выберите пункт для дублирования (кликните на строку)', 'warn');
     return;
   }
   
-  const itemId = itemEl.dataset.itemId;
+  const itemId = selectedItem.dataset.itemId;
   const items = await getChecklist(currentChecklist.id);
   const item = items.find(i => i.id === itemId);
   
-  if (!item) return;
+  if (!item) {
+    showToast('Пункт не найден', 'error');
+    return;
+  }
   
   const newItem = {
     id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),

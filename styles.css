@@ -3021,6 +3021,23 @@ kbd {
   font-weight: 500;
 }
 
+/* Выбранная строка */
+.checklist-item.selected {
+  background: rgba(76, 175, 80, 0.15);
+  border-left: 3px solid #4CAF50;
+  outline: 1px solid #4CAF50;
+}
+
+.checklist-item.selected .checklist-item-text {
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+.checklist-item:focus {
+  outline: 2px solid #4CAF50;
+  outline-offset: -2px;
+}
+
 .checklist-tab {
   flex: 1;
   background: none;
