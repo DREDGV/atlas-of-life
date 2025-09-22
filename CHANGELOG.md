@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: disable cosmic animations to eliminate visual freezes (26fee7a)
 - fix(inbox): resolve map disappearing issues during distribution (074cb3b)
 - feat(inbox): complete UI polish with modern design and enhanced UX (50f81ad)
 - fix: restore smooth object dragging and fix recursive requestDrawThrottled call (170ca85)

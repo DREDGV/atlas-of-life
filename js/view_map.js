@@ -5540,8 +5540,8 @@ function confirmTaskDetach() {
   pendingDetach = null;
 }
 
-// Export requestDraw function
-export { requestDraw };
+// Export requestDraw and requestLayout functions
+export { requestDraw, requestLayout };
 
 // expose undo function
 export function undoLastMove() {
@@ -5943,6 +5943,7 @@ function centerOnObject(obj) {
 try {
   window.layoutMap = layoutMap;
   window.drawMap = drawMap;
+  window.requestLayout = requestLayout;
   window.toggleFocusMode = toggleFocusMode;
   window.isFocusModeActive = isFocusModeActive;
   window.getFocusedDomainId = getFocusedDomainId;

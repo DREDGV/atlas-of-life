@@ -13,6 +13,7 @@ import {
   undoLastMove,
   getMapNodes,
   requestDraw,
+  requestLayout,
 } from "./view_map.js";
 import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
