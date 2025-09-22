@@ -216,7 +216,7 @@ export function initializeHotkeys() {
     try {
       // Check if Inbox is enabled
       if (!state.settings?.showInbox) {
-        showToast('Инбокс отключен в настройках', 'warn');
+        if (window.showToast) window.showToast('Инбокс отключен в настройках', 'warn');
         return;
       }
       
@@ -224,7 +224,7 @@ export function initializeHotkeys() {
       if (window.openInboxCapture) {
         window.openInboxCapture();
       } else {
-        showToast('Функция Инбокса не инициализирована', 'warn');
+        if (window.showToast) window.showToast('Функция Инбокса не инициализирована', 'warn');
       }
     } catch (error) {
       console.error('Error in inboxCapture hotkey:', error);
@@ -236,7 +236,7 @@ export function initializeHotkeys() {
     try {
       // Check if Inbox is enabled
       if (!state.settings?.showInbox) {
-        showToast('Инбокс отключен в настройках', 'warn');
+        if (window.showToast) window.showToast('Инбокс отключен в настройках', 'warn');
         return;
       }
       
@@ -244,7 +244,7 @@ export function initializeHotkeys() {
       if (window.openInboxList) {
         window.openInboxList();
       } else {
-        showToast('Функция Инбокса не инициализирована', 'warn');
+        if (window.showToast) window.showToast('Функция Инбокса не инициализирована', 'warn');
       }
     } catch (error) {
       console.error('Error in inboxList hotkey:', error);

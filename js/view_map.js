@@ -4110,6 +4110,19 @@ function onMouseMove(e) {
     tooltip.innerHTML = `🛰 Проект: <b>${p.title}</b>${
       tags ? `<br/><span class="hint">${tags}</span>` : ""
     }`;
+  } else if (n._type === "idea") {
+    const idea = state.ideas.find((x) => x.id === n.id);
+    const content = idea.content ? `<br/><span class="hint">${idea.content.substring(0, 100)}${idea.content.length > 100 ? '...' : ''}</span>` : "";
+    tooltip.innerHTML = `🌌 Идея: <b>${idea.title}</b>${content}<br/><span class="hint">создана ${daysSince(idea.createdAt)} дн. назад</span>`;
+  } else if (n._type === "note") {
+    const note = state.notes.find((x) => x.id === n.id);
+    const content = note.content ? `<br/><span class="hint">${note.content.substring(0, 80)}${note.content.length > 80 ? '...' : ''}</span>` : "";
+    tooltip.innerHTML = `🪨 Заметка: <b>${note.title}</b>${content}<br/><span class="hint">создана ${daysSince(note.createdAt)} дн. назад</span>`;
+  } else if (n._type === "checklist") {
+    const checklist = state.checklists.find((x) => x.id === n.id);
+    const progress = getChecklistProgress(checklist.id);
+    const progressText = progress.total > 0 ? `${progress.completed}/${progress.total} (${Math.round(progress.completed/progress.total*100)}%)` : '0/0 (0%)';
+    tooltip.innerHTML = `✓ Чек-лист: <b>${checklist.title}</b><br/><span class="hint">прогресс: ${progressText}</span>`;
   } else {
     const d = state.domains.find((x) => x.id === n.id);
     const mood = n.mood || 'balance';

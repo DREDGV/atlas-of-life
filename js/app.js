@@ -4244,9 +4244,6 @@ async function init() {
   console.log('About to initialize autocomplete...');
   initAutocomplete();
   
-  // Initialize inbox system
-  initInbox();
-  
   // Initialize cosmic animations
   if (!window.cosmicAnimations) {
     import('./cosmic-effects.js').then(module => {
@@ -4258,6 +4255,16 @@ async function init() {
   // Initialize analytics dashboard
   window.analyticsDashboard = analyticsDashboard;
   console.log('Analytics dashboard initialized successfully');
+  
+  // Initialize inbox system (after everything else is loaded)
+  setTimeout(() => {
+    try {
+      initInbox();
+      console.log('Inbox system initialized');
+    } catch (error) {
+      console.error('Failed to initialize inbox:', error);
+    }
+  }, 100);
   
   // Initialize info panel tooltips
   setupInfoPanelTooltips();

@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(inbox): implement MVP Inbox system with quick capture and distribution (ac541d9)
 - feat: add debugging for checklist duplication and hotkeys (8becbb1)
 - fix: исправлено дублирование строк в чек-листах (dc79e21)
 - feat: добавлены быстрые действия и поиск для чек-листов (36f3de6)

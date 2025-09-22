@@ -2,7 +2,6 @@
 // Inbox system for quick thought capture and distribution
 
 import { state, generateId, saveState } from './state.js';
-import { showToast } from './utils/toast.js';
 
 // Inbox state
 let inboxItems = [];
@@ -31,12 +30,12 @@ function isInboxEnabled() {
 // Add item to inbox
 export function addToInbox(text, metadata = {}) {
   if (!isInboxEnabled()) {
-    showToast('Инбокс отключен в настройках', 'warn');
+    if (window.showToast) window.showToast('Инбокс отключен в настройках', 'warn');
     return false;
   }
   
   if (!text || text.trim().length === 0) {
-    showToast('Нельзя добавить пустой элемент в Инбокс', 'warn');
+    if (window.showToast) window.showToast('Нельзя добавить пустой элемент в Инбокс', 'warn');
     return false;
   }
   
@@ -61,7 +60,7 @@ export function addToInbox(text, metadata = {}) {
   state.inbox = inboxItems;
   saveState();
   
-  showToast(`Добавлено в Инбокс: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`, 'ok');
+  if (window.showToast) window.showToast(`Добавлено в Инбокс: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`, 'ok');
   return true;
 }
 
@@ -129,7 +128,7 @@ export function distributeInboxItem(itemId, targetType = 'task', targetProjectId
   // Remove from inbox
   removeFromInbox(itemId);
   
-  showToast(`Элемент распределен как ${targetType === 'task' ? 'задача' : targetType === 'idea' ? 'идея' : 'заметка'}`, 'ok');
+  if (window.showToast) window.showToast(`Элемент распределен как ${targetType === 'task' ? 'задача' : targetType === 'idea' ? 'идея' : 'заметка'}`, 'ok');
   return true;
 }
 
@@ -183,7 +182,7 @@ export function parseInboxText(text) {
 // Global functions for hotkeys
 window.openInboxCapture = function() {
   if (!isInboxEnabled()) {
-    showToast('Инбокс отключен в настройках', 'warn');
+    if (window.showToast) window.showToast('Инбокс отключен в настройках', 'warn');
     return;
   }
   
@@ -192,7 +191,7 @@ window.openInboxCapture = function() {
 
 window.openInboxList = function() {
   if (!isInboxEnabled()) {
-    showToast('Инбокс отключен в настройках', 'warn');
+    if (window.showToast) window.showToast('Инбокс отключен в настройках', 'warn');
     return;
   }
   
@@ -436,7 +435,7 @@ function showInboxListModal() {
       const itemId = btn.dataset.id;
       if (confirm('Удалить элемент из Инбокса?')) {
         removeFromInbox(itemId);
-        showToast('Элемент удален из Инбокса', 'ok');
+        if (window.showToast) window.showToast('Элемент удален из Инбокса', 'ok');
         cleanup();
         showInboxListModal(); // Refresh
       }
