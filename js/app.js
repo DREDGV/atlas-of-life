@@ -1495,8 +1495,63 @@ try { window.getMapNodes = getMapNodes; } catch (_) {}
 try { window.showInfoPanel = showInfoPanel; } catch (_) {}
 try { window.hideInfoPanel = hideInfoPanel; } catch (_) {}
 
+// Функция для принудительной очистки дубликатов (можно вызвать из консоли)
+window.cleanupDuplicates = function() {
+  console.log('🧹 Принудительная очистка дубликатов...');
+  
+  // Очищаем дубликаты идей
+  if (state.ideas && state.ideas.length > 0) {
+    const originalCount = state.ideas.length;
+    const uniqueIdeas = [];
+    const seenIds = new Set();
+    
+    state.ideas.forEach(idea => {
+      if (!seenIds.has(idea.id) && idea.id && idea.title) {
+        seenIds.add(idea.id);
+        uniqueIdeas.push(idea);
+      }
+    });
+    
+    if (uniqueIdeas.length !== originalCount) {
+      console.log(`✅ Очищено идей: ${originalCount} → ${uniqueIdeas.length}`);
+      state.ideas = uniqueIdeas;
+    }
+  }
+  
+  // Очищаем дубликаты заметок
+  if (state.notes && state.notes.length > 0) {
+    const originalCount = state.notes.length;
+    const uniqueNotes = [];
+    const seenIds = new Set();
+    
+    state.notes.forEach(note => {
+      if (!seenIds.has(note.id) && note.id && note.title) {
+        seenIds.add(note.id);
+        uniqueNotes.push(note);
+      }
+    });
+    
+    if (uniqueNotes.length !== originalCount) {
+      console.log(`✅ Очищено заметок: ${originalCount} → ${uniqueNotes.length}`);
+      state.notes = uniqueNotes;
+    }
+  }
+  
+  // Сохраняем изменения и перерисовываем карту
+  saveState();
+  requestLayout();
+  console.log('✅ Очистка завершена!');
+};
+
 // Функции для работы с идеями и заметками
 window.createIdea = function() {
+  // Проверяем, нет ли уже идеи с таким же названием
+  const existingIdea = state.ideas.find(idea => idea.title === 'Новая идея');
+  if (existingIdea) {
+    console.warn('⚠️ Идея "Новая идея" уже существует, используем существующую');
+    return existingIdea;
+  }
+  
   const idea = {
     id: generateId(),
     title: 'Новая идея',
@@ -1516,8 +1571,7 @@ window.createIdea = function() {
   
   state.ideas.push(idea);
   saveState();
-  layoutMap();
-  drawMap();
+  requestLayout(); // Use optimized layout request
   return idea;
 };
 

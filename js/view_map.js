@@ -2122,11 +2122,143 @@ function calculateDomainRadius(projects) {
   // Возвращаем максимальное значение между базовым радиусом и вычисленным
   return Math.max(baseRadius, radiusFromArea);
 }
+
+// Функция очистки дубликатов объектов
+function cleanupDuplicateObjects() {
+  console.log('🧹 Очистка дубликатов объектов...');
+  
+  // Очищаем дубликаты идей
+  if (state.ideas && state.ideas.length > 0) {
+    const originalCount = state.ideas.length;
+    const uniqueIdeas = [];
+    const seenIds = new Set();
+    
+    state.ideas.forEach(idea => {
+      if (!seenIds.has(idea.id) && idea.id && idea.title) {
+        seenIds.add(idea.id);
+        uniqueIdeas.push(idea);
+      } else {
+        console.warn('🗑️ Удаляем дубликат идеи:', idea);
+      }
+    });
+    
+    if (uniqueIdeas.length !== originalCount) {
+      console.log(`✅ Очищено идей: ${originalCount} → ${uniqueIdeas.length}`);
+      state.ideas = uniqueIdeas;
+    }
+  }
+  
+  // Очищаем дубликаты заметок
+  if (state.notes && state.notes.length > 0) {
+    const originalCount = state.notes.length;
+    const uniqueNotes = [];
+    const seenIds = new Set();
+    
+    state.notes.forEach(note => {
+      if (!seenIds.has(note.id) && note.id && note.title) {
+        seenIds.add(note.id);
+        uniqueNotes.push(note);
+      } else {
+        console.warn('🗑️ Удаляем дубликат заметки:', note);
+      }
+    });
+    
+    if (uniqueNotes.length !== originalCount) {
+      console.log(`✅ Очищено заметок: ${originalCount} → ${uniqueNotes.length}`);
+      state.notes = uniqueNotes;
+    }
+  }
+  
+  // Очищаем дубликаты задач
+  if (state.tasks && state.tasks.length > 0) {
+    const originalCount = state.tasks.length;
+    const uniqueTasks = [];
+    const seenIds = new Set();
+    
+    state.tasks.forEach(task => {
+      if (!seenIds.has(task.id) && task.id && task.title) {
+        seenIds.add(task.id);
+        uniqueTasks.push(task);
+      } else {
+        console.warn('🗑️ Удаляем дубликат задачи:', task);
+      }
+    });
+    
+    if (uniqueTasks.length !== originalCount) {
+      console.log(`✅ Очищено задач: ${originalCount} → ${uniqueTasks.length}`);
+      state.tasks = uniqueTasks;
+    }
+  }
+  
+  // Очищаем дубликаты проектов
+  if (state.projects && state.projects.length > 0) {
+    const originalCount = state.projects.length;
+    const uniqueProjects = [];
+    const seenIds = new Set();
+    
+    state.projects.forEach(project => {
+      if (!seenIds.has(project.id) && project.id && project.title) {
+        seenIds.add(project.id);
+        uniqueProjects.push(project);
+      } else {
+        console.warn('🗑️ Удаляем дубликат проекта:', project);
+      }
+    });
+    
+    if (uniqueProjects.length !== originalCount) {
+      console.log(`✅ Очищено проектов: ${originalCount} → ${uniqueProjects.length}`);
+      state.projects = uniqueProjects;
+    }
+  }
+}
+
+// Функция для избежания наложения объектов
+function avoidOverlap(x, y, r, existingNodes, maxAttempts = 10) {
+  let attempts = 0;
+  let currentX = x;
+  let currentY = y;
+  
+  while (attempts < maxAttempts) {
+    let hasOverlap = false;
+    
+    // Проверяем наложение с существующими объектами
+    for (const node of existingNodes) {
+      const distance = Math.sqrt(
+        Math.pow(currentX - node.x, 2) + Math.pow(currentY - node.y, 2)
+      );
+      const minDistance = r + node.r + 20; // Минимальное расстояние между объектами
+      
+      if (distance < minDistance) {
+        hasOverlap = true;
+        break;
+      }
+    }
+    
+    if (!hasOverlap) {
+      return { x: currentX, y: currentY };
+    }
+    
+    // Если есть наложение, сдвигаем объект
+    attempts++;
+    const angle = (attempts * 0.5) * Math.PI; // Спиральное движение
+    const radius = attempts * 30; // Увеличиваем радиус с каждой попыткой
+    
+    currentX = x + Math.cos(angle) * radius;
+    currentY = y + Math.sin(angle) * radius;
+  }
+  
+  // Если не удалось избежать наложения, возвращаем исходную позицию
+  return { x, y };
+}
+
 export function layoutMap() {
   // Prevent recursive layout calls
   if (isLayouting) {
     return;
   }
+  
+  // Очищаем дубликаты объектов перед отрисовкой
+  cleanupDuplicateObjects();
   isLayouting = true;
   
   // Отладка для Edge
@@ -2506,12 +2638,15 @@ export function layoutMap() {
     console.log('🎨 Adding ideas to nodes:', state.ideas.length);
     state.ideas.forEach(idea => {
       if (idea.x !== undefined && idea.y !== undefined && idea.r !== undefined) {
+        // Проверяем, не накладывается ли идея на другие объекты
+        const adjustedPos = avoidOverlap(idea.x, idea.y, idea.r, nodes);
+        
         nodes.push({
           _type: "idea",
           id: idea.id,
           title: idea.title,
-          x: idea.x,
-          y: idea.y,
+          x: adjustedPos.x,
+          y: adjustedPos.y,
           r: idea.r,
           color: idea.color,
           opacity: idea.opacity,
@@ -2697,10 +2832,10 @@ export function drawMap() {
   // Cosmic starfield with twinkling stars - TEMPORARILY DISABLED
   // drawStarfield(ctx, W, H, viewState);
   
-  // Render cosmic effects (particles, animations)
-  if (window.cosmicAnimations) {
-    window.cosmicAnimations.render();
-  }
+  // Render cosmic effects (particles, animations) - TEMPORARILY DISABLED FOR PERFORMANCE
+  // if (window.cosmicAnimations) {
+  //   window.cosmicAnimations.render();
+  // }
   
   // Draw new cosmic objects
   if (W > 0 && H > 0) {
@@ -3713,33 +3848,8 @@ export function drawMap() {
     }
   }
 
-  // Рисуем идеи
-  nodes
-    .filter((n) => n._type === "idea")
-    .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
-      
-      // Рисуем идею как полупрозрачный круг
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fillStyle = (n.color || "#8b5cf6") + "80"; // 50% прозрачности
-      ctx.fill();
-      
-      // Обводка
-      ctx.beginPath();
-      ctx.strokeStyle = n.color || "#8b5cf6";
-      ctx.lineWidth = 2 * DPR;
-      ctx.setLineDash([4 * DPR, 4 * DPR]);
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      
-      // Название идеи
-      ctx.fillStyle = "#e0e7ff";
-      ctx.font = `${10 * DPR}px system-ui`;
-      ctx.textAlign = "center";
-      ctx.fillText(n.title, n.x, n.y - n.r - 8 * DPR);
-    });
+  // Рисуем идеи (удален дублирующий код - теперь используется drawIdeas())
+  // Этот блок удален, так как идеи теперь рисуются в функции drawIdeas()
 
   // Заметки теперь рисуются в функции drawNotes() - удален дублирующий код
 
