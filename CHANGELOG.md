@@ -633,6 +633,8 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat: add comprehensive tooltips for all UI elements (b402261)
+- feat(inbox): make Inbox visible and accessible by default (4972ae3)
 - fix: temporarily disable old nav hints to test new tooltips (d68c3fe)
 - fix: force cache refresh for info panel updates (88e039c)
 - feat: enhance info panel with tooltips for new objects (e90ca6e)

@@ -129,8 +129,163 @@ export function distributeInboxItem(itemId, targetType = 'task', targetProjectId
   // Remove from inbox
   removeFromInbox(itemId);
   
+  // Trigger map redraw and today update
+  if (window.drawMap) window.drawMap();
+  if (window.renderToday) window.renderToday();
+  
   if (window.showToast) window.showToast(`Элемент распределен как ${targetType === 'task' ? 'задача' : targetType === 'idea' ? 'идея' : 'заметка'}`, 'ok');
   return true;
+}
+
+// Show distribution modal for inbox item
+export function showDistributionModal(itemId) {
+  const item = inboxItems.find(item => item.id === itemId);
+  if (!item) return;
+  
+  const modal = document.createElement('div');
+  modal.id = 'inbox-distribution-modal';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const content = document.createElement('div');
+  content.style.cssText = `
+    background: var(--panel);
+    border: 1px solid var(--panel-2);
+    border-radius: 8px;
+    padding: 20px;
+    min-width: 500px;
+    max-width: 600px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  `;
+  
+  // Get available projects and domains
+  const projects = state.projects || [];
+  const domains = state.domains || [];
+  
+  content.innerHTML = `
+    <div style="margin-bottom: 16px;">
+      <h3 style="margin: 0 0 8px 0; color: var(--text);">📤 Распределить элемент</h3>
+      <div style="padding: 12px; background: var(--panel-2); border-radius: 4px; margin-bottom: 16px;">
+        <strong>${item.text}</strong>
+        ${item.metadata.tags.length > 0 ? `<br><small>Теги: ${item.metadata.tags.join(', ')}</small>` : ''}
+        ${item.metadata.priority ? `<br><small>Приоритет: ${item.metadata.priority}</small>` : ''}
+      </div>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+      <div>
+        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Тип объекта:</label>
+        <select id="distribute-type" style="width: 100%; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel); color: var(--text);">
+          <option value="task">📋 Задача</option>
+          <option value="idea">💡 Идея</option>
+          <option value="note">📝 Заметка</option>
+        </select>
+      </div>
+      
+      <div>
+        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Приоритет:</label>
+        <select id="distribute-priority" style="width: 100%; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel); color: var(--text);">
+          <option value="p1" ${item.metadata.priority === 'p1' ? 'selected' : ''}>🔴 P1 - Критический</option>
+          <option value="p2" ${item.metadata.priority === 'p2' ? 'selected' : ''}>🟠 P2 - Высокий</option>
+          <option value="p3" ${item.metadata.priority === 'p3' ? 'selected' : ''}>🟡 P3 - Средний</option>
+          <option value="p4" ${item.metadata.priority === 'p4' ? 'selected' : ''}>⚪ P4 - Низкий</option>
+        </select>
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 8px; font-weight: 600;">Домен:</label>
+      <select id="distribute-domain" style="width: 100%; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel); color: var(--text);">
+        <option value="">Не назначен</option>
+        ${domains.map(d => `<option value="${d.id}">${d.title}</option>`).join('')}
+      </select>
+    </div>
+    
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 8px; font-weight: 600;">Проект:</label>
+      <select id="distribute-project" style="width: 100%; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel); color: var(--text);">
+        <option value="">Не назначен</option>
+        ${projects.map(p => `<option value="${p.id}">${p.title}</option>`).join('')}
+      </select>
+    </div>
+    
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 8px; font-weight: 600;">Теги (через запятую):</label>
+      <input type="text" id="distribute-tags" value="${item.metadata.tags.join(', ')}" placeholder="важный, работа, срочно" style="width: 100%; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel); color: var(--text);">
+    </div>
+    
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 8px; font-weight: 600;">Срок выполнения:</label>
+      <input type="date" id="distribute-due" value="${item.metadata.dueDate || ''}" style="width: 100%; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel); color: var(--text);">
+    </div>
+    
+    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+      <button id="distribute-cancel" style="padding: 8px 16px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel); color: var(--text); cursor: pointer;">Отмена</button>
+      <button id="distribute-save" style="padding: 8px 16px; border: none; border-radius: 4px; background: var(--accent); color: white; cursor: pointer;">Распределить</button>
+    </div>
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+  
+  // Event handlers
+  const cleanup = () => {
+    document.body.removeChild(modal);
+  };
+  
+  document.getElementById('distribute-cancel').onclick = cleanup;
+  modal.onclick = (e) => {
+    if (e.target === modal) cleanup();
+  };
+  
+  document.getElementById('distribute-save').onclick = () => {
+    const type = document.getElementById('distribute-type').value;
+    const priority = document.getElementById('distribute-priority').value;
+    const domainId = document.getElementById('distribute-domain').value;
+    const projectId = document.getElementById('distribute-project').value;
+    const tags = document.getElementById('distribute-tags').value.split(',').map(t => t.trim()).filter(t => t);
+    const dueDate = document.getElementById('distribute-due').value;
+    
+    // Update item metadata
+    updateInboxItem(itemId, {
+      priority,
+      tags,
+      dueDate: dueDate || null,
+      projectId: projectId || null,
+      domainId: domainId || null
+    });
+    
+    // Distribute the item
+    distributeInboxItem(itemId, type, projectId || null, domainId || null);
+    cleanup();
+    
+    // Refresh inbox list if open
+    if (document.getElementById('inbox-list-modal')) {
+      document.body.removeChild(document.getElementById('inbox-list-modal'));
+      showInboxListModal();
+    }
+  };
+  
+  // Keyboard shortcuts
+  modal.onkeydown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cleanup();
+    } else if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault();
+      document.getElementById('distribute-save').click();
+    }
+  };
 }
 
 // Simple text parser for shortcodes
@@ -295,8 +450,21 @@ function showInboxCaptureOverlay() {
   saveBtn.onclick = () => {
     const text = textarea.value.trim();
     if (text) {
-      const metadata = parseInboxText(text);
-      addToInbox(text, metadata);
+      // Support multiline input - each line becomes separate inbox item
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      
+      if (lines.length === 1) {
+        // Single line - parse metadata
+        const metadata = parseInboxText(text);
+        addToInbox(text, metadata);
+      } else {
+        // Multiple lines - add each as separate item
+        lines.forEach((line, index) => {
+          const metadata = parseInboxText(line);
+          addToInbox(line, metadata);
+        });
+        if (window.showToast) window.showToast(`Добавлено ${lines.length} элементов в Инбокс`, 'ok');
+      }
     }
     cleanup();
   };
@@ -388,16 +556,52 @@ function showInboxListModal() {
                   ${item.metadata.dueDate ? ` • Срок: ${item.metadata.dueDate}` : ''}
                 </div>
               </div>
-              <div style="display: flex; gap: 4px; margin-left: 12px;">
-                <button class="inbox-item-delete" data-id="${item.id}" style="
+              <div style="display: flex; gap: 4px; margin-left: 12px; flex-wrap: wrap;">
+                <button class="inbox-item-quick-task" data-id="${item.id}" title="Быстро создать задачу" style="
+                  padding: 4px 6px;
+                  border: 1px solid #3b82f6;
+                  border-radius: 4px;
+                  background: #3b82f6;
+                  color: white;
+                  cursor: pointer;
+                  font-size: 11px;
+                ">📋</button>
+                <button class="inbox-item-quick-idea" data-id="${item.id}" title="Быстро создать идею" style="
+                  padding: 4px 6px;
+                  border: 1px solid #f59e0b;
+                  border-radius: 4px;
+                  background: #f59e0b;
+                  color: white;
+                  cursor: pointer;
+                  font-size: 11px;
+                ">💡</button>
+                <button class="inbox-item-quick-note" data-id="${item.id}" title="Быстро создать заметку" style="
+                  padding: 4px 6px;
+                  border: 1px solid #10b981;
+                  border-radius: 4px;
+                  background: #10b981;
+                  color: white;
+                  cursor: pointer;
+                  font-size: 11px;
+                ">📝</button>
+                <button class="inbox-item-distribute" data-id="${item.id}" title="Полное распределение" style="
                   padding: 4px 8px;
+                  border: 1px solid var(--accent);
+                  border-radius: 4px;
+                  background: var(--accent);
+                  color: white;
+                  cursor: pointer;
+                  font-size: 12px;
+                ">⚙️</button>
+                <button class="inbox-item-delete" data-id="${item.id}" title="Удалить" style="
+                  padding: 4px 6px;
                   border: 1px solid var(--danger);
                   border-radius: 4px;
                   background: transparent;
                   color: var(--danger);
                   cursor: pointer;
-                  font-size: 12px;
-                ">Удалить</button>
+                  font-size: 11px;
+                ">🗑️</button>
               </div>
             </div>
           </div>
@@ -428,6 +632,47 @@ function showInboxListModal() {
   modal.onclick = (e) => {
     if (e.target === modal) cleanup();
   };
+  
+  // Quick action buttons
+  document.querySelectorAll('.inbox-item-quick-task').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.id;
+      distributeInboxItem(itemId, 'task');
+      cleanup();
+      showInboxListModal(); // Refresh
+    };
+  });
+  
+  document.querySelectorAll('.inbox-item-quick-idea').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.id;
+      distributeInboxItem(itemId, 'idea');
+      cleanup();
+      showInboxListModal(); // Refresh
+    };
+  });
+  
+  document.querySelectorAll('.inbox-item-quick-note').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.id;
+      distributeInboxItem(itemId, 'note');
+      cleanup();
+      showInboxListModal(); // Refresh
+    };
+  });
+  
+  // Distribute buttons
+  document.querySelectorAll('.inbox-item-distribute').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.id;
+      cleanup(); // Close list modal
+      showDistributionModal(itemId); // Open distribution modal
+    };
+  });
   
   // Delete buttons
   document.querySelectorAll('.inbox-item-delete').forEach(btn => {
