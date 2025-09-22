@@ -145,6 +145,19 @@ function requestDraw() {
   });
 }
 
+// Более строгая защита от частых вызовов
+let lastRequestDrawTime = 0;
+const MIN_REQUEST_DRAW_INTERVAL = 16; // 60 FPS max
+
+function requestDrawThrottled() {
+  const now = performance.now();
+  if (now - lastRequestDrawTime < MIN_REQUEST_DRAW_INTERVAL) {
+    return; // Пропускаем слишком частые вызовы
+  }
+  lastRequestDrawTime = now;
+  requestDrawThrottled();
+}
+
 function requestLayout() {
   if (isLayouting) return;
   
@@ -152,7 +165,7 @@ function requestLayout() {
   layoutTimeout = setTimeout(() => {
     if (!isLayouting) {
       layoutMap();
-      requestDraw();
+      requestDrawThrottled();
     }
   }, LAYOUT_DEBOUNCE_MS);
 }
@@ -216,7 +229,7 @@ function onWheel(e) {
   try {
     logEvent("map_zoom", { scale: Math.round(next * 100) / 100 });
   } catch (_) {}
-  requestDraw();
+  requestDrawThrottled();
   
   // Disable light mode after zoom cooldown
   setTimeout(() => {
@@ -260,7 +273,7 @@ function selectObject(obj) {
     clickedNodeId = null;
     console.log('🖱️ Selection cleared');
   }
-  requestDraw();
+  requestDrawThrottled();
 }
 
 function commitObjectPosition(obj) {
@@ -325,7 +338,7 @@ function commitObjectPosition(obj) {
     viewState.scale = currentScale;
     viewState.tx = currentTx;
     viewState.ty = currentTy;
-    requestDraw();
+    requestDrawThrottled();
   }
 }
 
@@ -336,7 +349,7 @@ let projectVisualStyle = 'original'; // 'galaxy', 'simple', 'planet', 'modern', 
 function setProjectVisualStyle(style) {
   if (['galaxy', 'simple', 'planet', 'modern', 'neon', 'tech', 'minimal', 'holographic', 'gradient', 'mixed', 'original'].includes(style)) {
   projectVisualStyle = style;
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
   console.log(`Project visualization style changed to: ${style}`);
   } else {
     console.warn('Invalid visualization style. Use: galaxy, simple, planet, modern, neon, tech, minimal, holographic, gradient, mixed, or original');
@@ -1452,7 +1465,7 @@ function updatePan(e) {
   const dpr = window.devicePixelRatio || 1;
   viewState.tx += dx * dpr;
   viewState.ty += dy * dpr;
-  requestDraw();
+  requestDrawThrottled();
 }
 function endPan() {
   NAV.mode = 'idle';
@@ -1837,7 +1850,7 @@ function startCosmicAnimationLoop() {
 
 export function setShowFps() {
   showFps = !showFps;
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
 }
 
 // Export function to get current nodes for external modules
@@ -1869,13 +1882,13 @@ export function centerView() {
     viewState.tx = 0;
     viewState.ty = 0;
   }
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
 }
 export function resetView() {
   viewState.scale = 1;
   viewState.tx = 0;
   viewState.ty = 0;
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
 }
 
 // Focus mode "Black Hole" functions
@@ -1923,7 +1936,7 @@ function animateTo(target, ms = 230) {
     viewState.scale = start.sx + (target.sx - start.sx) * e;
     viewState.tx = start.tx + (target.tx - start.tx) * e;
     viewState.ty = start.ty + (target.ty - start.ty) * e;
-    requestDraw(); // Use optimized draw request
+    requestDrawThrottled(); // Use optimized draw request
     if (t < 1) requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
@@ -1931,7 +1944,7 @@ function animateTo(target, ms = 230) {
 
 function fitToBBox(bx) {
   if (!bx) {
-    requestDraw(); // Use optimized draw request
+    requestDrawThrottled(); // Use optimized draw request
     return;
   }
   const padK = 0.12; // ~12% outer padding
@@ -1953,7 +1966,7 @@ function fitToBBox(bx) {
 
 export function fitAll() {
   if (!nodes || nodes.length === 0) {
-    requestDraw(); // Use optimized draw request
+    requestDrawThrottled(); // Use optimized draw request
     return;
   }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1972,7 +1985,7 @@ export function fitActiveDomain() {
     (n) => n._type === "domain" && (!domId || n.id === domId)
   );
   if (!dn) {
-    requestDraw(); // Use optimized draw request
+    requestDrawThrottled(); // Use optimized draw request
     return;
   }
   // Включаем домен, все его проекты и все задачи (как привязанные к проектам, так и независимые в домене)
@@ -2013,7 +2026,7 @@ export function fitActiveProject() {
           state.activeDomain)
   );
   if (!pn) {
-    requestDraw(); // Use optimized draw request
+    requestDrawThrottled(); // Use optimized draw request
     return;
   }
   // Включаем проект и все его задачи
@@ -2773,8 +2786,10 @@ export function drawMap() {
   }
   isDrawing = true;
   
-  // Отладочная информация для диагностики фризов
-  console.log('🎨 drawMap called, nodes count:', nodes.length);
+  // Отладочная информация для диагностики фризов (только при проблемах)
+  if (window.DEBUG_DRAW_CALLS) {
+    console.log('🎨 drawMap called, nodes count:', nodes.length);
+  }
   
   // if nodes not prepared (empty), try to rebuild layout once — helps recover after edits
   if (!nodes || nodes.length === 0) {
@@ -3922,7 +3937,7 @@ export function drawMap() {
   
   // Продолжаем анимацию эффекта клика
   if (clickEffectTime > 0) {
-    requestDraw();
+    requestDrawThrottled();
   }
 }
 // optionally draw debug overlay
@@ -4093,7 +4108,7 @@ function onMouseMove(e) {
     mouse.target.x = wx - mouse.dragOffsetX;
     mouse.target.y = wy - mouse.dragOffsetY;
     mouse.lastX = sx; mouse.lastY = sy;
-    requestDraw();
+    requestDrawThrottled();
     return;
   }
 
@@ -4106,7 +4121,7 @@ function onMouseMove(e) {
       viewState.tx += (dxScreen * dpr) / viewState.scale;
       viewState.ty += (dyScreen * dpr) / viewState.scale;
       mouse.lastX = sx; mouse.lastY = sy;
-      requestDraw();
+      requestDrawThrottled();
       console.log('🖱️ Panning delta:', dxScreen, dyScreen);
     }
     return;
@@ -4121,7 +4136,7 @@ function onMouseMove(e) {
     viewState.ty += (dy * dpr) / viewState.scale;
     viewState.lastX = e.clientX;
     viewState.lastY = e.clientY;
-    requestDraw();
+    requestDrawThrottled();
     return;
   }
   
@@ -4210,7 +4225,7 @@ function onMouseMove(e) {
       canvas.style.cursor = draggedNode._type === 'task' ? 'move' : 'grabbing';
     }
     
-    requestDraw();
+    requestDrawThrottled();
     return;
   }
   const pt = screenToWorld(e.offsetX, e.offsetY);
@@ -4225,7 +4240,7 @@ function onMouseMove(e) {
     if (window.hideInfoPanel) {
       window.hideInfoPanel();
     }
-    requestDraw();
+    requestDrawThrottled();
     return;
   }
   tooltip.style.left = e.clientX + "px";
@@ -4302,7 +4317,7 @@ function onMouseMove(e) {
       window.showInfoPanel(tooltipText, '🌌', true);
     }
   }
-  requestDraw();
+  requestDrawThrottled();
 }
 
 function onMouseLeave() {
@@ -4331,7 +4346,7 @@ function onMouseLeave() {
     window.hideInfoPanel();
   }
   dropTargetDomainId = null;
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
 }
 function onMouseUp(e) {
   // Разрешаем вызывать повторно (если уже idle — просто выходим)
@@ -4506,7 +4521,7 @@ function onPointerMove(e) {
     
     // Если только что был зум — пропускаем тяжёлые расчёты 1 кадр
     if (performance.now() - _lastZoomTs < 50) {
-      requestDraw();
+      // Не вызываем requestDraw() при каждом движении мыши - это создает фризы
       return;
     }
 
@@ -4550,7 +4565,7 @@ function onPointerMove(e) {
       const cl = state.checklists.find(c => c.id === draggedNode.id);
       if (cl) { cl.x = draggedNode.x; cl.y = draggedNode.y; }
     }
-    requestDraw();
+    requestDrawThrottled(); // Используем throttled версию для предотвращения фризов
     if (window.DEBUG_MOUSE) console.log('[NAV] drag move');
     return;
   }
@@ -5793,7 +5808,7 @@ function setZoom(percent) {
   viewState.scale = p;
   viewState.tx = cx - wx * p;
   viewState.ty = cy - wy * p;
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
 }
 window.mapApi.getScale = getScale;
 window.mapApi.setZoom = setZoom;
@@ -5817,7 +5832,7 @@ window.mapApi.setPanMode = () => {
 // Toggle glow effects
 window.mapApi.toggleGlow = () => {
   state.showGlow = !state.showGlow;
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
   showToast(`Эффекты свечения ${state.showGlow ? 'включены' : 'отключены'}`, 'info');
 };
 
@@ -5836,7 +5851,7 @@ window.mapApi.searchObjects = (query) => {
   if (!query || query.trim().length < 2) {
     searchResults = [];
     currentSearchIndex = 0;
-    requestDraw(); // Use optimized draw request
+    requestDrawThrottled(); // Use optimized draw request
     return [];
   }
   
@@ -5867,7 +5882,7 @@ window.mapApi.searchObjects = (query) => {
     showToast('Объекты не найдены', 'warning');
   }
   
-  requestDraw(); // Use optimized draw request
+  requestDrawThrottled(); // Use optimized draw request
   return searchResults;
 };
 
@@ -5914,7 +5929,7 @@ function centerOnObject(obj) {
     viewState.ty = startTy + (targetTy - startTy) * easeProgress;
     viewState.scale = startScale + (targetScale - startScale) * easeProgress;
     
-    requestDraw(); // Use optimized draw request
+    requestDrawThrottled(); // Use optimized draw request
     
     if (progress < 1) {
       requestAnimationFrame(animate);
@@ -6351,7 +6366,7 @@ function onContextMenuOld(e) {
           // Delete task
           state.tasks = state.tasks.filter((t) => t.id !== n.id);
           saveState();
-          requestDraw(); // Use optimized draw request
+          requestDrawThrottled(); // Use optimized draw request
           if (window.renderToday) window.renderToday();
         }
       } else if (n._type === 'project') {
@@ -6940,8 +6955,10 @@ function drawIdeas() {
   if (!state.ideas || state.ideas.length === 0) return;
   if (W <= 0 || H <= 0) return;
   
-  // Отладочная информация для диагностики фризов
-  console.log('🎨 drawIdeas called, ideas count:', state.ideas.length);
+  // Отладочная информация для диагностики фризов (только при проблемах)
+  if (window.DEBUG_DRAW_CALLS) {
+    console.log('🎨 drawIdeas called, ideas count:', state.ideas.length);
+  }
   
   // Use pre-calculated viewport bounds from drawMap context
   // This will be passed as parameter in future optimization
@@ -7231,7 +7248,7 @@ function showIdeaEditor(idea) {
     clearTimeout(sizeTimeout);
     sizeTimeout = setTimeout(() => {
       idea.r = parseInt(e.target.value);
-      requestDraw();
+      requestDrawThrottled();
     }, 100);
   });
   
@@ -7242,7 +7259,7 @@ function showIdeaEditor(idea) {
     clearTimeout(opacityTimeout);
     opacityTimeout = setTimeout(() => {
       idea.opacity = parseFloat(e.target.value);
-      requestDraw();
+      requestDrawThrottled();
     }, 100);
   });
 }
@@ -7317,7 +7334,7 @@ function showNoteEditor(note) {
     clearTimeout(sizeTimeout);
     sizeTimeout = setTimeout(() => {
       note.r = parseInt(e.target.value);
-      requestDraw();
+      requestDrawThrottled();
     }, 100);
   });
   
@@ -7328,7 +7345,7 @@ function showNoteEditor(note) {
     clearTimeout(opacityTimeout);
     opacityTimeout = setTimeout(() => {
       note.opacity = parseFloat(e.target.value);
-      requestDraw();
+      requestDrawThrottled();
     }, 100);
   });
 }

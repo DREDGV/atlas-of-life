@@ -1552,7 +1552,11 @@ window.cleanupDuplicates = function() {
   
   // Сохраняем изменения и перерисовываем карту
   saveState();
-  requestLayout();
+  if (window.requestLayout) {
+    window.requestLayout();
+  } else {
+    console.warn('⚠️ requestLayout не доступен');
+  }
   console.log('✅ Очистка завершена!');
 };
 

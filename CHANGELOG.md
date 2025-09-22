@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: disable avoidOverlap and cleanupDuplicateObjects to diagnose freezes (1e267f8)
 - fix: add safety checks to prevent map disappearance (509a78e)
 - fix: aggressive duplicate cleanup and improved positioning algorithm (74f4f6f)
 - feat(inbox): implement batch operations and advanced hotkeys (d1e6138)
