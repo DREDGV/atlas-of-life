@@ -1,4 +1,4 @@
-﻿## Atlas_of_life_v0.6.8.8-inbox-map-stability (21.01.2025)
+﻿## Atlas_of_life_v0.6.8.8-inbox-map-stability (22.09.2025)
 
 ### ✅ Что добавлено/исправлено
 - 🛡️ **Критические исправления стабильности карты при распределении Инбокса**
@@ -659,6 +659,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(workflow): complete inbox system implementation with full documentation (493f0f6)
 - fix: export requestLayout function to resolve map display issue (9c4e58e)
 - fix: disable cosmic animations to eliminate visual freezes (26fee7a)
 - fix(inbox): resolve map disappearing issues during distribution (074cb3b)
