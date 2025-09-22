@@ -33,6 +33,11 @@
 
 ---
 
+## Planned
+
+- feat(inbox): Добавить концепт Инбокс — быстрый захват (N, Enter), список разборки (I), лёгкий парсер (#/@/!/~/p1..p4), статус `task.inbox` и распределение по проектам/доменам. Статус: планируется (MVP поэтапно).
+
+
 ## Atlas_of_life_v0.5.4-checklist-bugs-fixed (17.01.2025)
 
 ### ⚠️ КРИТИЧЕСКИЕ ПРОБЛЕМЫ С ЧЕК-ЛИСТАМИ
@@ -628,6 +633,8 @@ I18N/UX
 
 ## [Unreleased]
 
+- perf: масштабная оптимизация производительности Canvas и рендеринга (c9fea47)
+- fix: исправлены критические проблемы с Toast-уведомлениями (5a0db92)
 - perf(zoom+drag): skip heavy hit-tests right after zoom; debounce pointer redraw; reduce glow/pulse and FPS a bit (eb2a0b3)
 - perf(dnd): reduce animations and logs; stabilize pointer move detection; lighter glow/line widths; fewer trig calls (c93b790)
 - fix(dnd): live drop-target detection on pointermove; update lastMouseClient; enable project highlight and task attach between projects (3b21a7c)
