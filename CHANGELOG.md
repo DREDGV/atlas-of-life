@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- docs: обновлен CHANGELOG и IDEAS после оптимизации производительности (984945c)
 - perf: масштабная оптимизация производительности Canvas и рендеринга (c9fea47)
 - fix: исправлены критические проблемы с Toast-уведомлениями (5a0db92)
 - perf(zoom+drag): skip heavy hit-tests right after zoom; debounce pointer redraw; reduce glow/pulse and FPS a bit (eb2a0b3)
