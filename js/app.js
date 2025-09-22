@@ -4046,6 +4046,30 @@ function setupCreationPanel() {
   } else {
     console.error('❌ btnAddChecklist not found!');
   }
+
+  // Inbox Capture button
+  const btnInboxCapture = document.getElementById('btnInboxCapture');
+  if (btnInboxCapture) {
+    btnInboxCapture.addEventListener('click', () => {
+      if (window.openInboxCapture) {
+        window.openInboxCapture();
+      } else {
+        showToast('Инбокс не инициализирован', 'warn');
+      }
+    });
+  }
+
+  // Inbox List button
+  const btnInboxList = document.getElementById('btnInboxList');
+  if (btnInboxList) {
+    btnInboxList.addEventListener('click', () => {
+      if (window.openInboxList) {
+        window.openInboxList();
+      } else {
+        showToast('Инбокс не инициализирован', 'warn');
+      }
+    });
+  }
 }
 
 function submitQuick(text) {
@@ -4260,11 +4284,11 @@ async function init() {
   
   // Initialize hotkeys
   initializeHotkeys();
-  // Ensure DnD hints and Inbox are off by default for stability
+  // Ensure DnD hints are off by default, Inbox is ON by default
   try { 
     if (!state.settings) state.settings = {}; 
     if (typeof state.settings.showDndHints==='undefined') state.settings.showDndHints = false;
-    if (typeof state.settings.showInbox==='undefined') state.settings.showInbox = false;
+    if (typeof state.settings.showInbox==='undefined') state.settings.showInbox = true; // ON by default
   } catch(_){}
   
   // Initialize autocomplete

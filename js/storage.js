@@ -81,7 +81,7 @@ export function loadState(){
         enableHierarchyV2: false,
         hotkeys: state.settings.hotkeys,
         showDndHints: false,
-        showInbox: false,
+        showInbox: true,
         checklistIconMode: 'title'
       };
     }
@@ -115,7 +115,7 @@ export function saveState(){
       showAging: !!state.showAging,
       showGlow: !!state.showGlow,
       view: state.view,
-      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, showInbox:false, checklistIconMode:'title' }
+      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, showInbox:true, checklistIconMode:'title' }
     };
     const text = JSON.stringify(data);
     if (!text) {

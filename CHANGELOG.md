@@ -633,6 +633,11 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: temporarily disable old nav hints to test new tooltips (d68c3fe)
+- fix: force cache refresh for info panel updates (88e039c)
+- feat: enhance info panel with tooltips for new objects (e90ca6e)
+- fix(inbox): correct import path for saveState from storage.js (266cf0b)
+- fix(inbox): resolve showToast dependency and initialization issues (af5dd83)
 - feat(inbox): implement MVP Inbox system with quick capture and distribution (ac541d9)
 - feat: add debugging for checklist duplication and hotkeys (8becbb1)
 - fix: исправлено дублирование строк в чек-листах (dc79e21)
