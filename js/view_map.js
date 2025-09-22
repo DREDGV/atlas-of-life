@@ -101,8 +101,35 @@ let pendingFrame = false;
 let lastDrawTime = 0;
 const MIN_DRAW_INTERVAL = 16; // 60 FPS
 
+// Debouncing for frequent operations
+let drawTimeout = null;
+let layoutTimeout = null;
+let lastDrawCall = 0;
+const DRAW_DEBOUNCE_MS = 16; // 60 FPS max
+const LAYOUT_DEBOUNCE_MS = 100; // Layout changes are more expensive
+
 function requestDraw() {
   if (pendingFrame || isDrawing) return;
+  
+  const now = performance.now();
+  if (now - lastDrawCall < DRAW_DEBOUNCE_MS) {
+    // Debounce rapid draw calls
+    if (drawTimeout) clearTimeout(drawTimeout);
+    drawTimeout = setTimeout(() => {
+      if (!pendingFrame && !isDrawing) {
+        pendingFrame = true;
+        requestAnimationFrame(() => {
+          pendingFrame = false;
+          if (!isDrawing) {
+            drawMap();
+          }
+        });
+      }
+    }, DRAW_DEBOUNCE_MS);
+    return;
+  }
+  
+  lastDrawCall = now;
   pendingFrame = true;
   requestAnimationFrame(() => {
     pendingFrame = false;
@@ -110,6 +137,18 @@ function requestDraw() {
       drawMap();
     }
   });
+}
+
+function requestLayout() {
+  if (isLayouting) return;
+  
+  if (layoutTimeout) clearTimeout(layoutTimeout);
+  layoutTimeout = setTimeout(() => {
+    if (!isLayouting) {
+      layoutMap();
+      requestDraw();
+    }
+  }, LAYOUT_DEBOUNCE_MS);
 }
 
 // --- Read-only helper: allowed parent types for highlighting (UI-only) ---
@@ -282,9 +321,9 @@ let projectVisualStyle = 'original'; // 'galaxy', 'simple', 'planet', 'modern', 
 // Function to change visualization style
 function setProjectVisualStyle(style) {
   if (['galaxy', 'simple', 'planet', 'modern', 'neon', 'tech', 'minimal', 'holographic', 'gradient', 'mixed', 'original'].includes(style)) {
-    projectVisualStyle = style;
-    drawMap(); // Redraw with new style
-    console.log(`Project visualization style changed to: ${style}`);
+  projectVisualStyle = style;
+  requestDraw(); // Use optimized draw request
+  console.log(`Project visualization style changed to: ${style}`);
   } else {
     console.warn('Invalid visualization style. Use: galaxy, simple, planet, modern, neon, tech, minimal, holographic, gradient, mixed, or original');
   }
@@ -1668,8 +1707,7 @@ function createIdeaAtPosition(x, y) {
   
   state.ideas.push(idea);
   saveState();
-  layoutMap();
-  drawMap();
+  requestLayout(); // Use optimized layout request
   showIdeaEditor(idea);
 }
 
@@ -1690,8 +1728,7 @@ function createNoteAtPosition(x, y) {
   
   state.notes.push(note);
   saveState();
-  layoutMap();
-  drawMap();
+  requestLayout(); // Use optimized layout request
   showNoteEditor(note);
 }
 
@@ -1786,7 +1823,7 @@ function startCosmicAnimationLoop() {
 
 export function setShowFps() {
   showFps = !showFps;
-  drawMap();
+  requestDraw(); // Use optimized draw request
 }
 
 // Export function to get current nodes for external modules
@@ -1818,13 +1855,13 @@ export function centerView() {
     viewState.tx = 0;
     viewState.ty = 0;
   }
-  drawMap();
+  requestDraw(); // Use optimized draw request
 }
 export function resetView() {
   viewState.scale = 1;
   viewState.tx = 0;
   viewState.ty = 0;
-  drawMap();
+  requestDraw(); // Use optimized draw request
 }
 
 // Focus mode "Black Hole" functions
@@ -1852,8 +1889,7 @@ export function toggleFocusMode(domainId = null) {
   }
   
   // Recalculate layout and redraw
-  layoutMap();
-  drawMap();
+  requestLayout(); // Use optimized layout request
 }
 
 export function isFocusModeActive() {
@@ -1873,7 +1909,7 @@ function animateTo(target, ms = 230) {
     viewState.scale = start.sx + (target.sx - start.sx) * e;
     viewState.tx = start.tx + (target.tx - start.tx) * e;
     viewState.ty = start.ty + (target.ty - start.ty) * e;
-    drawMap();
+    requestDraw(); // Use optimized draw request
     if (t < 1) requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
@@ -1881,7 +1917,7 @@ function animateTo(target, ms = 230) {
 
 function fitToBBox(bx) {
   if (!bx) {
-    drawMap();
+    requestDraw(); // Use optimized draw request
     return;
   }
   const padK = 0.12; // ~12% outer padding
@@ -1903,7 +1939,7 @@ function fitToBBox(bx) {
 
 export function fitAll() {
   if (!nodes || nodes.length === 0) {
-    drawMap();
+    requestDraw(); // Use optimized draw request
     return;
   }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1922,7 +1958,7 @@ export function fitActiveDomain() {
     (n) => n._type === "domain" && (!domId || n.id === domId)
   );
   if (!dn) {
-    drawMap();
+    requestDraw(); // Use optimized draw request
     return;
   }
   // Включаем домен, все его проекты и все задачи (как привязанные к проектам, так и независимые в домене)
@@ -1963,7 +1999,7 @@ export function fitActiveProject() {
           state.activeDomain)
   );
   if (!pn) {
-    drawMap();
+    requestDraw(); // Use optimized draw request
     return;
   }
   // Включаем проект и все его задачи
@@ -2576,6 +2612,18 @@ export function drawMap() {
   }
   const t0 = performance.now();
   
+  // Pre-calculate viewport bounds for efficient culling
+  const inv = 1 / Math.max(0.0001, viewState.scale);
+  const pad = 200 * inv; // Increased padding for smoother scrolling
+  const vx0 = -viewState.tx * inv - pad;
+  const vy0 = -viewState.ty * inv - pad;
+  const vx1 = (W - viewState.tx) * inv + pad;
+  const vy1 = (H - viewState.ty) * inv + pad;
+  
+  // Optimized viewport culling function
+  const inView = (x, y, r = 0) => 
+    x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
+  
   // Анимация эффекта клика (медленнее и плавнее)
   if (clickEffectTime > 0) {
     clickEffectTime -= 0.02; // Медленнее затухание (было 0.05)
@@ -2640,15 +2688,7 @@ export function drawMap() {
     drawChecklists();
   }
 
-  // compute viewport in world coords for culling
-  const inv = 1 / Math.max(0.0001, viewState.scale);
-  const pad = 120 * inv;
-  const vx0 = -viewState.tx * inv - pad;
-  const vy0 = -viewState.ty * inv - pad;
-  const vx1 = (W - viewState.tx) * inv + pad;
-  const vy1 = (H - viewState.ty) * inv + pad;
-  const inView = (x, y, r = 0) =>
-    x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
+  // Use pre-calculated viewport bounds for culling (already defined above)
 
   // edges - enhanced visibility
   if (state.showLinks) {
@@ -4064,7 +4104,7 @@ function onMouseLeave() {
   }
   dropTargetProjectId = null;
   dropTargetDomainId = null;
-  drawMap();
+  requestDraw(); // Use optimized draw request
 }
 function onMouseUp(e) {
   // Разрешаем вызывать повторно (если уже idle — просто выходим)
@@ -5115,8 +5155,7 @@ export function undoLastMove() {
       t.projectId = item.fromProjectId;
     if (item.fromPos) t.pos = { x: item.fromPos.x, y: item.fromPos.y };
     saveState();
-    layoutMap();
-    drawMap();
+    requestLayout(); // Use optimized layout request
     return true;
   }
   if (item.type === "project") {
@@ -5124,8 +5163,7 @@ export function undoLastMove() {
     if (!p) return false;
     if (item.fromPos) p.pos = { x: item.fromPos.x, y: item.fromPos.y };
     saveState();
-    layoutMap();
-    drawMap();
+    requestLayout(); // Use optimized layout request
     return true;
   }
   return false;
@@ -5175,8 +5213,7 @@ export function confirmAttach() {
       toast.innerHTML = "";
     }, 300);
   }
-  layoutMap();
-  drawMap();
+  requestLayout(); // Use optimized layout request
   return true;
 }
 
@@ -5191,8 +5228,7 @@ export function cancelAttach() {
       toast.innerHTML = "";
     }, 300);
   }
-  layoutMap();
-  drawMap();
+  requestLayout(); // Use optimized layout request
 }
 // Confirm detach task from its current project (uses pendingDetach)
 function confirmDetach() {
@@ -5249,8 +5285,7 @@ function confirmDetach() {
       toast.textContent = insideDomain ? "Отвязано от проекта" : "Задача стала независимой";
       setTimeout(() => { hideToast(); }, 1400);
     }
-    layoutMap();
-    drawMap();
+    requestLayout(); // Use optimized layout request
     return true;
   } catch (e) {
     console.error("Error in confirmDetach:", e);
@@ -5302,8 +5337,7 @@ function confirmProjectMove() {
     if (p) {
       openInspectorFor(p);
     }
-    layoutMap();
-    drawMap();
+    requestLayout(); // Use optimized layout request
     
     // Show success toast
     const toast = document.getElementById("toast");
@@ -5375,7 +5409,7 @@ function setZoom(percent) {
   viewState.scale = p;
   viewState.tx = cx - wx * p;
   viewState.ty = cy - wy * p;
-  drawMap();
+  requestDraw(); // Use optimized draw request
 }
 window.mapApi.getScale = getScale;
 window.mapApi.setZoom = setZoom;
@@ -5399,7 +5433,7 @@ window.mapApi.setPanMode = () => {
 // Toggle glow effects
 window.mapApi.toggleGlow = () => {
   state.showGlow = !state.showGlow;
-  drawMap();
+  requestDraw(); // Use optimized draw request
   showToast(`Эффекты свечения ${state.showGlow ? 'включены' : 'отключены'}`, 'info');
 };
 
@@ -5418,7 +5452,7 @@ window.mapApi.searchObjects = (query) => {
   if (!query || query.trim().length < 2) {
     searchResults = [];
     currentSearchIndex = 0;
-    drawMap();
+    requestDraw(); // Use optimized draw request
     return [];
   }
   
@@ -5449,7 +5483,7 @@ window.mapApi.searchObjects = (query) => {
     showToast('Объекты не найдены', 'warning');
   }
   
-  drawMap();
+  requestDraw(); // Use optimized draw request
   return searchResults;
 };
 
@@ -5496,7 +5530,7 @@ function centerOnObject(obj) {
     viewState.ty = startTy + (targetTy - startTy) * easeProgress;
     viewState.scale = startScale + (targetScale - startScale) * easeProgress;
     
-    drawMap();
+    requestDraw(); // Use optimized draw request
     
     if (progress < 1) {
       requestAnimationFrame(animate);
@@ -5631,8 +5665,7 @@ function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
           }, 320);
         }, 1400);
           
-      layoutMap();
-      drawMap();
+      requestLayout(); // Use optimized layout request
         };
       }
       
@@ -5679,8 +5712,7 @@ function onDblClick(e) {
   }
   if (n._type === "domain") {
     state.activeDomain = n.id;
-    layoutMap();
-    drawMap();
+    requestLayout(); // Use optimized layout request
     fitActiveDomain();
   }
 }
@@ -5819,8 +5851,7 @@ function showObjectContextMenu(x, y, node) {
         if (confirm(`Удалить задачу "${node.title}"?`)) {
           state.tasks = state.tasks.filter(t => t.id !== node.id);
           saveState();
-          layoutMap();
-          drawMap();
+          requestLayout(); // Use optimized layout request
           updateWip();
         }
         break;
@@ -5828,32 +5859,28 @@ function showObjectContextMenu(x, y, node) {
         if (confirm(`Удалить проект "${node.title}"?`)) {
           state.projects = state.projects.filter(p => p.id !== node.id);
           saveState();
-          layoutMap();
-          drawMap();
+          requestLayout(); // Use optimized layout request
         }
         break;
       case 'delete-domain':
         if (confirm(`Удалить домен "${node.title}"?`)) {
           state.domains = state.domains.filter(d => d.id !== node.id);
           saveState();
-          layoutMap();
-          drawMap();
+          requestLayout(); // Use optimized layout request
         }
         break;
       case 'delete-idea':
         if (confirm(`Удалить идею "${node.title}"?`)) {
           state.ideas = state.ideas.filter(i => i.id !== node.id);
           saveState();
-          layoutMap();
-          drawMap();
+          requestLayout(); // Use optimized layout request
         }
         break;
       case 'delete-note':
         if (confirm(`Удалить заметку "${node.title}"?`)) {
           state.notes = state.notes.filter(n => n.id !== node.id);
           saveState();
-          layoutMap();
-          drawMap();
+          requestLayout(); // Use optimized layout request
         }
         break;
     }
@@ -5940,7 +5967,7 @@ function onContextMenuOld(e) {
           // Delete task
           state.tasks = state.tasks.filter((t) => t.id !== n.id);
           saveState();
-          drawMap();
+          requestDraw(); // Use optimized draw request
           if (window.renderToday) window.renderToday();
         }
       } else if (n._type === 'project') {
@@ -5955,8 +5982,7 @@ function onContextMenuOld(e) {
           saveState();
           
           // Force layout and redraw
-          if (window.layoutMap) window.layoutMap();
-          drawMap();
+          requestLayout(); // Use optimized layout request
           
           if (window.updateDomainsList) window.updateDomainsList();
           if (window.updateStatistics) window.updateStatistics();
@@ -5979,8 +6005,7 @@ function onContextMenuOld(e) {
           saveState();
           
           // Force layout and redraw
-          if (window.layoutMap) window.layoutMap();
-          drawMap();
+          requestLayout(); // Use optimized layout request
           
           if (window.updateDomainsList) window.updateDomainsList();
           if (window.updateStatistics) window.updateStatistics();
@@ -6043,8 +6068,7 @@ function onClick(e) {
   if (!n) {
     // click on empty space: show all domains (но НЕ сбрасываем зум)
     state.activeDomain = null;
-    layoutMap();
-    drawMap();
+    requestLayout(); // Use optimized layout request
     // Убрали fitAll() - теперь зум не сбрасывается при клике в пустое место
     return;
   }
@@ -6532,9 +6556,10 @@ function drawIdeas() {
   if (!state.ideas || state.ideas.length === 0) return;
   if (W <= 0 || H <= 0) return;
   
-  // Получаем функцию inView из контекста drawMap
+  // Use pre-calculated viewport bounds from drawMap context
+  // This will be passed as parameter in future optimization
   const inv = 1 / Math.max(0.0001, viewState.scale);
-  const pad = 120 * inv;
+  const pad = 200 * inv; // Increased padding for smoother scrolling
   const vx0 = -viewState.tx * inv - pad;
   const vy0 = -viewState.ty * inv - pad;
   const vx1 = (W - viewState.tx) * inv + pad;
@@ -6926,12 +6951,11 @@ function drawChecklists() {
     state.checklists = [];
   }
   
-  
   if (W <= 0 || H <= 0) return;
   
-  // Получаем функцию inView из контекста drawMap
+  // Use pre-calculated viewport bounds from drawMap context
   const inv = 1 / Math.max(0.0001, viewState.scale);
-  const pad = 120 * inv;
+  const pad = 200 * inv; // Increased padding for smoother scrolling
   const vx0 = -viewState.tx * inv - pad;
   const vy0 = -viewState.ty * inv - pad;
   const vx1 = (W - viewState.tx) * inv + pad;
