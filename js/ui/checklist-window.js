@@ -403,6 +403,9 @@ async function renderItems() {
   
   // Рендерим выполненные
   renderItemList('completed-items', completedItems);
+  
+  // Обновляем состояние кнопки дублирования после рендеринга
+  updateDuplicateButtonState();
 }
 
 /**
@@ -547,8 +550,11 @@ function createItemElement(item) {
   
   // Добавляем обработчик клика для выбора строки
   const onItemClick = (e) => {
+    console.log('Item clicked:', e.target);
+    
     // Не выбираем при клике на чекбокс или кнопку удаления
     if (e.target.type === 'checkbox' || e.target.classList.contains('checklist-item-delete')) {
+      console.log('Click on checkbox or delete button, ignoring');
       return;
     }
     
@@ -559,6 +565,8 @@ function createItemElement(item) {
     // Выделяем текущую строку
     div.classList.add('selected');
     div.focus();
+    
+    console.log('Item selected:', div.dataset.itemId);
     
     // Обновляем состояние кнопки дублирования
     updateDuplicateButtonState();
@@ -744,23 +752,32 @@ function setupQuickActions() {
   const onKeyDown = (e) => {
     if (!currentChecklistWindow) return;
     
+    console.log('Key pressed:', e.key, 'Ctrl:', e.ctrlKey, 'Shift:', e.shiftKey);
+    
+    // Проверяем, что фокус не в поле ввода
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+      console.log('Focus in input, ignoring hotkey');
+      return;
+    }
+    
     if (e.ctrlKey || e.metaKey) {
       switch (e.key) {
         case 'a':
+          e.preventDefault();
+          console.log('Ctrl+A pressed');
           if (e.shiftKey) {
-            e.preventDefault();
             markAllPending();
           } else {
-            e.preventDefault();
             markAllComplete();
           }
           break;
         case 'd':
+          e.preventDefault();
+          console.log('Ctrl+D pressed, Shift:', e.shiftKey);
           if (e.shiftKey) {
-            e.preventDefault();
             duplicateSelected();
           } else {
-            e.preventDefault();
             deleteCompleted();
           }
           break;
@@ -867,10 +884,16 @@ async function deleteCompleted() {
  * Дублирует выбранный пункт
  */
 async function duplicateSelected() {
-  if (!currentChecklist) return;
+  console.log('duplicateSelected called');
+  
+  if (!currentChecklist) {
+    console.log('No current checklist');
+    return;
+  }
   
   // Ищем выбранную строку
   const selectedItem = currentChecklistWindow?.querySelector('.checklist-item.selected');
+  console.log('Selected item:', selectedItem);
   
   if (!selectedItem) {
     showToast('Выберите пункт для дублирования (кликните на строку)', 'warn');
@@ -878,8 +901,13 @@ async function duplicateSelected() {
   }
   
   const itemId = selectedItem.dataset.itemId;
+  console.log('Item ID:', itemId);
+  
   const items = await getChecklist(currentChecklist.id);
+  console.log('Current items:', items.length);
+  
   const item = items.find(i => i.id === itemId);
+  console.log('Found item:', item);
   
   if (!item) {
     showToast('Пункт не найден', 'error');
@@ -894,9 +922,17 @@ async function duplicateSelected() {
     updatedAt: Date.now()
   };
   
+  console.log('New item:', newItem);
+  
   const updatedItems = [...items, newItem];
+  console.log('Updated items:', updatedItems.length);
+  
   await debouncedSaveChecklist(currentChecklist.id, updatedItems);
+  console.log('Saved to storage');
+  
   await renderItems();
+  console.log('Rendered items');
+  
   showToast('Пункт дублирован', 'ok');
 }
 
