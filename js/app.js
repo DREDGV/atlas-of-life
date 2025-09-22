@@ -1121,15 +1121,27 @@ function analyzeExistingData() {
 }
 
 // Информационная панель
-function showInfoPanel(text, icon = '💡') {
+function showInfoPanel(text, icon = '💡', isHtml = false) {
   const infoPanel = document.getElementById('infoPanel');
   const infoText = document.getElementById('infoText');
   const infoIcon = infoPanel.querySelector('.info-icon');
   
   if (infoPanel && infoText) {
-    infoText.textContent = text;
+    if (isHtml) {
+      infoText.innerHTML = text;
+    } else {
+      infoText.textContent = text;
+    }
     if (infoIcon) infoIcon.textContent = icon;
     infoPanel.classList.add('show');
+    
+    // Автоскрытие через 10 секунд для длинных подсказок
+    clearTimeout(window.infoPanelTimeout);
+    if (text.length > 100) {
+      window.infoPanelTimeout = setTimeout(() => {
+        hideInfoPanel();
+      }, 10000);
+    }
   }
 }
 
@@ -1137,6 +1149,7 @@ function hideInfoPanel() {
   const infoPanel = document.getElementById('infoPanel');
   if (infoPanel) {
     infoPanel.classList.remove('show');
+    clearTimeout(window.infoPanelTimeout);
   }
 }
 
@@ -1163,18 +1176,19 @@ function setupInfoPanelTooltips() {
 
   // Подсказки для кнопок создания
   const createButtons = [
-    { selector: '#createTaskBtn', text: 'Создать новую задачу (горячая клавиша: Ctrl+N)', icon: '➕' },
-    { selector: '#createProjectBtn', text: 'Создать новый проект (горячая клавиша: Ctrl+Shift+N)', icon: '🎯' },
+    { selector: '#createTaskBtn', text: 'Создать новую задачу <span class="kbd">Ctrl+N</span>', icon: '➕', isHtml: true },
+    { selector: '#createProjectBtn', text: 'Создать новый проект <span class="kbd">Ctrl+Shift+N</span>', icon: '🎯', isHtml: true },
     { selector: '#createIdeaBtn', text: 'Создать новую идею - для хранения творческих мыслей', icon: '🌌' },
-    { selector: '#createNoteBtn', text: 'Создать новую заметку - для записи важной информации', icon: '📝' },
-    { selector: '#btnAddDomain', text: 'Создать новый домен - основную сферу жизни (горячая клавиша: Ctrl+Shift+D)', icon: '🌍' }
+    { selector: '#createNoteBtn', text: 'Создать новую заметку - для записи важной информации', icon: '🪨' },
+    { selector: '#btnAddDomain', text: 'Создать новый домен - основную сферу жизни <span class="kbd">Ctrl+Shift+D</span>', icon: '🌍', isHtml: true },
+    { selector: '#btnAddChecklist', text: 'Создать новый чек-лист - для структурированных списков задач', icon: '✓' }
   ];
 
   createButtons.forEach(button => {
     const element = document.querySelector(button.selector);
     if (element) {
       element.addEventListener('mouseenter', () => {
-        showInfoPanel(button.text, button.icon);
+        showInfoPanel(button.text, button.icon, button.isHtml || false);
       });
       element.addEventListener('mouseleave', hideInfoPanel);
     }
@@ -1182,17 +1196,17 @@ function setupInfoPanelTooltips() {
 
   // Подсказки для статусов задач
   const statusPills = [
-    { selector: '.pill-backlog', text: 'Задачи в планах - будущие задачи, которые планируются к выполнению', icon: '📋' },
-    { selector: '.pill-today', text: 'Задачи на сегодня - приоритетные задачи для выполнения сегодня', icon: '📅' },
-    { selector: '.pill-doing', text: 'Задачи в работе - задачи, которые выполняются прямо сейчас', icon: '⚡' },
-    { selector: '.pill-done', text: 'Выполненные задачи - завершенные задачи, готовые к архивированию', icon: '✅' }
+    { selector: '.pill-backlog', text: 'Задачи в планах - будущие задачи, которые планируются к выполнению <span class="kbd">1</span>', icon: '📋', isHtml: true },
+    { selector: '.pill-today', text: 'Задачи на сегодня - приоритетные задачи для выполнения сегодня <span class="kbd">2</span>', icon: '📅', isHtml: true },
+    { selector: '.pill-doing', text: 'Задачи в работе - задачи, которые выполняются прямо сейчас <span class="kbd">3</span>', icon: '⚡', isHtml: true },
+    { selector: '.pill-done', text: 'Выполненные задачи - завершенные задачи, готовые к архивированию <span class="kbd">4</span>', icon: '✅', isHtml: true }
   ];
 
   statusPills.forEach(pill => {
     const elements = document.querySelectorAll(pill.selector);
     elements.forEach(element => {
       element.addEventListener('mouseenter', () => {
-        showInfoPanel(pill.text, pill.icon);
+        showInfoPanel(pill.text, pill.icon, pill.isHtml || false);
       });
       element.addEventListener('mouseleave', hideInfoPanel);
     });
@@ -1237,7 +1251,7 @@ function setupInfoPanelTooltips() {
   const zoomSlider = document.getElementById('zoomSlider');
   if (zoomSlider) {
     zoomSlider.addEventListener('mouseenter', () => {
-      showInfoPanel('Регулировка масштаба карты - от 50% до 220%', '🔍');
+      showInfoPanel('Регулировка масштаба карты - от 50% до 220% <span class="kbd">Ctrl+0</span> <span class="kbd">Ctrl+1</span> <span class="kbd">Ctrl+2</span>', '🔍', true);
     });
     zoomSlider.addEventListener('mouseleave', hideInfoPanel);
   }
@@ -1246,7 +1260,7 @@ function setupInfoPanelTooltips() {
   const aboutBtn = document.getElementById('btnAbout');
   if (aboutBtn) {
     aboutBtn.addEventListener('mouseenter', () => {
-      showInfoPanel('Информация о версии приложения и изменениях', 'ℹ️');
+      showInfoPanel('Информация о версии приложения и изменениях (v0.2.16.2-chronos-concept)', 'ℹ️');
     });
     aboutBtn.addEventListener('mouseleave', hideInfoPanel);
   }
@@ -1255,7 +1269,8 @@ function setupInfoPanelTooltips() {
   const leftPanelSections = [
     { selector: '.section h3', text: 'Секции левой панели - домены, фильтры и подсказки', icon: '📂' },
     { selector: '#domainsList', text: 'Список доменов - основных сфер жизни', icon: '🌍' },
-    { selector: '#tagsList', text: 'Фильтры по тегам - для быстрого поиска задач', icon: '🏷️' }
+    { selector: '#tagsList', text: 'Фильтры по тегам - для быстрого поиска задач', icon: '🏷️' },
+    { selector: '.creation-panel', text: 'Панель создания - быстрый доступ к созданию объектов', icon: '➕' }
   ];
 
   leftPanelSections.forEach(section => {
@@ -1272,7 +1287,7 @@ function setupInfoPanelTooltips() {
   const inspectorPanel = document.getElementById('inspector');
   if (inspectorPanel) {
     inspectorPanel.addEventListener('mouseenter', () => {
-      showInfoPanel('Инспектор - показывает детали выбранного объекта', '🔍');
+      showInfoPanel('Инспектор - показывает детали выбранного объекта (задача, проект, домен, идея, заметка, чек-лист)', '🔍');
     });
     inspectorPanel.addEventListener('mouseleave', hideInfoPanel);
   }
@@ -1281,7 +1296,11 @@ function setupInfoPanelTooltips() {
   const hintSection = document.querySelector('.hint');
   if (hintSection) {
     hintSection.addEventListener('mouseenter', () => {
-      showInfoPanel('Шорткаты для быстрого создания задач: #тег @проект !время ~длительность', '⚡');
+      showInfoPanel(
+        'Шорткаты для быстрого создания: <code>#тег</code> <code>@проект</code> <code>!время</code> <code>~длительность</code> <code>#идея название</code> <code>#заметка название</code>', 
+        '⚡', 
+        true
+      );
     });
     hintSection.addEventListener('mouseleave', hideInfoPanel);
   }
@@ -1292,7 +1311,9 @@ function setupInfoPanelTooltips() {
     { text: 'Alt + LMB + перетаскивание = перетаскивание объектов', icon: '🔄' },
     { text: 'Правый клик = контекстное меню для создания объектов', icon: '📋' },
     { text: 'Колесо мыши = масштабирование карты', icon: '🔍' },
-    { text: 'Клик по объекту = выделение и показ в инспекторе', icon: '👆' }
+    { text: 'Клик по объекту = выделение и показ в инспекторе', icon: '👆' },
+    { text: 'Наведение на объекты = подробная информация в подсказке', icon: '💡' },
+    { text: 'Двойной клик по чек-листу = открытие для редактирования', icon: '✓' }
   ];
 
   // Показываем подсказки навигации при наведении на карту
