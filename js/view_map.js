@@ -2277,8 +2277,8 @@ export function layoutMap() {
     return;
   }
   
-  // Очищаем дубликаты объектов перед отрисовкой
-  cleanupDuplicateObjects();
+  // Временно отключаем очистку дубликатов для диагностики фризов
+  // cleanupDuplicateObjects();
   isLayouting = true;
   
   // Отладка для Edge
@@ -2658,15 +2658,15 @@ export function layoutMap() {
     console.log('🎨 Adding ideas to nodes:', state.ideas.length);
     state.ideas.forEach(idea => {
       if (idea.x !== undefined && idea.y !== undefined && idea.r !== undefined) {
-        // Проверяем, не накладывается ли идея на другие объекты
-        const adjustedPos = avoidOverlap(idea.x, idea.y, idea.r, nodes);
+        // Временно отключаем avoidOverlap для диагностики фризов
+        // const adjustedPos = avoidOverlap(idea.x, idea.y, idea.r, nodes);
         
         nodes.push({
           _type: "idea",
           id: idea.id,
           title: idea.title,
-          x: adjustedPos.x,
-          y: adjustedPos.y,
+          x: idea.x, // Используем исходные координаты
+          y: idea.y, // Используем исходные координаты
           r: idea.r,
           color: idea.color,
           opacity: idea.opacity,
@@ -2772,6 +2772,9 @@ export function drawMap() {
     return;
   }
   isDrawing = true;
+  
+  // Отладочная информация для диагностики фризов
+  console.log('🎨 drawMap called, nodes count:', nodes.length);
   
   // if nodes not prepared (empty), try to rebuild layout once — helps recover after edits
   if (!nodes || nodes.length === 0) {
@@ -6936,6 +6939,9 @@ function drawTaskModern(ctx, x, y, radius, color, status) {
 function drawIdeas() {
   if (!state.ideas || state.ideas.length === 0) return;
   if (W <= 0 || H <= 0) return;
+  
+  // Отладочная информация для диагностики фризов
+  console.log('🎨 drawIdeas called, ideas count:', state.ideas.length);
   
   // Use pre-calculated viewport bounds from drawMap context
   // This will be passed as parameter in future optimization
