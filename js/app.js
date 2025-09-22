@@ -1499,16 +1499,23 @@ try { window.hideInfoPanel = hideInfoPanel; } catch (_) {}
 window.cleanupDuplicates = function() {
   console.log('🧹 Принудительная очистка дубликатов...');
   
-  // Очищаем дубликаты идей
+  // Очищаем дубликаты идей - более агрессивная очистка
   if (state.ideas && state.ideas.length > 0) {
     const originalCount = state.ideas.length;
     const uniqueIdeas = [];
     const seenIds = new Set();
+    const seenTitles = new Set();
     
     state.ideas.forEach(idea => {
-      if (!seenIds.has(idea.id) && idea.id && idea.title) {
+      // Проверяем по ID и по названию
+      const isDuplicate = seenIds.has(idea.id) || seenTitles.has(idea.title);
+      
+      if (!isDuplicate && idea.id && idea.title) {
         seenIds.add(idea.id);
+        seenTitles.add(idea.title);
         uniqueIdeas.push(idea);
+      } else {
+        console.warn('🗑️ Удаляем дубликат идеи:', idea.title, idea.id);
       }
     });
     
@@ -4458,6 +4465,12 @@ async function init() {
   // Initialize autocomplete
   console.log('About to initialize autocomplete...');
   initAutocomplete();
+  
+  // Принудительная очистка дубликатов при загрузке
+  console.log('🧹 Принудительная очистка дубликатов при загрузке...');
+  if (window.cleanupDuplicates) {
+    window.cleanupDuplicates();
+  }
   
   // Initialize cosmic animations
   if (!window.cosmicAnimations) {

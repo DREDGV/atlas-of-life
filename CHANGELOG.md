@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(inbox): implement batch operations and advanced hotkeys (d1e6138)
 - fix: resolve map visual bugs - duplicate objects, positioning, artifacts (163ca75)
 - fix(settings): resolve tooltip delay not persisting after page refresh (692971b)
 - fix(inbox): resolve map disappearing issues with better initialization checks (3114f0a)

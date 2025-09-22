@@ -2127,24 +2127,31 @@ function calculateDomainRadius(projects) {
 function cleanupDuplicateObjects() {
   console.log('🧹 Очистка дубликатов объектов...');
   
-  // Очищаем дубликаты идей
+  // Очищаем дубликаты идей - более агрессивная очистка
   if (state.ideas && state.ideas.length > 0) {
     const originalCount = state.ideas.length;
     const uniqueIdeas = [];
     const seenIds = new Set();
+    const seenTitles = new Set();
     
     state.ideas.forEach(idea => {
-      if (!seenIds.has(idea.id) && idea.id && idea.title) {
+      // Проверяем по ID и по названию
+      const isDuplicate = seenIds.has(idea.id) || seenTitles.has(idea.title);
+      
+      if (!isDuplicate && idea.id && idea.title) {
         seenIds.add(idea.id);
+        seenTitles.add(idea.title);
         uniqueIdeas.push(idea);
       } else {
-        console.warn('🗑️ Удаляем дубликат идеи:', idea);
+        console.warn('🗑️ Удаляем дубликат идеи:', idea.title, idea.id);
       }
     });
     
     if (uniqueIdeas.length !== originalCount) {
       console.log(`✅ Очищено идей: ${originalCount} → ${uniqueIdeas.length}`);
       state.ideas = uniqueIdeas;
+      // Сохраняем изменения
+      saveState();
     }
   }
   
@@ -2213,7 +2220,7 @@ function cleanupDuplicateObjects() {
 }
 
 // Функция для избежания наложения объектов
-function avoidOverlap(x, y, r, existingNodes, maxAttempts = 10) {
+function avoidOverlap(x, y, r, existingNodes, maxAttempts = 20) {
   let attempts = 0;
   let currentX = x;
   let currentY = y;
@@ -2226,7 +2233,7 @@ function avoidOverlap(x, y, r, existingNodes, maxAttempts = 10) {
       const distance = Math.sqrt(
         Math.pow(currentX - node.x, 2) + Math.pow(currentY - node.y, 2)
       );
-      const minDistance = r + node.r + 20; // Минимальное расстояние между объектами
+      const minDistance = r + node.r + 50; // Увеличиваем минимальное расстояние
       
       if (distance < minDistance) {
         hasOverlap = true;
@@ -2238,17 +2245,19 @@ function avoidOverlap(x, y, r, existingNodes, maxAttempts = 10) {
       return { x: currentX, y: currentY };
     }
     
-    // Если есть наложение, сдвигаем объект
+    // Если есть наложение, сдвигаем объект более агрессивно
     attempts++;
-    const angle = (attempts * 0.5) * Math.PI; // Спиральное движение
-    const radius = attempts * 30; // Увеличиваем радиус с каждой попыткой
+    const angle = (attempts * 0.3) * Math.PI; // Более плотная спираль
+    const radius = attempts * 50; // Увеличиваем радиус быстрее
     
     currentX = x + Math.cos(angle) * radius;
     currentY = y + Math.sin(angle) * radius;
   }
   
-  // Если не удалось избежать наложения, возвращаем исходную позицию
-  return { x, y };
+  // Если не удалось избежать наложения, размещаем объект далеко от центра
+  const fallbackX = x + (Math.random() - 0.5) * 1000;
+  const fallbackY = y + (Math.random() - 0.5) * 1000;
+  return { x: fallbackX, y: fallbackY };
 }
 
 export function layoutMap() {
