@@ -1,7 +1,8 @@
 // js/inbox.js
 // Inbox system for quick thought capture and distribution
 
-import { state, generateId, saveState } from './state.js';
+import { state, generateId } from './state.js';
+import { saveState } from './storage.js';
 
 // Inbox state
 let inboxItems = [];
