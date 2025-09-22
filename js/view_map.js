@@ -229,7 +229,7 @@ function onWheel(e) {
   try {
     logEvent("map_zoom", { scale: Math.round(next * 100) / 100 });
   } catch (_) {}
-  requestDrawThrottled();
+  requestDraw(); // Возвращаем requestDraw() для плавного зума
   
   // Disable light mode after zoom cooldown
   setTimeout(() => {
@@ -1465,7 +1465,7 @@ function updatePan(e) {
   const dpr = window.devicePixelRatio || 1;
   viewState.tx += dx * dpr;
   viewState.ty += dy * dpr;
-  requestDrawThrottled();
+  requestDraw(); // Возвращаем requestDraw() для плавного панорамирования
 }
 function endPan() {
   NAV.mode = 'idle';
@@ -4121,7 +4121,7 @@ function onMouseMove(e) {
       viewState.tx += (dxScreen * dpr) / viewState.scale;
       viewState.ty += (dyScreen * dpr) / viewState.scale;
       mouse.lastX = sx; mouse.lastY = sy;
-      requestDrawThrottled();
+      requestDraw(); // Возвращаем requestDraw() для плавного панорамирования
       console.log('🖱️ Panning delta:', dxScreen, dyScreen);
     }
     return;
@@ -4136,7 +4136,7 @@ function onMouseMove(e) {
     viewState.ty += (dy * dpr) / viewState.scale;
     viewState.lastX = e.clientX;
     viewState.lastY = e.clientY;
-    requestDrawThrottled();
+    requestDraw(); // Возвращаем requestDraw() для плавного панорамирования
     return;
   }
   
