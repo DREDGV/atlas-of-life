@@ -609,6 +609,68 @@ function showInboxListModal() {
           Разложите элементы по проектам и доменам
         </p>
       </div>
+      
+      <!-- Batch Operations Panel -->
+      <div id="batch-operations-panel" style="
+        display: none;
+        padding: 12px;
+        background: var(--panel-2);
+        border-radius: 6px;
+        margin-bottom: 16px;
+        border: 1px solid var(--accent);
+      ">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+          <span style="font-weight: 600; color: var(--text);">📦 Пакетные операции:</span>
+          <span id="selected-count" style="color: var(--accent); font-weight: 500;">0 выбрано</span>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="batch-task" title="Создать задачи из выбранных" style="
+            padding: 6px 12px;
+            border: 1px solid #3b82f6;
+            border-radius: 4px;
+            background: #3b82f6;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+          ">📋 Задачи</button>
+          <button id="batch-idea" title="Создать идеи из выбранных" style="
+            padding: 6px 12px;
+            border: 1px solid #f59e0b;
+            border-radius: 4px;
+            background: #f59e0b;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+          ">💡 Идеи</button>
+          <button id="batch-note" title="Создать заметки из выбранных" style="
+            padding: 6px 12px;
+            border: 1px solid #10b981;
+            border-radius: 4px;
+            background: #10b981;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+          ">📝 Заметки</button>
+          <button id="batch-delete" title="Удалить выбранные" style="
+            padding: 6px 12px;
+            border: 1px solid var(--danger);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 12px;
+          ">🗑️ Удалить</button>
+          <button id="batch-clear" title="Снять выделение" style="
+            padding: 6px 12px;
+            border: 1px solid var(--panel-2);
+            border-radius: 4px;
+            background: var(--panel);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+          ">❌ Снять</button>
+        </div>
+      </div>
       <div id="inbox-items-list" style="margin-bottom: 20px;">
         ${items.map(item => `
           <div class="inbox-item" data-id="${item.id}" style="
@@ -617,14 +679,23 @@ function showInboxListModal() {
             border-radius: 4px;
             margin-bottom: 8px;
             background: var(--panel);
+            transition: all 0.2s ease;
           ">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-              <div style="flex: 1;">
-                <div style="font-weight: 500; margin-bottom: 4px;">${item.text}</div>
-                <div style="font-size: 12px; color: var(--text-2);">
-                  ${item.metadata.tags.length > 0 ? `Теги: ${item.metadata.tags.join(', ')}` : ''}
-                  ${item.metadata.priority ? ` • Приоритет: ${item.metadata.priority}` : ''}
-                  ${item.metadata.dueDate ? ` • Срок: ${item.metadata.dueDate}` : ''}
+              <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1;">
+                <input type="checkbox" class="inbox-item-checkbox" data-id="${item.id}" style="
+                  margin-top: 2px;
+                  width: 16px;
+                  height: 16px;
+                  cursor: pointer;
+                ">
+                <div style="flex: 1;">
+                  <div style="font-weight: 500; margin-bottom: 4px;">${item.text}</div>
+                  <div style="font-size: 12px; color: var(--text-2);">
+                    ${item.metadata.tags.length > 0 ? `Теги: ${item.metadata.tags.join(', ')}` : ''}
+                    ${item.metadata.priority ? ` • Приоритет: ${item.metadata.priority}` : ''}
+                    ${item.metadata.dueDate ? ` • Срок: ${item.metadata.dueDate}` : ''}
+                  </div>
                 </div>
               </div>
               <div style="display: flex; gap: 4px; margin-left: 12px; flex-wrap: wrap;">
@@ -759,11 +830,239 @@ function showInboxListModal() {
     };
   });
   
+  // Batch operations handlers
+  const updateBatchPanel = () => {
+    const checkboxes = document.querySelectorAll('.inbox-item-checkbox');
+    const checkedBoxes = document.querySelectorAll('.inbox-item-checkbox:checked');
+    const batchPanel = document.getElementById('batch-operations-panel');
+    const selectedCount = document.getElementById('selected-count');
+    
+    if (checkedBoxes.length > 0) {
+      batchPanel.style.display = 'block';
+      selectedCount.textContent = `${checkedBoxes.length} выбрано`;
+      
+      // Update item styles
+      checkboxes.forEach(checkbox => {
+        const item = checkbox.closest('.inbox-item');
+        if (checkbox.checked) {
+          item.style.borderColor = 'var(--accent)';
+          item.style.backgroundColor = 'var(--panel-2)';
+        } else {
+          item.style.borderColor = 'var(--panel-2)';
+          item.style.backgroundColor = 'var(--panel)';
+        }
+      });
+    } else {
+      batchPanel.style.display = 'none';
+      
+      // Reset item styles
+      checkboxes.forEach(checkbox => {
+        const item = checkbox.closest('.inbox-item');
+        item.style.borderColor = 'var(--panel-2)';
+        item.style.backgroundColor = 'var(--panel)';
+      });
+    }
+  };
+  
+  // Checkbox handlers
+  document.querySelectorAll('.inbox-item-checkbox').forEach(checkbox => {
+    checkbox.onchange = updateBatchPanel;
+  });
+  
+  // Batch operation buttons
+  document.getElementById('batch-task').onclick = () => {
+    const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+      .map(cb => cb.dataset.id);
+    
+    if (selectedIds.length === 0) return;
+    
+    selectedIds.forEach(itemId => {
+      distributeInboxItem(itemId, 'task');
+    });
+    
+    if (window.showToast) {
+      window.showToast(`Создано ${selectedIds.length} задач`, 'ok');
+    }
+    
+    cleanup();
+    showInboxListModal(); // Refresh
+  };
+  
+  document.getElementById('batch-idea').onclick = () => {
+    const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+      .map(cb => cb.dataset.id);
+    
+    if (selectedIds.length === 0) return;
+    
+    selectedIds.forEach(itemId => {
+      distributeInboxItem(itemId, 'idea');
+    });
+    
+    if (window.showToast) {
+      window.showToast(`Создано ${selectedIds.length} идей`, 'ok');
+    }
+    
+    cleanup();
+    showInboxListModal(); // Refresh
+  };
+  
+  document.getElementById('batch-note').onclick = () => {
+    const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+      .map(cb => cb.dataset.id);
+    
+    if (selectedIds.length === 0) return;
+    
+    selectedIds.forEach(itemId => {
+      distributeInboxItem(itemId, 'note');
+    });
+    
+    if (window.showToast) {
+      window.showToast(`Создано ${selectedIds.length} заметок`, 'ok');
+    }
+    
+    cleanup();
+    showInboxListModal(); // Refresh
+  };
+  
+  document.getElementById('batch-delete').onclick = () => {
+    const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+      .map(cb => cb.dataset.id);
+    
+    if (selectedIds.length === 0) return;
+    
+    if (confirm(`Удалить ${selectedIds.length} элементов из Инбокса?`)) {
+      selectedIds.forEach(itemId => {
+        removeFromInbox(itemId);
+      });
+      
+      if (window.showToast) {
+        window.showToast(`Удалено ${selectedIds.length} элементов`, 'ok');
+      }
+      
+      cleanup();
+      showInboxListModal(); // Refresh
+    }
+  };
+  
+  document.getElementById('batch-clear').onclick = () => {
+    document.querySelectorAll('.inbox-item-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+    });
+    updateBatchPanel();
+  };
+  
   // Keyboard shortcuts
   modal.onkeydown = (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       cleanup();
+    } else if (e.key === 'Enter' && !e.ctrlKey && !e.altKey) {
+      // Enter to select/deselect current item
+      e.preventDefault();
+      const focusedElement = document.activeElement;
+      if (focusedElement && focusedElement.classList.contains('inbox-item')) {
+        const checkbox = focusedElement.querySelector('.inbox-item-checkbox');
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      }
+    } else if (e.key >= '1' && e.key <= '4') {
+      // 1-4 for priority
+      e.preventDefault();
+      const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+        .map(cb => cb.dataset.id);
+      
+      if (selectedIds.length > 0) {
+        const priority = `p${e.key}`;
+        selectedIds.forEach(itemId => {
+          updateInboxItem(itemId, { priority });
+        });
+        if (window.showToast) {
+          window.showToast(`Установлен приоритет ${priority} для ${selectedIds.length} элементов`, 'ok');
+        }
+        cleanup();
+        showInboxListModal(); // Refresh
+      }
+    } else if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.altKey) {
+      // A for project assignment
+      e.preventDefault();
+      const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+        .map(cb => cb.dataset.id);
+      
+      if (selectedIds.length > 0) {
+        // Quick project assignment - use first available project
+        const projects = state.projects || [];
+        if (projects.length > 0) {
+          const projectId = projects[0].id;
+          selectedIds.forEach(itemId => {
+            updateInboxItem(itemId, { projectId });
+          });
+          if (window.showToast) {
+            window.showToast(`Назначен проект "${projects[0].title}" для ${selectedIds.length} элементов`, 'ok');
+          }
+          cleanup();
+          showInboxListModal(); // Refresh
+        } else {
+          if (window.showToast) {
+            window.showToast('Нет доступных проектов', 'warn');
+          }
+        }
+      }
+    } else if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.altKey) {
+      // T for tag assignment
+      e.preventDefault();
+      const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+        .map(cb => cb.dataset.id);
+      
+      if (selectedIds.length > 0) {
+        const tag = prompt('Введите тег для выбранных элементов:');
+        if (tag && tag.trim()) {
+          selectedIds.forEach(itemId => {
+            const item = inboxItems.find(i => i.id === itemId);
+            if (item) {
+              const tags = [...item.metadata.tags];
+              if (!tags.includes(tag.trim())) {
+                tags.push(tag.trim());
+                updateInboxItem(itemId, { tags });
+              }
+            }
+          });
+          if (window.showToast) {
+            window.showToast(`Добавлен тег "${tag}" для ${selectedIds.length} элементов`, 'ok');
+          }
+          cleanup();
+          showInboxListModal(); // Refresh
+        }
+      }
+    } else if (e.key.toLowerCase() === 'd' && !e.ctrlKey && !e.altKey) {
+      // D for date assignment
+      e.preventDefault();
+      const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
+        .map(cb => cb.dataset.id);
+      
+      if (selectedIds.length > 0) {
+        const date = prompt('Введите дату (YYYY-MM-DD) или "today"/"tomorrow":');
+        if (date && date.trim()) {
+          let dueDate = date.trim();
+          if (dueDate === 'today') {
+            dueDate = new Date().toISOString().split('T')[0];
+          } else if (dueDate === 'tomorrow') {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            dueDate = tomorrow.toISOString().split('T')[0];
+          }
+          
+          selectedIds.forEach(itemId => {
+            updateInboxItem(itemId, { dueDate });
+          });
+          if (window.showToast) {
+            window.showToast(`Установлена дата "${dueDate}" для ${selectedIds.length} элементов`, 'ok');
+          }
+          cleanup();
+          showInboxListModal(); // Refresh
+        }
+      }
     }
   };
 }
