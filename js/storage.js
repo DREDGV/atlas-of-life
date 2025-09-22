@@ -73,7 +73,8 @@ export function loadState(){
         // Новые настройки отображения
         showDndHints: !!data.settings.showDndHints,
         showInbox: !!data.settings.showInbox,
-        checklistIconMode: data.settings.checklistIconMode || 'title'
+        checklistIconMode: data.settings.checklistIconMode || 'title',
+        tooltipDelay: typeof data.settings.tooltipDelay === 'number' ? data.settings.tooltipDelay : 500
       };
     }else{
       state.settings = { 
@@ -83,7 +84,8 @@ export function loadState(){
         hotkeys: state.settings.hotkeys,
         showDndHints: false,
         showInbox: true,
-        checklistIconMode: 'title'
+        checklistIconMode: 'title',
+        tooltipDelay: 500
       };
     }
     // migration: ensure independent tasks (projectId null/undefined) have domainId
@@ -117,7 +119,7 @@ export function saveState(){
       showAging: !!state.showAging,
       showGlow: !!state.showGlow,
       view: state.view,
-      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, showInbox:true, checklistIconMode:'title' }
+      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, showInbox:true, checklistIconMode:'title', tooltipDelay: 500 }
     };
     const text = JSON.stringify(data);
     if (!text) {
