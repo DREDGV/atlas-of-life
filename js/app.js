@@ -1185,7 +1185,9 @@ function setupInfoPanelTooltips() {
     { selector: '#createIdeaBtn', text: 'Создать новую идею - для хранения творческих мыслей', icon: '🌌' },
     { selector: '#createNoteBtn', text: 'Создать новую заметку - для записи важной информации', icon: '🪨' },
     { selector: '#btnAddDomain', text: 'Создать новый домен - основную сферу жизни <span class="kbd">Ctrl+Shift+D</span>', icon: '🌍', isHtml: true },
-    { selector: '#btnAddChecklist', text: 'Создать новый чек-лист - для структурированных списков задач', icon: '✓' }
+    { selector: '#btnAddChecklist', text: 'Создать новый чек-лист - для структурированных списков задач', icon: '✓' },
+    { selector: '#btnInboxCapture', text: 'Быстрый захват идей и задач в инбокс', icon: '📥' },
+    { selector: '#btnInboxList', text: 'Просмотр и обработка элементов инбокса', icon: '📋' }
   ];
 
   createButtons.forEach(button => {
@@ -1222,7 +1224,9 @@ function setupInfoPanelTooltips() {
     { selector: '[data-action="theme"]', text: 'Изменить тему оформления приложения', icon: '🎨' },
     { selector: '[data-action="display"]', text: 'Настройки отображения карты и объектов', icon: '📱' },
     { selector: '[data-action="hierarchy"]', text: 'Управление системой иерархии объектов (экспериментальная функция)', icon: '🌐' },
-    { selector: '[data-action="export"]', text: 'Экспорт и импорт данных для резервного копирования', icon: '💾' }
+    { selector: '[data-action="export"]', text: 'Экспорт и импорт данных для резервного копирования', icon: '💾' },
+    { selector: '#btnSettings', text: 'Открыть настройки приложения', icon: '⚙️' },
+    { selector: '#btnAbout', text: 'Информация о версии приложения и изменениях (v0.2.16.2-chronos-concept)', icon: 'ℹ️' }
   ];
 
   settingsItems.forEach(item => {
@@ -1260,6 +1264,25 @@ function setupInfoPanelTooltips() {
     zoomSlider.addEventListener('mouseleave', hideInfoPanel);
   }
 
+  // Подсказки для других элементов
+  const otherElements = [
+    { selector: '.brand', text: 'Название приложения и версия', icon: '🏷️' },
+    { selector: '.version', text: 'Текущая версия приложения', icon: '📋' },
+    { selector: '.spacer', text: 'Разделитель элементов интерфейса', icon: '📏' },
+    { selector: '.legend', text: 'Легенда статусов задач', icon: '📊' },
+    { selector: '.toggle', text: 'Переключатель отображения элементов', icon: '🔄' }
+  ];
+
+  otherElements.forEach(element => {
+    const el = document.querySelector(element.selector);
+    if (el) {
+      el.addEventListener('mouseenter', () => {
+        showInfoPanel(element.text, element.icon);
+      });
+      el.addEventListener('mouseleave', hideInfoPanel);
+    }
+  });
+
   // Подсказки для кнопки "О версии"
   const aboutBtn = document.getElementById('btnAbout');
   if (aboutBtn) {
@@ -1277,6 +1300,12 @@ function setupInfoPanelTooltips() {
     { selector: '.creation-panel', text: 'Панель создания - быстрый доступ к созданию объектов', icon: '➕' }
   ];
 
+  // Подсказки для поиска
+  const searchElements = [
+    { selector: '#searchInput', text: 'Поиск по названиям объектов на карте <span class="kbd">Ctrl+F</span>', icon: '🔍', isHtml: true },
+    { selector: '#searchButton', text: 'Выполнить поиск по введенному запросу', icon: '🔍' }
+  ];
+
   leftPanelSections.forEach(section => {
     const elements = document.querySelectorAll(section.selector);
     elements.forEach(element => {
@@ -1285,6 +1314,17 @@ function setupInfoPanelTooltips() {
       });
       element.addEventListener('mouseleave', hideInfoPanel);
     });
+  });
+
+  // Подсказки для поиска
+  searchElements.forEach(element => {
+    const el = document.querySelector(element.selector);
+    if (el) {
+      el.addEventListener('mouseenter', () => {
+        showInfoPanel(element.text, element.icon, element.isHtml || false);
+      });
+      el.addEventListener('mouseleave', hideInfoPanel);
+    }
   });
 
   // Подсказки для правой панели (инспектор)
@@ -1309,6 +1349,26 @@ function setupInfoPanelTooltips() {
     hintSection.addEventListener('mouseleave', hideInfoPanel);
   }
 
+  // Подсказки для модальных окон
+  const modalElements = [
+    { selector: '#modal', text: 'Модальное окно для диалогов и подтверждений', icon: '💬' },
+    { selector: '#modalTitle', text: 'Заголовок модального окна', icon: '📝' },
+    { selector: '#modalBody', text: 'Содержимое модального окна', icon: '📄' },
+    { selector: '#modalCancel', text: 'Кнопка отмены в модальном окне', icon: '❌' },
+    { selector: '#modalOk', text: 'Кнопка подтверждения в модальном окне', icon: '✅' },
+    { selector: '#toast', text: 'Уведомления и сообщения пользователю', icon: '🔔' }
+  ];
+
+  modalElements.forEach(element => {
+    const el = document.querySelector(element.selector);
+    if (el) {
+      el.addEventListener('mouseenter', () => {
+        showInfoPanel(element.text, element.icon);
+      });
+      el.addEventListener('mouseleave', hideInfoPanel);
+    }
+  });
+
   // Подсказки для навигации (перенесены из левой панели)
   const navHints = [
     { text: 'LMB + перетаскивание = панорамирование карты', icon: '🖱️' },
@@ -1332,6 +1392,23 @@ function setupInfoPanelTooltips() {
     });
     canvas.addEventListener('mouseleave', hideInfoPanel);
   }
+
+  // Подсказки для чек-листов
+  const checklistElements = [
+    { selector: '#checklistPopup', text: 'Всплывающее окно чек-листа с предварительным просмотром', icon: '📋' },
+    { selector: '#editChecklistBtn', text: 'Редактировать чек-лист', icon: '✏️' },
+    { selector: '#closeChecklistPopup', text: 'Закрыть всплывающее окно чек-листа', icon: '❌' }
+  ];
+
+  checklistElements.forEach(element => {
+    const el = document.querySelector(element.selector);
+    if (el) {
+      el.addEventListener('mouseenter', () => {
+        showInfoPanel(element.text, element.icon);
+      });
+      el.addEventListener('mouseleave', hideInfoPanel);
+    }
+  });
 
   // Подсказки для объектов на карте (через делегирование событий)
   setupMapObjectTooltips();
