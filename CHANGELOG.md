@@ -659,6 +659,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- docs: update dates to September 22, 2025 in all documentation files (2b57d03)
 - feat(workflow): complete inbox system implementation with full documentation (493f0f6)
 - fix: export requestLayout function to resolve map display issue (9c4e58e)
 - fix: disable cosmic animations to eliminate visual freezes (26fee7a)
