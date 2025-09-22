@@ -159,17 +159,47 @@ export function distributeInboxItem(itemId, targetType = 'task', targetProjectId
     console.error('Error saving state after distribution:', error);
   }
   
-  // Trigger map redraw and today update (with safety checks and debouncing)
+  // Trigger map redraw and today update (with safety checks)
   try {
-    // Use setTimeout to avoid blocking the UI
-    setTimeout(() => {
-      if (typeof window.drawMap === 'function') {
+    // Check if canvas exists and is ready
+    const canvas = document.getElementById('canvas');
+    if (!canvas) {
+      console.warn('Canvas not found, skipping map redraw');
+      return true;
+    }
+    
+    // Check if app is fully initialized
+    if (!window.state || !window.state.domains) {
+      console.warn('App not fully initialized, skipping map redraw');
+      return true;
+    }
+    
+    // Check if functions exist and call them directly
+    if (window.drawMap && typeof window.drawMap === 'function') {
+      try {
         window.drawMap();
+      } catch (drawError) {
+        console.error('Error calling drawMap:', drawError);
+        // Try alternative approach
+        if (window.requestAnimationFrame) {
+          window.requestAnimationFrame(() => {
+            try {
+              if (window.drawMap) window.drawMap();
+            } catch (e) {
+              console.error('Error in requestAnimationFrame drawMap:', e);
+            }
+          });
+        }
       }
-      if (typeof window.renderToday === 'function') {
-        window.renderToday();
-      }
-    }, 100);
+    } else {
+      console.warn('drawMap function not available');
+    }
+    
+    if (window.renderToday && typeof window.renderToday === 'function') {
+      window.renderToday();
+    } else {
+      console.warn('renderToday function not available');
+    }
   } catch (error) {
     console.error('Error updating UI after distribution:', error);
   }

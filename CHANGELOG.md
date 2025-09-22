@@ -633,6 +633,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: improve tooltip delay settings with custom input and better validation (06aee69)
 - feat: implement two-level tooltip system with configurable delay (dbc5238)
 - docs: add rich object tooltips feature to ideas and requests (3f9593a)
 - fix: add object hover handling to pointer events (1bc2bd6)

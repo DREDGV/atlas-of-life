@@ -4420,12 +4420,25 @@ async function init() {
   // Initialize inbox system (after everything else is loaded)
   setTimeout(() => {
     try {
-      initInbox();
-      console.log('Inbox system initialized');
+      // Wait for map to be fully initialized
+      if (window.drawMap && document.getElementById('canvas')) {
+        initInbox();
+        console.log('Inbox system initialized');
+      } else {
+        console.warn('Map not ready, retrying inbox initialization...');
+        setTimeout(() => {
+          try {
+            initInbox();
+            console.log('Inbox system initialized (retry)');
+          } catch (error) {
+            console.error('Failed to initialize inbox (retry):', error);
+          }
+        }, 500);
+      }
     } catch (error) {
       console.error('Failed to initialize inbox:', error);
     }
-  }, 100);
+  }, 200);
   
   // Initialize info panel tooltips
   setupInfoPanelTooltips();
