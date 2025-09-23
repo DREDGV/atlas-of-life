@@ -255,11 +255,8 @@ const mouse = {
   dragOffsetY: 0
 };
 
-// GPT-5 utilities
-function distance2(x1, y1, x2, y2) {
-  const dx = x2 - x1, dy = y2 - y1;
-  return dx*dx + dy*dy;
-}
+// GPT-5 utilities (moved: import from render utils)
+import { dist2 } from './view_map/render/draw-utils.js';
 
 function setCursor(type) {
   canvas.style.cursor = type;
@@ -4074,7 +4071,7 @@ function onMouseMove(e) {
 
   // PRESS: ждём превышения порога, чтобы решить, что именно делать
   if (mouse.phase === 'press') {
-    const moved2 = distance2(mouse.startX, mouse.startY, sx, sy);
+    const moved2 = dist2(mouse.startX, mouse.startY, sx, sy);
     console.log('🖱️ Mouse moved2:', moved2, 'threshold2:', mouse.threshold * mouse.threshold);
     
     if (moved2 >= mouse.threshold * mouse.threshold) {
