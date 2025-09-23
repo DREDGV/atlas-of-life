@@ -262,8 +262,8 @@ const mouse = {
 };
 
 // GPT-5 utilities (moved: import from render utils)
-import { dist2, roundedRectPath } from './view_map/render/draw-utils.js';
-import { measureTextCached } from './view_map/render/text.js';
+import { clamp, lerp, dist2, isPointInCircle, roundedRectPath, strokeLine, fillCircle, strokeCircle, drawArrow, rgba, withAlpha } from './view_map/render/draw-utils.js';
+import { measureTextCached, ellipsize, wrapText } from './view_map/render/text.js';
 
 function setCursor(type) {
   canvas.style.cursor = type;
