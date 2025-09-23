@@ -1,3 +1,4 @@
+// @ts-check
 // view_map/render/draw-utils.js
 // Pure draw helpers (initial scaffold). Real functions will be migrated safely.
 

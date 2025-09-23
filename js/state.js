@@ -41,7 +41,8 @@ export const state = {
   },
   ui: {
     features: {
-      checklist: true // Фичефлаг для системы чек-листов
+      checklist: true, // Фичефлаг для системы чек-листов
+      modularMap: false // Фичефлаг новой модульной карты (v2)
     }
   },
   inbox: [], // Inbox items for quick capture

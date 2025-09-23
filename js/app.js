@@ -4602,7 +4602,9 @@ async function init() {
   const canvas = document.getElementById("canvas");
   const tooltip = document.getElementById("tooltip");
   if (canvas && tooltip) {
-  initMap(canvas, tooltip);
+    // Feature flag for modular map (future): state.ui.features.modularMap
+    // For now we always use legacy initMap to keep behavior unchanged.
+    initMap(canvas, tooltip);
   }
   updateWip();
   

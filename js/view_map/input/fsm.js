@@ -1,9 +1,13 @@
+// @ts-check
 // view_map/input/fsm.js
 // Non-breaking scaffold for future input FSM extraction
 
 /**
  * Finite state machine for input handling.
  * This is a placeholder to be integrated gradually.
+ */
+/**
+ * @param {{canvas:HTMLCanvasElement,camera:any,state:any}} param0
  */
 export function createFSM({ canvas, camera, state }) {
   const mouse = {

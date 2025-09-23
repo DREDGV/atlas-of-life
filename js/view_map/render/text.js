@@ -1,3 +1,4 @@
+// @ts-check
 // view_map/render/text.js
 // Pure text helpers (initial scaffold)
 

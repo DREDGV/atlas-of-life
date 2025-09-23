@@ -1,9 +1,28 @@
+// @ts-check
 // view_map/camera.js
 // Non-breaking scaffold for future camera extraction
 
 /**
  * Create a simple camera abstraction.
  * This is a placeholder to be wired gradually without changing behavior.
+ */
+/**
+ * @typedef {Object} Camera
+ * @property {number} x
+ * @property {number} y
+ * @property {number} scale
+ * @property {number} minScale
+ * @property {number} maxScale
+ * @property {(sx:number,sy:number)=>{x:number,y:number}} screenToWorld
+ * @property {(wx:number,wy:number)=>{x:number,y:number}} worldToScreen
+ * @property {(dx:number,dy:number)=>void} translate
+ * @property {(factor:number,sx:number,sy:number)=>void} zoomAt
+ * @property {(obj:{x?:number,y?:number})=>void} centerOn
+ */
+
+/**
+ * @param {HTMLCanvasElement} canvas
+ * @returns {Camera}
  */
 export function createCamera(canvas) {
   const cam = {

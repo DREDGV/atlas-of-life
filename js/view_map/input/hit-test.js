@@ -1,8 +1,13 @@
+// @ts-check
 // view_map/input/hit-test.js
 // Scaffold for hit-testing helpers. Real logic will be migrated step-by-step.
 
 /**
  * Placeholder hit-test that can be enhanced later.
+ * @param {{x:number,y:number,r?:number}} obj
+ * @param {{x:number,y:number}} pt
+ */
+/**
  * @param {{x:number,y:number,r?:number}} obj
  * @param {{x:number,y:number}} pt
  */
