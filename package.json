@@ -3,11 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "audit:exports": "node tools/audit-exports.mjs"
+    "audit:exports": "node tools/audit-exports.mjs",
+    "lint": "eslint js --ext .js || true"
   },
   "devDependencies": {
     "es-module-lexer": "^1.5.4",
-    "fast-glob": "^3.3.2"
+    "fast-glob": "^3.3.2",
+    "eslint": "^9.10.0",
+    "eslint-plugin-import": "^2.29.1"
   }
 }
 

@@ -4602,8 +4602,15 @@ async function init() {
   const canvas = document.getElementById("canvas");
   const tooltip = document.getElementById("tooltip");
   if (canvas && tooltip) {
-    // Feature flag for modular map (future): state.ui.features.modularMap
-    // For now we always use legacy initMap to keep behavior unchanged.
+    // Feature gate for future map v2 (currently legacy only)
+    const useV2 = (() => {
+      try {
+        const q = new URLSearchParams(location.search);
+        return state?.ui?.features?.modularMap === true || q.get('map') === 'v2';
+      } catch (_) { return false; }
+    })();
+    // For now always run legacy implementation to keep behavior unchanged.
+    // When v2 is ready: if (useV2) createMapV2(...) else initMap(...)
     initMap(canvas, tooltip);
   }
   updateWip();

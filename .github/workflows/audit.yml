@@ -9,6 +9,6 @@ jobs:
         with:
           node-version: 20
       - run: npm ci || npm i
-      - run: node -e "console.log('Audit placeholder OK')"
+      - run: npm run audit:exports
 
 
