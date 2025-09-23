@@ -2,17 +2,23 @@
 
 // Helper function for rounded rectangles (compatibility)
 function drawRoundedRect(ctx, x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
+  // Delegate to shared util to keep path logic consistent across codebase
+  try {
+    roundedRectPath(ctx, x, y, width, height, radius);
+  } catch (_) {
+    // Fallback to local path if util not available (should not happen)
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
 }
 
 // Compute stable checklist rect from center and base radius (with pulse for hit-test)
@@ -256,7 +262,8 @@ const mouse = {
 };
 
 // GPT-5 utilities (moved: import from render utils)
-import { dist2 } from './view_map/render/draw-utils.js';
+import { dist2, roundedRectPath } from './view_map/render/draw-utils.js';
+import { measureTextCached } from './view_map/render/text.js';
 
 function setCursor(type) {
   canvas.style.cursor = type;
