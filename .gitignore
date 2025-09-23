@@ -1,3 +1,15 @@
+# Local backups and temporary files
+docs/backup/**
+*.backup.css
+* backup.css
+state.js jsstate.js.backup
+desktop.ini
+.DS_Store
+Thumbs.db
+node_modules/
+/.cache/
+/.parcel-cache/
+
 /.DS_Store
 /Thumbs.db
 /node_modules/

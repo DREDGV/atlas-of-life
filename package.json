@@ -1,0 +1,14 @@
+{
+  "name": "atlas-of-life",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "audit:exports": "node tools/audit-exports.mjs"
+  },
+  "devDependencies": {
+    "es-module-lexer": "^1.5.4",
+    "fast-glob": "^3.3.2"
+  }
+}
+
+
