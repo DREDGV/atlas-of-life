@@ -27,9 +27,6 @@
  */
 export function createCamera(canvas, view) {
   const cam = {
-    x: 0,
-    y: 0,
-    scale: () => view.scale,
     minScale: 0.5,
     maxScale: 2.2,
   };
@@ -75,6 +72,13 @@ export function createCamera(canvas, view) {
     const H = canvas?.height || 0;
     view.tx = W * 0.5 - (obj.x || 0) * view.scale;
     view.ty = H * 0.5 - (obj.y || 0) * view.scale;
+  };
+
+  // Get camera params in world units
+  cam.getParams = () => {
+    const s = view.scale;
+    // view.tx, view.ty are in device pixels; convert to world origin position
+    return { x: -view.tx / s, y: -view.ty / s, scale: s };
   };
 
   return cam;

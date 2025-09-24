@@ -217,8 +217,12 @@ function onWheel(e) {
   try {
     e.preventDefault();
   } catch (_) {}
-  const d = e.deltaY || e.wheelDelta || 0;
-  const zoomFactor = d > 0 ? 0.9 : 1.1;
+  // Normalize wheel for lines/pages
+  const LINE = 1, PAGE = 2;
+  let dy = e.deltaY || 0;
+  if (e.deltaMode === LINE) dy *= 16;
+  else if (e.deltaMode === PAGE) dy *= window.innerHeight || 800;
+  const zoomFactor = dy > 0 ? 0.9 : 1.1;
   _lastZoomTs = performance.now();
   lastZoomTime = performance.now(); // Track zoom for performance optimization
   isLightMode = true; // Enable light mode during zoom
@@ -1591,6 +1595,10 @@ export function initMap(canvasEl, tooltipEl) {
     // initStarField(); // TEMPORARILY DISABLED
     try { fitAll(); } catch(_) {}
   });
+  // react to DPR changes as well
+  try {
+    window.matchMedia(`(resolution: ${Math.round((window.devicePixelRatio||1)*96)}dpi)`).addEventListener('change', resize);
+  } catch(_) {}
   // Use pointer events for better DnD handling - FIXED BY GPT-5
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerdown", onPointerDown);
@@ -2068,14 +2076,18 @@ export function fitActiveProject() {
 }
 
 export function resize() {
-  const rect = document.getElementById("canvasWrap").getBoundingClientRect();
-  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  W = Math.floor(rect.width * DPR);
-  H = Math.floor(rect.height * DPR);
-  canvas.width = W;
-  canvas.height = H;
+  const wrap = document.getElementById("canvasWrap");
+  if (!wrap) return;
+  const rect = wrap.getBoundingClientRect();
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const w = Math.round(rect.width * dpr);
+  const h = Math.round(rect.height * dpr);
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
   canvas.style.width = rect.width + "px";
   canvas.style.height = rect.height + "px";
+  DPR = dpr;
+  W = w; H = h;
   ctx = canvas.getContext("2d");
 }
 
@@ -2873,8 +2885,13 @@ export function drawMap() {
     }
   }
   
-  // single transform matrix: scale + translate
-  ctx.setTransform(viewState.scale, 0, 0, viewState.scale, viewState.tx, viewState.ty);
+  // single transform matrix: use camera as single source of truth
+  if (camera && camera.getParams) {
+    const { x, y, scale } = camera.getParams();
+    ctx.setTransform(scale, 0, 0, scale, -x * scale, -y * scale);
+  } else {
+    ctx.setTransform(viewState.scale, 0, 0, viewState.scale, viewState.tx, viewState.ty);
+  }
 
   // Cosmic starfield with twinkling stars - TEMPORARILY DISABLED
   // drawStarfield(ctx, W, H, viewState);
@@ -2890,6 +2907,18 @@ export function drawMap() {
     drawNotes();
     drawChecklists();
   }
+
+  // Dev-only camera invariants check (silent if OK)
+  try {
+    if (camera) {
+      const p = { x: 123.456, y: -7.89 };
+      const s = camera.worldToScreen(p.x, p.y);
+      const w = camera.screenToWorld(s.x, s.y);
+      if (Math.abs(w.x - p.x) > 1e-4 || Math.abs(w.y - p.y) > 1e-4) {
+        console.warn('Camera mapping broken', { p, s, w });
+      }
+    }
+  } catch(_) {}
 
   // Use pre-calculated viewport bounds for culling (already defined above)
 
