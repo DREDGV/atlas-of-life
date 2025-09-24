@@ -3,8 +3,8 @@
 // Non-breaking scaffold for future camera extraction
 
 /**
- * Create a simple camera abstraction.
- * This is a placeholder to be wired gradually without changing behavior.
+ * Create a camera abstraction wired to external view state (tx, ty, scale).
+ * Coordinates API accepts CSS pixel inputs for screen space; DPR handled internally.
  */
 /**
  * @typedef {Object} Camera
@@ -22,33 +22,61 @@
 
 /**
  * @param {HTMLCanvasElement} canvas
+ * @param {{tx:number,ty:number,scale:number}} view
  * @returns {Camera}
  */
-export function createCamera(canvas) {
+export function createCamera(canvas, view) {
   const cam = {
     x: 0,
     y: 0,
-    scale: 1,
-    minScale: 0.4,
-    maxScale: 2
+    scale: () => view.scale,
+    minScale: 0.5,
+    maxScale: 2.2,
   };
 
-  cam.screenToWorld = (sx, sy) => ({ x: sx / cam.scale + cam.x, y: sy / cam.scale + cam.y });
-  cam.worldToScreen = (wx, wy) => ({ x: (wx - cam.x) * cam.scale, y: (wy - cam.y) * cam.scale });
-  cam.translate = (dx, dy) => { cam.x += dx / cam.scale; cam.y += dy / cam.scale; };
-  cam.zoomAt = (factor, sx, sy) => {
-    // Keep point under cursor stable (scaffold only)
-    const before = cam.screenToWorld(sx, sy);
-    cam.scale = Math.min(cam.maxScale, Math.max(cam.minScale, cam.scale * factor));
-    const after = cam.screenToWorld(sx, sy);
-    cam.x += before.x - after.x;
-    cam.y += before.y - after.y;
+  cam.screenToWorld = (sx, sy) => {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const cx = sx * dpr;
+    const cy = sy * dpr;
+    const inv = 1 / view.scale;
+    return { x: (cx - view.tx) * inv, y: (cy - view.ty) * inv };
   };
+
+  cam.worldToScreen = (wx, wy) => {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const cx = wx * view.scale + view.tx;
+    const cy = wy * view.scale + view.ty;
+    return { x: cx / dpr, y: cy / dpr };
+  };
+
+  cam.translate = (dxScreen, dyScreen) => {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    view.tx += dxScreen * dpr;
+    view.ty += dyScreen * dpr;
+  };
+
+  cam.zoomAt = (factor, sx, sy) => {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const cx = sx * dpr;
+    const cy = sy * dpr;
+    const old = view.scale;
+    const next = Math.min(cam.maxScale, Math.max(cam.minScale, old * factor));
+    const invOld = 1 / old;
+    const wx = (cx - view.tx) * invOld;
+    const wy = (cy - view.ty) * invOld;
+    view.scale = next;
+    view.tx = cx - wx * next;
+    view.ty = cy - wy * next;
+  };
+
   cam.centerOn = (obj) => {
     if (!obj) return;
-    cam.x = (obj.x || 0) - (canvas?.width || 0) / (2 * cam.scale);
-    cam.y = (obj.y || 0) - (canvas?.height || 0) / (2 * cam.scale);
+    const W = canvas?.width || 0;
+    const H = canvas?.height || 0;
+    view.tx = W * 0.5 - (obj.x || 0) * view.scale;
+    view.ty = H * 0.5 - (obj.y || 0) * view.scale;
   };
+
   return cam;
 }
 

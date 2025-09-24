@@ -62,6 +62,7 @@ import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
 import { openChecklistWindow, closeChecklistWindow } from "./ui/checklist-window.js";
+import { createCamera } from "./view_map/camera.js";
 
 // showToast is defined globally in app.js
 
@@ -90,6 +91,8 @@ const viewState = {
   lastX: 0,
   lastY: 0,
 };
+// Camera instance (initialized in initMap)
+let camera = null;
 // remember last mouse client position for mouseup fallback
 let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
 // Last zoom time to detect zoom+drag perf hotspot
@@ -216,22 +219,25 @@ function onWheel(e) {
   } catch (_) {}
   const d = e.deltaY || e.wheelDelta || 0;
   const zoomFactor = d > 0 ? 0.9 : 1.1;
-  const old = viewState.scale;
-  const next = clamp(old * zoomFactor, 0.5, 2.2);
   _lastZoomTs = performance.now();
   lastZoomTime = performance.now(); // Track zoom for performance optimization
   isLightMode = true; // Enable light mode during zoom
   
-  // keep world point under cursor stable
-  const dpr = window.devicePixelRatio || 1;
-  const cx = (e.offsetX || 0) * dpr;
-  const cy = (e.offsetY || 0) * dpr;
-  const invOld = 1 / old;
-  const wx = (cx - viewState.tx) * invOld;
-  const wy = (cy - viewState.ty) * invOld;
-  viewState.scale = next;
-  viewState.tx = cx - wx * next;
-  viewState.ty = cy - wy * next;
+  if (camera) {
+    camera.zoomAt(zoomFactor, e.offsetX || 0, e.offsetY || 0);
+  } else {
+    const dpr = window.devicePixelRatio || 1;
+    const cx = (e.offsetX || 0) * dpr;
+    const cy = (e.offsetY || 0) * dpr;
+    const old = viewState.scale;
+    const next = clamp(old * zoomFactor, 0.5, 2.2);
+    const invOld = 1 / old;
+    const wx = (cx - viewState.tx) * invOld;
+    const wy = (cy - viewState.ty) * invOld;
+    viewState.scale = next;
+    viewState.tx = cx - wx * next;
+    viewState.ty = cy - wy * next;
+  }
   try {
     logEvent("map_zoom", { scale: Math.round(next * 100) / 100 });
   } catch (_) {}
@@ -1531,13 +1537,10 @@ function positionToastNearAction(worldX, worldY, toast) {
 
 // Helper function to convert world coordinates to screen coordinates
 function worldToScreen(worldX, worldY) {
-  const canvas = document.getElementById('canvas');
+  if (camera) return camera.worldToScreen(worldX, worldY);
   const dpr = window.devicePixelRatio || 1;
-  
-  // Apply view transform
-  const screenX = (worldX - viewState.tx) * viewState.scale / dpr;
-  const screenY = (worldY - viewState.ty) * viewState.scale / dpr;
-  
+  const screenX = (worldX * viewState.scale + viewState.tx) / dpr;
+  const screenY = (worldY * viewState.scale + viewState.ty) / dpr;
   return { x: screenX, y: screenY };
 }
 // perf tuning
@@ -1566,6 +1569,12 @@ export function initMap(canvasEl, tooltipEl) {
   canvas = canvasEl;
   tooltip = tooltipEl;
   resize();
+  // Initialize camera
+  try {
+    camera = createCamera(canvas, viewState);
+  } catch (e) {
+    console.warn('Camera module failed to init; continuing with legacy transforms', e);
+  }
   // initStarField(); // TEMPORARILY DISABLED
   
   // Initialize cosmic animations
@@ -1879,8 +1888,11 @@ export function centerView() {
     if (isFinite(minX)) {
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
-      viewState.tx = W * 0.5 - centerX;
-      viewState.ty = H * 0.5 - centerY;
+      if (camera) camera.centerOn({ x: centerX, y: centerY });
+      else {
+        viewState.tx = W * 0.5 - centerX;
+        viewState.ty = H * 0.5 - centerY;
+      }
     }
   } else {
     viewState.tx = 0;
@@ -2862,14 +2874,7 @@ export function drawMap() {
   }
   
   // single transform matrix: scale + translate
-  ctx.setTransform(
-    viewState.scale,
-    0,
-    0,
-    viewState.scale,
-    viewState.tx,
-    viewState.ty
-  );
+  ctx.setTransform(viewState.scale, 0, 0, viewState.scale, viewState.tx, viewState.ty);
 
   // Cosmic starfield with twinkling stars - TEMPORARILY DISABLED
   // drawStarfield(ctx, W, H, viewState);
@@ -3997,14 +4002,11 @@ function debugOverlay() {
 }
 
 function screenToWorld(x, y) {
+  if (camera) return camera.screenToWorld(x, y);
   const dpr = window.devicePixelRatio || 1;
-  const cx = x * dpr,
-    cy = y * dpr;
-  const invScale = 1 / viewState.scale;
-  return {
-    x: (cx - viewState.tx) * invScale,
-    y: (cy - viewState.ty) * invScale,
-  };
+  const cx = x * dpr, cy = y * dpr;
+  const inv = 1 / viewState.scale;
+  return { x: (cx - viewState.tx) * inv, y: (cy - viewState.ty) * inv };
 }
 function hit(x, y) {
   for (let i = nodes.length - 1; i >= 0; i--) {
@@ -4510,7 +4512,16 @@ function onPointerMove(e) {
       return;
     }
   if (NAV.mode === 'pan') {
-    updatePan(e);
+    const dx = e.clientX - NAV.lastCX;
+    const dy = e.clientY - NAV.lastCY;
+    NAV.lastCX = e.clientX;
+    NAV.lastCY = e.clientY;
+    if (camera) camera.translate(dx, dy); else {
+      const dpr = window.devicePixelRatio || 1;
+      viewState.tx += dx * dpr;
+      viewState.ty += dy * dpr;
+    }
+    requestDraw();
     if (window.DEBUG_MOUSE) console.log('[NAV] pan move');
     return;
   }
