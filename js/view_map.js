@@ -3083,8 +3083,8 @@ export function drawMap() {
   }
   isDrawing = true;
   
-  // Try new modular rendering first
-  if (scenegraph && renderLayersList && camera) {
+  // Try new modular rendering first (temporarily disabled due to visual issues)
+  if (false && scenegraph && renderLayersList && camera) {
     try {
       drawMapModular();
       isDrawing = false;
