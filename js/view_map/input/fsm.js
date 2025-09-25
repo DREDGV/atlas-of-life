@@ -69,7 +69,7 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
     const rect = canvas.getBoundingClientRect();
     const hitPt = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
     state.target = hit(hitPt.x, hitPt.y);
-    if (state.target) {
+    if (state.target && state.target.x !== undefined && state.target.y !== undefined) {
       state.dragOffsetX = hitPt.x - state.target.x;
       state.dragOffsetY = hitPt.y - state.target.y;
     }
@@ -105,7 +105,7 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
         onPanStart?.(e);
       }
     }
-    if (state.phase === PHASE_PRESS && state.pendingResume && state.target && altNow && (moveX !== 0 || moveY !== 0)) {
+    if (state.phase === PHASE_PRESS && state.pendingResume && state.target && altNow && (dx !== 0 || dy !== 0)) {
       state.phase = PHASE_DRAG_OBJECT;
       state.pendingResume = false;
       const rect = canvas.getBoundingClientRect();
