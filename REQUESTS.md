@@ -1,5 +1,31 @@
+### 2025-09-25 — Модуляризация карты v0.7.0.0 (завершена)
+**Статус**: ВЫПОЛНЕНО
+**Приоритет**: ВЫСОКИЙ
+
+**Описание**: Полная модуляризация карты с созданием модульной архитектуры, Input FSM, системы слоёв и исправлением всех TypeScript ошибок
+
+**Выполнено**:
+✅ Camera module как единый источник трансформаций
+✅ Input FSM с поддержкой Pointer Events и Alt+LMB
+✅ Scenegraph для эффективного hit-testing и рендеринга
+✅ Layered rendering pipeline (domains, projects, tasks, links)
+✅ Event bus для межмодульного взаимодействия
+✅ Поддержка переключения между v1/v2 рендерингом
+✅ Исправлены все TypeScript ошибки в FSM
+✅ Улучшена типобезопасность и проверки объектов
+✅ Интеграция всех модулей с fallback на legacy
+
+**Осталось**:
+❌ Восстановить функциональность Alt+LMB перетаскивания
+❌ Восстановить привязку объектов при Drag&Drop
+❌ Тестирование стабильности модульного рендеринга v2
+
+---
+
+### Отложенные запросы:
 - Restore Alt+LMB as the modifier for object move on the map (currently plain LMB drags nodes while panning).
 - Re-enable snapping/attachment when dragging tasks/projects (drop only shows toast, no actual link change).
+
 ### 2025-09-22 — Система Инбокса (полная реализация)
 **Статус**: ВЫПОЛНЕНО
 **Приоритет**: ВЫСОКИЙ
