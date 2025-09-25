@@ -23,6 +23,7 @@ export const state = {
     layoutMode: 'auto',
     wipTodayLimit: 5,
     enableHierarchyV2: false, // Флаг для включения новой системы иерархии
+    mapVersion: 'v2', // 'v1' (legacy) | 'v2' (modular) - по умолчанию v2
     checklistIconMode: 'hybrid', // 'hybrid' | 'title' | 'minimal' | 'preview2' | 'preview3'
     hotkeys: {
       newTask: 'ctrl+n',

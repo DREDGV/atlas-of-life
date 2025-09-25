@@ -659,6 +659,8 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix(view): disable modular rendering due to visual issues (cd23135)
+- fix(view): improve modular rendering layers with full visual details (865b724)
 - feat(state): lightweight event bus for inter-module communication (0efc86b)
 - fix(view): temporarily disable modular rendering due to visual issues (20f9fb2)
 - fix(view): add fallback for empty nodes in modular rendering (19757db)

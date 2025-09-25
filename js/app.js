@@ -2537,6 +2537,7 @@ function renderSidebar() {
       <div style="display:flex;align-items:center;gap:8px">
         ${state.activeDomain ? `<button id="clearDomainFilter" style="background:none;border:1px solid var(--muted);color:var(--muted);padding:2px 6px;border-radius:4px;font-size:9px;cursor:pointer">Все домены</button>` : ''}
         <span style="font-size:10px;color:var(--muted)">${stats.totalTasks} задач</span>
+        <span style="font-size:9px;color:var(--muted);background:rgba(157,177,201,0.1);padding:2px 4px;border-radius:3px">map ${state.settings.mapVersion || 'v2'}</span>
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -4461,6 +4462,15 @@ async function init() {
   
   // Expose eventBus globally for inter-module communication
   window.eventBus = eventBus;
+  
+  // Check URL parameter for map version override
+  const urlParams = new URLSearchParams(window.location.search);
+  const mapVersion = urlParams.get('map');
+  if (mapVersion === 'v1' || mapVersion === 'v2') {
+    if (!state.settings) state.settings = {};
+    state.settings.mapVersion = mapVersion;
+    console.log(`Map version overridden to ${mapVersion} via URL parameter`);
+  }
   
   // Normal initialization for all browsers (including Edge)
   const ok = loadState();
