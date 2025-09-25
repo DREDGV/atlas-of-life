@@ -68,10 +68,11 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     const rect = canvas.getBoundingClientRect();
     const hitPt = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-    state.target = hit(hitPt.x, hitPt.y);
-    if (state.target && state.target.x !== undefined && state.target.y !== undefined) {
-      state.dragOffsetX = hitPt.x - state.target.x;
-      state.dragOffsetY = hitPt.y - state.target.y;
+    const hitResult = hit(hitPt.x, hitPt.y);
+    state.target = hitResult;
+    if (hitResult && typeof hitResult === 'object' && 'x' in hitResult && 'y' in hitResult) {
+      state.dragOffsetX = hitPt.x - hitResult.x;
+      state.dragOffsetY = hitPt.y - hitResult.y;
     }
     onHover?.(e);
   }
