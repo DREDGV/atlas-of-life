@@ -64,6 +64,8 @@ import { logEvent } from "./utils/analytics.js";
 import { openChecklistWindow, closeChecklistWindow } from "./ui/checklist-window.js";
 import { createFSM } from "./view_map/input/fsm.js";
 import { createCamera } from "./view_map/camera.js";
+import { createScenegraph } from './view_map/scenegraph.js';
+import { createRenderLayers, renderLayers } from './view_map/layers/index.js';
 
 // showToast is defined globally in app.js
 
@@ -94,6 +96,10 @@ const viewState = {
 };
 // Camera instance (initialized in initMap)
 let camera = null;
+// Scenegraph instance (initialized in initMap)
+let scenegraph = null;
+// Render layers (initialized in initMap)
+let renderLayersList = null;
 // remember last mouse client position for mouseup fallback
 let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
 // Last zoom time to detect zoom+drag perf hotspot
@@ -1765,6 +1771,20 @@ export function initMap(canvasEl, tooltipEl) {
   } catch (e) {
     console.warn('Camera module failed to init; continuing with legacy transforms', e);
   }
+  
+  // Initialize scenegraph
+  try {
+    scenegraph = createScenegraph(eventManager);
+  } catch (e) {
+    console.warn('Scenegraph module failed to init; continuing with legacy rendering', e);
+  }
+  
+  // Initialize render layers
+  try {
+    renderLayersList = createRenderLayers();
+  } catch (e) {
+    console.warn('Render layers failed to init; continuing with legacy rendering', e);
+  }
   // initStarField(); // TEMPORARILY DISABLED
   
   // Initialize cosmic animations
@@ -2997,6 +3017,32 @@ export function layoutMap() {
   // Reset layouting flag
   isLayouting = false;
 }
+
+/**
+ * New modular rendering using scenegraph and layers
+ */
+function drawMapModular() {
+  // Clear canvas
+  ctx.clearRect(0, 0, W, H);
+  
+  // Get camera parameters
+  const cameraParams = camera.getParams();
+  
+  // Get visible nodes from scenegraph
+  const visibleNodes = scenegraph.getVisible({
+    x: cameraParams.x,
+    y: cameraParams.y,
+    scale: cameraParams.scale,
+    width: W,
+    height: H
+  });
+  
+  // Render all layers
+  renderLayers(ctx, visibleNodes, camera, renderLayersList);
+  
+  // Mark scenegraph as dirty for next frame (in case objects moved)
+  scenegraph.markDirty();
+}
 export function drawMap() {
   if (!ctx) return;
   
@@ -3005,6 +3051,17 @@ export function drawMap() {
     return;
   }
   isDrawing = true;
+  
+  // Try new modular rendering first
+  if (scenegraph && renderLayersList && camera) {
+    try {
+      drawMapModular();
+      isDrawing = false;
+      return;
+    } catch (e) {
+      console.warn('Modular rendering failed, falling back to legacy:', e);
+    }
+  }
   
   // Отладочная информация для диагностики фризов (только при проблемах)
   if (window.DEBUG_DRAW_CALLS) {
@@ -4228,6 +4285,16 @@ function screenToWorld(x, y) {
   return { x: (cx - viewState.tx) * inv, y: (cy - viewState.ty) * inv };
 }
 function hit(x, y) {
+  // Try scenegraph first if available
+  if (scenegraph) {
+    const results = scenegraph.hitTest(x, y, 20); // 20px search radius
+    if (results.length > 0) {
+      return results[0].data; // Return original object data
+    }
+    return null;
+  }
+  
+  // Fallback to legacy hit testing
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
     const dx = x - n.x,

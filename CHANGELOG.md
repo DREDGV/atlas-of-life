@@ -659,6 +659,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(view): robust input FSM with pointer capture (5267c1f)
 - refactor(view): make camera the single source of truth; normalize wheel; DPR-safe resize; invariants check (Step C polish) (ee653c9)
 - refactor(view): introduce camera module and route pan/zoom + worldscreen via camera (Step C) (287bb50)
 - fix(view): implement missing drawArrow/strokeLine/fillCircle, robust roundedRectPath (r clamped) (ef56d4a)
