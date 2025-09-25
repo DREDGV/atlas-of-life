@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist, eventBus } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson, backupStateSnapshot, listBackups } from "./storage.js";
 import {
   initMap,
@@ -4458,6 +4458,9 @@ async function init() {
     return;
   }
   window.__atlasInitDone = true;
+  
+  // Expose eventBus globally for inter-module communication
+  window.eventBus = eventBus;
   
   // Normal initialization for all browsers (including Edge)
   const ok = loadState();

@@ -659,6 +659,10 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix(view): temporarily disable modular rendering due to visual issues (20f9fb2)
+- fix(view): add fallback for empty nodes in modular rendering (19757db)
+- fix(view): create simple eventManager for scenegraph initialization (c0522a3)
+- feat(view): scenegraph + cached hit-test and layered rendering (3c5be80)
 - feat(view): robust input FSM with pointer capture (5267c1f)
 - refactor(view): make camera the single source of truth; normalize wheel; DPR-safe resize; invariants check (Step C polish) (ee653c9)
 - refactor(view): introduce camera module and route pan/zoom + worldscreen via camera (Step C) (287bb50)

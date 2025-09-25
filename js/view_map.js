@@ -378,6 +378,15 @@ function handleDragMove(target, worldX, worldY, evt) {
       checklist.y = draggedNode.y;
     }
   }
+  
+  // Emit event for object position change
+  if (window.eventBus) {
+    window.eventBus.emit('object:moved', { 
+      object: draggedNode, 
+      x: worldX, 
+      y: worldY 
+    });
+  }
   resolveDropTargets(draggedNode);
   requestDrawThrottled();
 }
@@ -1789,6 +1798,17 @@ export function initMap(canvasEl, tooltipEl) {
     renderLayersList = createRenderLayers();
   } catch (e) {
     console.warn('Render layers failed to init; continuing with legacy rendering', e);
+  }
+  
+  // Subscribe to state events for scenegraph updates
+  if (window.eventBus && scenegraph) {
+    window.eventBus.on('objects:changed', () => {
+      scenegraph.markDirty();
+    });
+    window.eventBus.on('object:moved', () => {
+      scenegraph.markDirty();
+    });
+    console.log('Subscribed to state events for scenegraph updates');
   }
   // initStarField(); // TEMPORARILY DISABLED
   

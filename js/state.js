@@ -855,6 +855,11 @@ export function createDomain(title, mood = 'balance') {
     updatedAt: Date.now()
   };
   state.domains.push(domain);
+  
+  // Emit event for domain creation
+  eventBus.emit('domain:created', domain);
+  eventBus.emit('objects:changed', { type: 'domain', action: 'created', object: domain });
+  
   return domain;
 }
 
@@ -872,6 +877,11 @@ export function createProject(title, domainId = null) {
     updatedAt: Date.now()
   };
   state.projects.push(project);
+  
+  // Emit event for project creation
+  eventBus.emit('project:created', project);
+  eventBus.emit('objects:changed', { type: 'project', action: 'created', object: project });
+  
   return project;
 }
 
@@ -892,6 +902,11 @@ export function createTask(title, projectId = null, domainId = null) {
     updatedAt: Date.now()
   };
   state.tasks.push(task);
+  
+  // Emit event for task creation
+  eventBus.emit('task:created', task);
+  eventBus.emit('objects:changed', { type: 'task', action: 'created', object: task });
+  
   return task;
 }
 
@@ -1009,3 +1024,68 @@ export function getChecklistProgress(checklistId) {
 export function getChecklistsOfProject(projectId) {
   return state.checklists.filter(c => c.projectId === projectId);
 }
+
+// Lightweight event bus for inter-module communication
+const eventBus = {
+  listeners: new Map(),
+  
+  /**
+   * Subscribe to an event
+   * @param {string} event - Event name
+   * @param {Function} callback - Callback function
+   * @returns {Function} Unsubscribe function
+   */
+  on(event, callback) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event).add(callback);
+    
+    // Return unsubscribe function
+    return () => {
+      const eventListeners = this.listeners.get(event);
+      if (eventListeners) {
+        eventListeners.delete(callback);
+        if (eventListeners.size === 0) {
+          this.listeners.delete(event);
+        }
+      }
+    };
+  },
+  
+  /**
+   * Emit an event to all subscribers
+   * @param {string} event - Event name
+   * @param {*} data - Event data
+   */
+  emit(event, data) {
+    const eventListeners = this.listeners.get(event);
+    if (eventListeners) {
+      for (const callback of eventListeners) {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error(`Error in event listener for ${event}:`, error);
+        }
+      }
+    }
+  },
+  
+  /**
+   * Remove all listeners for an event
+   * @param {string} event - Event name
+   */
+  off(event) {
+    this.listeners.delete(event);
+  },
+  
+  /**
+   * Remove all listeners
+   */
+  clear() {
+    this.listeners.clear();
+  }
+};
+
+// Export event bus
+export { eventBus };
