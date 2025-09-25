@@ -1,3 +1,5 @@
+- Restore Alt+LMB as the modifier for object move on the map (currently plain LMB drags nodes while panning).
+- Re-enable snapping/attachment when dragging tasks/projects (drop only shows toast, no actual link change).
 ### 2025-09-22 — Система Инбокса (полная реализация)
 **Статус**: ВЫПОЛНЕНО
 **Приоритет**: ВЫСОКИЙ

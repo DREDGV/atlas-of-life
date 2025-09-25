@@ -4,14 +4,12 @@
   "type": "module",
   "scripts": {
     "audit:exports": "node tools/audit-exports.mjs",
-    "lint": "eslint js --ext .js || true"
+    "lint": "eslint js --ext .js"
   },
   "devDependencies": {
-    "es-module-lexer": "^1.5.4",
-    "fast-glob": "^3.3.2",
-    "eslint": "^9.10.0",
-    "eslint-plugin-import": "^2.29.1"
+    "es-module-lexer": "^1.7.0",
+    "eslint": "^9.36.0",
+    "eslint-plugin-import": "^2.32.0",
+    "fast-glob": "^3.3.3"
   }
 }
-
-

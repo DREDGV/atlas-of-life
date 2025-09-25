@@ -659,6 +659,19 @@ I18N/UX
 
 ## [Unreleased]
 
+- refactor(view): make camera the single source of truth; normalize wheel; DPR-safe resize; invariants check (Step C polish) (ee653c9)
+- refactor(view): introduce camera module and route pan/zoom + worldscreen via camera (Step C) (287bb50)
+- fix(view): implement missing drawArrow/strokeLine/fillCircle, robust roundedRectPath (r clamped) (ef56d4a)
+- fix(view): resolve duplicate identifier by removing second clamp import (keep state.js clamp) (d893c2c)
+- refactor(view): wire consolidated imports for draw/text utils (no behavior change) (1d219a4)
+- refactor(view): extract pure draw/text helpers to view_map/render and import from view_map.js (no behavior change) (3cf66b6)
+- refactor(view): start step B by extracting dist2 to render utils and wiring import (no behavioral changes) (92aeb3e)
+- ci(audit): run import/export audit on push/PR; build: add eslint (no-default-export); feat(app): wire safe map v2 gate (disabled by default) (7d9c3b6)
+- feat(flags): add modularMap feature flag; docs/ts-check typedefs in scaffold; enforce single-entry and cleanup (3ddad69)
+- chore(repo): clean backups, enforce single entry, add audit script and docs (4028f70)
+- chore(docs): add modular map playbook and non-breaking scaffold (554a7ef)
+- docs: add comprehensive study guide for other AI to understand the project (08e0325)
+- docs: update changelog after rollback to working version (ccf221a)
 - docs: add rollback success documentation and working version tag (9b80a92)
 - fix: update app version and improve WORKFLOW with automatic date handling (2023528)
 - docs: update dates to September 22, 2025 in all documentation files (2b57d03)

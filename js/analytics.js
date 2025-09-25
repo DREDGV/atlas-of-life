@@ -1,8 +1,8 @@
 // js/analytics.js
 // Advanced Analytics Dashboard for Atlas of Life
 
-import { logEvent, getLogs } from './utils/analytics.js';
 import { state } from './state.js';
+import { logEvent, getLogs } from './utils/analytics.js';
 
 class AnalyticsDashboard {
   constructor() {
