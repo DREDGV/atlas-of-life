@@ -29,33 +29,51 @@ export function createProjectLayer() {
     name: 'project',
     enabled: true,
     render: (ctx, nodes, camera) => {
+      const DPR = window.devicePixelRatio || 1;
+      
       for (const node of nodes) {
         if (!node.visible) continue;
         
         const project = node.data;
         const screenPos = camera.worldToScreen(node.x, node.y);
         
-        // Project rectangle
-        const width = 80;
-        const height = 40;
-        const x = screenPos.x - width / 2;
-        const y = screenPos.y - height / 2;
+        // Draw planet with gentle pulsing animation
+        const time = performance.now() * 0.0008; // Очень медленная анимация
+        const pulse = 1 + Math.sin(time) * 0.05; // Очень слабая пульсация
+        const pulseRadius = node.r * pulse;
         
-        ctx.fillStyle = project.color || '#7ED321';
-        ctx.fillRect(x, y, width, height);
+        // Use project ID as seed for unique shape and project color
+        const seed = project.id ? project.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0) : 0;
+        const projectColor = project.color || "#7b68ee";
         
-        // Project border
-        ctx.strokeStyle = '#5BA317';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, width, height);
+        // Original project rendering (M-02: Project Orbit)
+        ctx.beginPath();
+        ctx.fillStyle = projectColor;
+        ctx.arc(screenPos.x, screenPos.y, pulseRadius, 0, Math.PI * 2);
+        ctx.fill();
         
-        // Project label
-        if (project.name) {
-          ctx.fillStyle = '#FFFFFF';
-          ctx.font = '11px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(project.name, screenPos.x, screenPos.y);
+        // Thin border
+        ctx.beginPath();
+        ctx.strokeStyle = projectColor; // Simplified contrast color
+        ctx.lineWidth = 1 * DPR;
+        ctx.arc(screenPos.x, screenPos.y, pulseRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Project title
+        ctx.fillStyle = "#cde1ff";
+        ctx.font = `${12 * DPR}px system-ui`;
+        ctx.textAlign = "center";
+        ctx.fillText(project.title, screenPos.x, screenPos.y - (node.r + 28 * DPR));
+        
+        // Визуальные индикаторы блокировок для проектов
+        if (project.locks) {
+          // Иконка замка для блокировки перемещения
+          if (project.locks.move) {
+            ctx.fillStyle = "#ff6b6b";
+            ctx.font = `${10 * DPR}px system-ui`;
+            ctx.textAlign = "center";
+            ctx.fillText("🔒", screenPos.x + node.r - 6 * DPR, screenPos.y - node.r + 6 * DPR);
+          }
         }
       }
     }

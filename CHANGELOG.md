@@ -659,6 +659,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(state): lightweight event bus for inter-module communication (0efc86b)
 - fix(view): temporarily disable modular rendering due to visual issues (20f9fb2)
 - fix(view): add fallback for empty nodes in modular rendering (19757db)
 - fix(view): create simple eventManager for scenegraph initialization (c0522a3)

@@ -29,31 +29,70 @@ export function createTaskLayer() {
     name: 'task',
     enabled: true,
     render: (ctx, nodes, camera) => {
+      const DPR = window.devicePixelRatio || 1;
+      
       for (const node of nodes) {
         if (!node.visible) continue;
         
         const task = node.data;
         const screenPos = camera.worldToScreen(node.x, node.y);
         
-        // Task circle
-        ctx.fillStyle = task.color || '#F5A623';
+        // Task colors based on status
+        const taskColors = {
+          "done": "#6b7280",
+          "today": "#ffd166", 
+          "doing": "#60a5fa",
+          "backlog": "#9ca3af"
+        };
+        const baseColor = taskColors[task.status] || taskColors["backlog"];
+        
+        // Dynamic pulsing effect for active tasks
+        const time = performance.now() * 0.002;
+        const pulseIntensity = task.status === 'doing' ? 1 + Math.sin(time * 2) * 0.15 : 1;
+        const pulseRadius = node.r * pulseIntensity;
+        
+        // Enhanced gradient with multiple color stops
+        const gradient = ctx.createRadialGradient(screenPos.x - node.r/2, screenPos.y - node.r/2, 0, screenPos.x, screenPos.y, pulseRadius);
+        gradient.addColorStop(0, baseColor + "FF");
+        gradient.addColorStop(0.2, baseColor + "EE");
+        gradient.addColorStop(0.4, baseColor + "CC");
+        gradient.addColorStop(0.7, baseColor + "99");
+        gradient.addColorStop(1, baseColor + "66");
+        
+        // Outer energy ring for active tasks
+        if (task.status === 'doing' || task.status === 'today') {
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 8 * DPR * pulseIntensity;
+          ctx.strokeStyle = baseColor + "60";
+          ctx.lineWidth = 2 * DPR;
+          ctx.beginPath();
+          ctx.arc(screenPos.x, screenPos.y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+        
+        // Main task circle
         ctx.beginPath();
-        ctx.arc(screenPos.x, screenPos.y, node.r, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.arc(screenPos.x, screenPos.y, pulseRadius, 0, Math.PI * 2);
         ctx.fill();
         
-        // Task border
-        ctx.strokeStyle = '#D68910';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        // Inner highlight for 3D effect
+        const innerGradient = ctx.createRadialGradient(screenPos.x - node.r/3, screenPos.y - node.r/3, 0, screenPos.x, screenPos.y, node.r * 0.6);
+        innerGradient.addColorStop(0, "#ffffff40");
+        innerGradient.addColorStop(1, "#00000000");
         
-        // Task label
-        if (task.name) {
-          ctx.fillStyle = '#FFFFFF';
-          ctx.font = '10px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(task.name, screenPos.x, screenPos.y);
-        }
+        ctx.beginPath();
+        ctx.fillStyle = innerGradient;
+        ctx.arc(screenPos.x, screenPos.y, node.r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Border with contrast color
+        ctx.beginPath();
+        ctx.strokeStyle = baseColor; // Simplified contrast color
+        ctx.lineWidth = 1.5 * DPR;
+        ctx.arc(screenPos.x, screenPos.y, pulseRadius, 0, Math.PI * 2);
+        ctx.stroke();
         
         // Priority indicator
         if (task.priority) {
