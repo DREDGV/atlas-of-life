@@ -1772,13 +1772,14 @@ export function initMap(canvasEl, tooltipEl) {
     console.warn('Camera module failed to init; continuing with legacy transforms', e);
   }
   
-  // Initialize scenegraph
+  // Initialize scenegraph (will be properly initialized after layoutMap)
   try {
     // Create a simple event manager that provides getAllObjects
     const simpleEventManager = {
       getAllObjects: () => nodes || []
     };
     scenegraph = createScenegraph(simpleEventManager);
+    console.log('Scenegraph initialized successfully');
   } catch (e) {
     console.warn('Scenegraph module failed to init; continuing with legacy rendering', e);
   }
@@ -3028,6 +3029,12 @@ export function layoutMap() {
 function drawMapModular() {
   // Clear canvas
   ctx.clearRect(0, 0, W, H);
+  
+  // Check if we have nodes to render
+  if (!nodes || nodes.length === 0) {
+    console.log('No nodes to render in modular mode, falling back to legacy');
+    throw new Error('No nodes available');
+  }
   
   // Get camera parameters
   const cameraParams = camera.getParams();
