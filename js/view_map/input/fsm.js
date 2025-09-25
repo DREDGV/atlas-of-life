@@ -34,7 +34,7 @@ function isAltOnly(e) {
 export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, onDragEnd, onPanStart, onPanMove, onPanEnd, onHover }) {
   const state = {
     phase: PHASE_IDLE,
-    pointerId: null,
+    pointerId: /** @type {number|null} */ (null),
     startX: 0,
     startY: 0,
     lastX: 0,
