@@ -1774,7 +1774,11 @@ export function initMap(canvasEl, tooltipEl) {
   
   // Initialize scenegraph
   try {
-    scenegraph = createScenegraph(eventManager);
+    // Create a simple event manager that provides getAllObjects
+    const simpleEventManager = {
+      getAllObjects: () => nodes || []
+    };
+    scenegraph = createScenegraph(simpleEventManager);
   } catch (e) {
     console.warn('Scenegraph module failed to init; continuing with legacy rendering', e);
   }
