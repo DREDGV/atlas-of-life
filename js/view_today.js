@@ -93,6 +93,13 @@ function pickTodayTasks() {
       if (!t) return false;
       if (t.status === "today") return true;
       if (t.status === "done") return true; // Включаем выполненные задачи
+      
+      // Включаем задачи из backlog, если они созданы сегодня
+      if (t.status === "backlog") {
+        const createdAt = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+        return isSameDay(createdAt, now);
+      }
+      
       const due = getDue(t);
       return due && isSameDay(due, now);
     })
@@ -148,6 +155,13 @@ function calculateDayStats() {
     .filter(t => {
       if (!t) return false;
       if (t.status === "today") return true;
+      
+      // Включаем задачи из backlog, если они созданы сегодня
+      if (t.status === "backlog") {
+        const createdAt = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+        return isSameDay(createdAt, now);
+      }
+      
       const due = getDue(t);
       return due && isSameDay(due, now);
     });
@@ -306,12 +320,14 @@ function renderTaskRow(task) {
   const isOverdue = due && Date.now() - due > 60 * 1000;
   const priorityClass = `priority-${task._prio}`;
   const overdueClass = isOverdue ? 'overdue' : '';
+  const isNewTask = task.status === 'backlog'; // Новые задачи из backlog
+  const newTaskClass = isNewTask ? 'new-task' : '';
   
   const tags = (task.tags || []).map(t => `#${t}`).join(' ');
   const estimate = task.estimateMin ? `~${task.estimateMin}м` : '';
 
   return `
-    <div class="today-task ${priorityClass} ${overdueClass}" data-id="${task.id}" draggable="true">
+    <div class="today-task ${priorityClass} ${overdueClass} ${newTaskClass}" data-id="${task.id}" draggable="true">
       <div class="today-task-checkbox">
         <input type="checkbox" ${task.status === 'done' ? 'checked' : ''} />
       </div>
@@ -319,6 +335,7 @@ function renderTaskRow(task) {
       <div class="today-task-content">
         <div class="today-task-title">
           ${escapeHtml(task.title || 'Без названия')}
+          ${isNewTask ? '<span class="today-task-new-badge">🆕 Новое</span>' : ''}
           ${tags ? `<span class="today-task-tags">${escapeHtml(tags)}</span>` : ''}
         </div>
         <div class="today-task-meta">

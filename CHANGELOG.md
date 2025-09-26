@@ -692,6 +692,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- perf(drag): complete A4-A6 optimizations for smooth dragging (c59edf1)
 - perf(drag): implement telemetry, RAF batching and static snapshots (2f6efee)
 - docs: update version to v0.7.0.0 and complete WORKFLOW (4d34623)
 - fix(input): correct pointerId type annotation in FSM (7eeb9e1)
