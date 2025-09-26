@@ -88,7 +88,40 @@ function drawDraggedNode(ctx, draggedNode, camera) {
 
 function drawIncidentLinks(ctx, draggedNode, camera) {
   // Draw only links connected to the dragged node
-  // This will be implemented with proper link filtering
+  if (!state.showLinks || !edges) return;
+  
+  const draggedId = draggedNode.id;
+  const incidentEdges = edges.filter(e => e.a.id === draggedId || e.b.id === draggedId);
+  
+  if (incidentEdges.length === 0) return;
+  
+  ctx.lineCap = "round";
+  incidentEdges.forEach((e) => {
+    const a = e.a, b = e.b;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    const k = 0.12 * (1 / (1 + dist / (300 * DPR)));
+    const dx = (b.y - a.y) * k, dy = (a.x - b.x) * k;
+    
+    // Draw connection with enhanced visibility
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = e.color + '40';
+    ctx.strokeStyle = e.color + '20';
+    ctx.lineWidth = e.w + 4;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
+    ctx.stroke();
+    
+    // Inner core
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = e.w;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
+    ctx.stroke();
+  });
 }
 
 // Helper function for rounded rectangles (compatibility)
@@ -4431,6 +4464,11 @@ function screenToWorld(x, y) {
   return { x: (cx - viewState.tx) * inv, y: (cy - viewState.ty) * inv };
 }
 function hit(x, y) {
+  // During drag, skip expensive hit testing
+  if (__isDragging) {
+    return null; // No hit testing during drag
+  }
+  
   // Try scenegraph first if available
   if (scenegraph) {
     const results = scenegraph.hitTest(x, y, 20); // 20px search radius
@@ -6719,16 +6757,16 @@ function drawChecklists() {
       let face = `${weight} ${size}px system-ui`;
       ctx.font = face;
       let t = text || '';
-      let w = ctx.measureText(t).width;
+      let w = measureTextCached(ctx, t);
       while (w > maxWidth && size > minPx) {
         size -= 1;
         face = `${weight} ${size}px system-ui`;
         ctx.font = face;
-        w = ctx.measureText(t).width;
+        w = measureTextCached(ctx, t);
       }
       if (w > maxWidth) {
         // даже на минимальном размере — усекать посимвольно
-        while (t.length > 0 && ctx.measureText(t + ellipsis).width > maxWidth) {
+        while (t.length > 0 && measureTextCached(ctx, t + ellipsis) > maxWidth) {
           t = t.slice(0, -1);
         }
         t = t + ellipsis;
