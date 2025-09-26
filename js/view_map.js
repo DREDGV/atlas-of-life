@@ -1,5 +1,96 @@
 // js/view_map.js
 
+// Performance telemetry for drag optimization
+const __perf = { buckets: {}, lastPrint: 0 };
+function __time(name, fn) {
+  const t0 = performance.now();
+  const r = fn();
+  const dt = performance.now() - t0;
+  __perf.buckets[name] = (__perf.buckets[name] || 0) + dt;
+  return r;
+}
+function __perfPrint() {
+  const now = performance.now();
+  if (now - __perf.lastPrint >= 500) {
+    const rows = Object.entries(__perf.buckets)
+      .map(([k,v]) => ({ section: k, ms: +v.toFixed(2) }))
+      .sort((a,b)=>b.ms - a.ms);
+    if (rows.length) console.table(rows);
+    __perf.buckets = {}; __perf.lastPrint = now;
+  }
+}
+
+// Static snapshot for drag optimization
+let __staticSnap = null, __sctx = null, __isDragging = false, __draggedNode = null;
+
+function beginDrag(draggedNode) {
+  __isDragging = true;
+  __draggedNode = draggedNode;
+  __staticSnap = document.createElement('canvas');
+  __staticSnap.width = canvas.width; 
+  __staticSnap.height = canvas.height;
+  __sctx = __staticSnap.getContext('2d');
+  
+  // Нарисуем фон и все слои КРОМЕ перетаскиваемого узла
+  __time('static-snapshot', () => {
+    drawBackground(__sctx);
+    drawAllLayersExceptDragged(__sctx, draggedNode);
+  });
+}
+
+function renderDuringDrag(draggedNode) {
+  __time('draw-static', () => {
+    ctx.drawImage(__staticSnap, 0, 0);
+  });
+  
+  __time('draw-dragged', () => {
+    drawDraggedNode(ctx, draggedNode, camera);
+    drawIncidentLinks(ctx, draggedNode, camera);
+  });
+}
+
+function endDrag() { 
+  __isDragging = false; 
+  __draggedNode = null;
+  __staticSnap = __sctx = null; 
+}
+
+// Placeholder functions for static snapshot (to be implemented)
+function drawBackground(ctx) {
+  // Clear background
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawAllLayersExceptDragged(ctx, draggedNode) {
+  // Draw all layers except the dragged node
+  // This will be implemented with proper layer filtering
+  if (renderLayersList) {
+    const visibleNodes = scenegraph?.getVisible({
+      x: camera.getParams().x,
+      y: camera.getParams().y,
+      scale: camera.getParams().scale,
+      width: canvas.width,
+      height: canvas.height
+    }) || [];
+    
+    const filteredNodes = visibleNodes.filter(node => node.id !== draggedNode.id);
+    renderLayers(ctx, filteredNodes, camera, renderLayersList);
+  }
+}
+
+function drawDraggedNode(ctx, draggedNode, camera) {
+  // Draw only the dragged node
+  if (renderLayersList) {
+    const draggedNodes = [{ ...draggedNode, type: draggedNode._type }];
+    renderLayers(ctx, draggedNodes, camera, renderLayersList);
+  }
+}
+
+function drawIncidentLinks(ctx, draggedNode, camera) {
+  // Draw only links connected to the dragged node
+  // This will be implemented with proper link filtering
+}
+
 // Helper function for rounded rectangles (compatibility)
 function drawRoundedRect(ctx, x, y, width, height, radius) {
   // Delegate to shared util to keep path logic consistent across codebase
@@ -362,6 +453,10 @@ function handleDragStart(target, offsetX, offsetY, evt) {
   suppressClickUntil = performance.now() + 260;
   canvas.style.cursor = target._type === "task" ? "move" : "grabbing";
   resolveDropTargets(target);
+  
+  // Start static snapshot for drag optimization
+  beginDrag(target);
+  
   requestDrawThrottled();
   return true;
 }
@@ -400,6 +495,9 @@ function handleDragEnd(target, evt) {
     dropTargetProjectId = null;
     dropTargetDomainId = null;
     currentDropHint = null;
+    
+    // End static snapshot
+    endDrag();
     return;
   }
   handleDrop();
@@ -410,6 +508,10 @@ function handleDragEnd(target, evt) {
   currentDropHint = null;
   canvas.style.cursor = "";
   suppressClickUntil = performance.now() + 260;
+  
+  // End static snapshot
+  endDrag();
+  
   requestDrawThrottled();
 }
 
@@ -1845,7 +1947,7 @@ export function initMap(canvasEl, tooltipEl) {
     onHover: handlePointerHover,
   });
   canvas.addEventListener("pointerdown", inputFSM.pointerDown);
-  canvas.addEventListener("pointermove", inputFSM.pointerMove);
+  canvas.addEventListener("pointermove", inputFSM.pointerMove, { passive: true });
   canvas.addEventListener("pointerup", inputFSM.pointerUp);
   canvas.addEventListener("pointerleave", inputFSM.pointerLeave);
   canvas.addEventListener("pointercancel", inputFSM.pointerCancel);
@@ -3047,8 +3149,17 @@ export function layoutMap() {
  * New modular rendering using scenegraph and layers
  */
 function drawMapModular() {
+  // Check if we're dragging and use optimized rendering
+  if (__isDragging && __draggedNode) {
+    renderDuringDrag(__draggedNode);
+    __perfPrint();
+    return;
+  }
+  
   // Clear canvas
-  ctx.clearRect(0, 0, W, H);
+  __time('clear', () => {
+    ctx.clearRect(0, 0, W, H);
+  });
   
   // Check if we have nodes to render
   if (!nodes || nodes.length === 0) {
@@ -3057,19 +3168,23 @@ function drawMapModular() {
   }
   
   // Get camera parameters
-  const cameraParams = camera.getParams();
+  const cameraParams = __time('camera-params', () => camera.getParams());
   
   // Get visible nodes from scenegraph
-  const visibleNodes = scenegraph.getVisible({
+  const visibleNodes = __time('scenegraph-visible', () => scenegraph.getVisible({
     x: cameraParams.x,
     y: cameraParams.y,
     scale: cameraParams.scale,
     width: W,
     height: H
-  });
+  }));
   
   // Render all layers
-  renderLayers(ctx, visibleNodes, camera, renderLayersList);
+  __time('render-layers', () => {
+    renderLayers(ctx, visibleNodes, camera, renderLayersList);
+  });
+  
+  __perfPrint();
   
   // Mark scenegraph as dirty for next frame (in case objects moved)
   scenegraph.markDirty();

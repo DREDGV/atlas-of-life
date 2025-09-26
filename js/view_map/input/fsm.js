@@ -32,6 +32,9 @@ function isAltOnly(e) {
  * }} deps
  */
 export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, onDragEnd, onPanStart, onPanMove, onPanEnd, onHover }) {
+  // RAF batching for pointermove
+  let __dragRaf = 0, __lastEvt = null;
+  
   const state = {
     phase: PHASE_IDLE,
     pointerId: /** @type {number|null} */ (null),
@@ -78,7 +81,20 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
   }
 
   /** @param {PointerEvent} e */
-  function pointerMove(e) {
+  function pointerMoveBatched(e) {
+    __lastEvt = e;
+    if (!__dragRaf) {
+      __dragRaf = requestAnimationFrame(() => {
+        __dragRaf = 0;
+        const evt = __lastEvt; __lastEvt = null;
+        // ВАЖНО: существующая логика перемещения
+        pointerMoveCore(evt);
+      });
+    }
+  }
+
+  /** @param {PointerEvent} e */
+  function pointerMoveCore(e) {
     onHover?.(e);
     if (state.phase === PHASE_IDLE) return;
     const dx = e.clientX - state.startX;
@@ -173,7 +189,7 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
 
   return {
     pointerDown,
-    pointerMove,
+    pointerMove: pointerMoveBatched,
     pointerUp,
     pointerCancel,
     pointerLeave,

@@ -692,6 +692,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- docs: update version to v0.7.0.0 and complete WORKFLOW (4d34623)
 - fix(input): correct pointerId type annotation in FSM (7eeb9e1)
 - fix(input): improve type safety in FSM hit detection (c28e1d6)
 - fix(input): resolve TypeScript errors in FSM (283cfbe)
