@@ -22,10 +22,15 @@ function __perfPrint() {
 
 // Static snapshot for drag optimization
 let __staticSnap = null, __sctx = null, __isDragging = false, __draggedNode = null;
+let __dragRedrawScheduled = false; // Throttle drag redraws
 
 function beginDrag(draggedNode) {
   __isDragging = true;
   __draggedNode = draggedNode;
+  
+  // Temporarily disable static snapshot due to visual glitches
+  // TODO: Fix static snapshot rendering logic
+  /*
   __staticSnap = document.createElement('canvas');
   __staticSnap.width = canvas.width; 
   __staticSnap.height = canvas.height;
@@ -36,6 +41,7 @@ function beginDrag(draggedNode) {
     drawBackground(__sctx);
     drawAllLayersExceptDragged(__sctx, draggedNode);
   });
+  */
 }
 
 function renderDuringDrag(draggedNode) {
@@ -52,7 +58,9 @@ function renderDuringDrag(draggedNode) {
 function endDrag() { 
   __isDragging = false; 
   __draggedNode = null;
-  __staticSnap = __sctx = null; 
+  __dragRedrawScheduled = false; // Reset throttling flag
+  // Static snapshot cleanup disabled
+  // __staticSnap = __sctx = null; 
 }
 
 // Placeholder functions for static snapshot (to be implemented)
@@ -544,7 +552,15 @@ function handleDragMove(target, worldX, worldY, evt) {
     });
   }
   resolveDropTargets(draggedNode);
-  requestDrawThrottled();
+  
+  // Throttle redraw during drag to prevent visual glitches
+  if (!__dragRedrawScheduled) {
+    __dragRedrawScheduled = true;
+    requestAnimationFrame(() => {
+      __dragRedrawScheduled = false;
+      requestDrawThrottled();
+    });
+  }
 }
 
 function handleDragEnd(target, evt) {
@@ -3207,12 +3223,16 @@ export function layoutMap() {
  * New modular rendering using scenegraph and layers
  */
 function drawMapModular() {
+  // Temporarily disable static snapshot optimization due to visual glitches
+  // TODO: Fix static snapshot rendering logic
+  /*
   // Check if we're dragging and use optimized rendering
   if (__isDragging && __draggedNode) {
     renderDuringDrag(__draggedNode);
     __perfPrint();
     return;
   }
+  */
   
   // Clear canvas
   __time('clear', () => {
@@ -3256,6 +3276,9 @@ export function drawMap() {
   }
   isDrawing = true;
   
+  // Temporarily disable modular rendering due to visual glitches
+  // TODO: Fix modular rendering issues
+  /*
   // Try new modular rendering first (v2) if enabled
   if (state.settings.mapVersion === 'v2' && scenegraph && renderLayersList && camera) {
     try {
@@ -3266,6 +3289,7 @@ export function drawMap() {
       console.warn('Modular rendering failed, falling back to legacy:', e);
     }
   }
+  */
   
   // Отладочная информация для диагностики фризов (только при проблемах)
   if (window.DEBUG_DRAW_CALLS) {
