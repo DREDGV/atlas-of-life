@@ -499,11 +499,39 @@ function handleDragMove(target, worldX, worldY, evt) {
   updatePointerFromEvent(evt);
   draggedNode.x = worldX;
   draggedNode.y = worldY;
-  if (draggedNode._type === "checklist") {
+  
+  // Update coordinates in state objects immediately
+  if (draggedNode._type === "task") {
+    const task = state.tasks.find((t) => t.id === draggedNode.id);
+    if (task) {
+      task.x = worldX;
+      task.y = worldY;
+      task._pos = { x: worldX, y: worldY }; // Save position for layoutMap
+    }
+  } else if (draggedNode._type === "project") {
+    const project = state.projects.find((p) => p.id === draggedNode.id);
+    if (project) {
+      project.x = worldX;
+      project.y = worldY;
+      project._pos = { x: worldX, y: worldY }; // Save position for layoutMap
+    }
+  } else if (draggedNode._type === "idea") {
+    const idea = state.ideas.find((i) => i.id === draggedNode.id);
+    if (idea) {
+      idea.x = worldX;
+      idea.y = worldY;
+    }
+  } else if (draggedNode._type === "note") {
+    const note = state.notes.find((n) => n.id === draggedNode.id);
+    if (note) {
+      note.x = worldX;
+      note.y = worldY;
+    }
+  } else if (draggedNode._type === "checklist") {
     const checklist = state.checklists.find((c) => c.id === draggedNode.id);
     if (checklist) {
-      checklist.x = draggedNode.x;
-      checklist.y = draggedNode.y;
+      checklist.x = worldX;
+      checklist.y = worldY;
     }
   }
   
@@ -562,9 +590,8 @@ function handleDrop() {
       } else if (dropTargetDomainId) {
         task.domainId = dropTargetDomainId;
         showToast(`Задача прикреплена к домену`, "ok");
-      } else {
-        task._pos = { x: node.x, y: node.y };
       }
+      // Coordinates already updated in handleDragMove
       saveState();
     }
   } else if (node._type === "project") {
@@ -574,21 +601,19 @@ function handleDrop() {
         project.domainId = dropTargetDomainId;
         showToast(`Проект перенесён в домен`, "ok");
       }
-      project._pos = { x: node.x, y: node.y };
+      // Coordinates already updated in handleDragMove
       saveState();
     }
   } else if (node._type === "idea") {
     const idea = state.ideas.find((i) => i.id === node.id);
     if (idea) {
-      idea.x = node.x;
-      idea.y = node.y;
+      // Coordinates already updated in handleDragMove
       saveState();
     }
   } else if (node._type === "note") {
     const note = state.notes.find((n) => n.id === node.id);
     if (note) {
-      note.x = node.x;
-      note.y = node.y;
+      // Coordinates already updated in handleDragMove
       saveState();
     }
   }

@@ -692,6 +692,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix(today): display new thoughts from inbox in Today view (693cc70)
 - perf(drag): complete A4-A6 optimizations for smooth dragging (c59edf1)
 - perf(drag): implement telemetry, RAF batching and static snapshots (2f6efee)
 - docs: update version to v0.7.0.0 and complete WORKFLOW (4d34623)

@@ -4481,7 +4481,7 @@ async function init() {
   // Ensure DnD hints are off by default, Inbox is ON by default, tooltip delay is 500ms
   try { 
     if (!state.settings) state.settings = {}; 
-    if (typeof state.settings.showDndHints==='undefined') state.settings.showDndHints = false;
+    if (typeof state.settings.showDndHints==='undefined') state.settings.showDndHints = true;
     if (typeof state.settings.showInbox==='undefined') state.settings.showInbox = true; // ON by default
     if (typeof state.settings.tooltipDelay==='undefined') state.settings.tooltipDelay = 500; // 500ms by default
   } catch(_){}

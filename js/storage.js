@@ -82,7 +82,7 @@ export function loadState(){
         wipTodayLimit: 5,
         enableHierarchyV2: false,
         hotkeys: state.settings.hotkeys,
-        showDndHints: false,
+        showDndHints: true,
         showInbox: true,
         checklistIconMode: 'title',
         tooltipDelay: 500
@@ -119,7 +119,7 @@ export function saveState(){
       showAging: !!state.showAging,
       showGlow: !!state.showGlow,
       view: state.view,
-      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:false, showInbox:true, checklistIconMode:'title', tooltipDelay: 500 }
+      settings: state.settings || { layoutMode:'auto', enableHierarchyV2: false, showDndHints:true, showInbox:true, checklistIconMode:'title', tooltipDelay: 500 }
     };
     const text = JSON.stringify(data);
     if (!text) {
