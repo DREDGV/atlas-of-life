@@ -4115,21 +4115,21 @@ export function drawMap() {
         // Aging ring (if enabled)
       if (state.showAging) {
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r + 3 * DPR, 0, Math.PI * 2);
         ctx.strokeStyle = colorByAging(n.aging);
         ctx.lineWidth = 2 * DPR;
         ctx.stroke();
       }
         
         // Main task circle with gradient
-        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, n.r);
+        const gradient = ctx.createRadialGradient(x - n.r/2, y - n.r/2, 0, x, y, n.r);
         gradient.addColorStop(0, baseColor + "FF");
         gradient.addColorStop(0.3, baseColor + "DD");
         gradient.addColorStop(0.7, baseColor + "AA");
         gradient.addColorStop(1, baseColor + "77");
         
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.arc(x, y, n.r, 0, Math.PI * 2);
         
         // Glow effect
       if (state.showGlow && allowGlow) {
@@ -4144,27 +4144,27 @@ export function drawMap() {
       ctx.shadowBlur = 0;
         
         // Inner highlight for 3D effect
-        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.6);
+        const innerGradient = ctx.createRadialGradient(x - n.r/3, y - n.r/3, 0, x, y, n.r * 0.6);
         innerGradient.addColorStop(0, "#ffffff40");
         innerGradient.addColorStop(1, "#00000000");
         
         ctx.beginPath();
         ctx.fillStyle = innerGradient;
-        ctx.arc(n.x, n.y, n.r * 0.6, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r * 0.6, 0, Math.PI * 2);
         ctx.fill();
         
         // Border with contrast color
         ctx.beginPath();
         ctx.strokeStyle = getContrastColor(baseColor);
         ctx.lineWidth = 1.5 * DPR;
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r, 0, Math.PI * 2);
         ctx.stroke();
         
         // Outer glow for depth
         ctx.beginPath();
         ctx.strokeStyle = baseColor + "30";
         ctx.lineWidth = 3 * DPR;
-        ctx.arc(n.x, n.y, n.r + 1 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r + 1 * DPR, 0, Math.PI * 2);
         ctx.stroke();
         
         // Status-specific styling
@@ -4173,7 +4173,7 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#f59e0b";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(n.x, n.y, n.r + 4 * DPR, 0, Math.PI * 2);
+          ctx.arc(x, y, n.r + 4 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         } else if (n.status === "doing") {
           // Pulsing effect for "doing" tasks
@@ -4181,7 +4181,7 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = baseColor + "80";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(n.x, n.y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
+          ctx.arc(x, y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
           ctx.stroke();
         }
         
@@ -4190,24 +4190,24 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
+          ctx.arc(x, y, n.r + 6 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         }
         
         // Click effect will be drawn after all other layers
         
       } else if (projectVisualStyle === 'neon') {
-        drawNeonStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+        drawNeonStyle(ctx, x, y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'tech') {
-        drawTechStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+        drawTechStyle(ctx, x, y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'minimal') {
-        drawMinimalStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+        drawMinimalStyle(ctx, x, y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'holographic') {
-        drawHolographicStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+        drawHolographicStyle(ctx, x, y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'gradient') {
-        drawGradientStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+        drawGradientStyle(ctx, x, y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'mixed') {
-        drawMixedStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
+        drawMixedStyle(ctx, x, y, n.r, baseColor, 'task');
       } else {
         // Enhanced task rendering with advanced effects
         const isHovered = hoverNodeId === n.id;
@@ -4219,7 +4219,7 @@ export function drawMap() {
         const pulseRadius = n.r * pulseIntensity;
         
         // Enhanced gradient with multiple color stops
-        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, pulseRadius);
+        const gradient = ctx.createRadialGradient(x - n.r/2, y - n.r/2, 0, x, y, pulseRadius);
         gradient.addColorStop(0, baseColor + "FF");
         gradient.addColorStop(0.2, baseColor + "EE");
         gradient.addColorStop(0.4, baseColor + "CC");
@@ -4233,14 +4233,14 @@ export function drawMap() {
           ctx.strokeStyle = baseColor + "60";
           ctx.lineWidth = 2 * DPR;
           ctx.beginPath();
-          ctx.arc(n.x, n.y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
+          ctx.arc(x, y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
           ctx.stroke();
           ctx.shadowBlur = 0;
         }
         
         // Main task circle with enhanced gradient
         ctx.beginPath();
-        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
+        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
         
         if (state.showGlow && allowGlow) {
           ctx.shadowColor = baseColor;
@@ -4254,7 +4254,7 @@ export function drawMap() {
         ctx.shadowBlur = 0;
         
         // Enhanced inner highlight with multiple layers
-        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.7);
+        const innerGradient = ctx.createRadialGradient(x - n.r/3, y - n.r/3, 0, x, y, n.r * 0.7);
         innerGradient.addColorStop(0, "#ffffff60");
         innerGradient.addColorStop(0.3, "#ffffff30");
         innerGradient.addColorStop(0.7, "#ffffff10");
@@ -4262,21 +4262,21 @@ export function drawMap() {
         
         ctx.beginPath();
         ctx.fillStyle = innerGradient;
-        ctx.arc(n.x, n.y, n.r * 0.7, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r * 0.7, 0, Math.PI * 2);
         ctx.fill();
         
         // Secondary inner highlight for more depth
-        const innerGradient2 = ctx.createRadialGradient(n.x - n.r/4, n.y - n.r/4, 0, n.x, n.y, n.r * 0.4);
+        const innerGradient2 = ctx.createRadialGradient(x - n.r/4, y - n.r/4, 0, x, y, n.r * 0.4);
         innerGradient2.addColorStop(0, "#ffffff80");
         innerGradient2.addColorStop(1, "#00000000");
         
         ctx.beginPath();
         ctx.fillStyle = innerGradient2;
-        ctx.arc(n.x, n.y, n.r * 0.4, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r * 0.4, 0, Math.PI * 2);
         ctx.fill();
         
         // Enhanced border with gradient
-        const borderGradient = ctx.createLinearGradient(n.x - n.r, n.y, n.x + n.r, n.y);
+        const borderGradient = ctx.createLinearGradient(x - n.r, y, x + n.r, y);
         borderGradient.addColorStop(0, getContrastColor(baseColor) + "CC");
         borderGradient.addColorStop(0.5, getContrastColor(baseColor) + "FF");
         borderGradient.addColorStop(1, getContrastColor(baseColor) + "CC");
@@ -4284,20 +4284,20 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = borderGradient;
         ctx.lineWidth = 2 * DPR;
-        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
+        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
         ctx.stroke();
         
         // Outer glow with multiple rings
         ctx.beginPath();
         ctx.strokeStyle = baseColor + "40";
         ctx.lineWidth = 4 * DPR;
-        ctx.arc(n.x, n.y, pulseRadius + 2 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, pulseRadius + 2 * DPR, 0, Math.PI * 2);
         ctx.stroke();
         
         ctx.beginPath();
         ctx.strokeStyle = baseColor + "20";
         ctx.lineWidth = 6 * DPR;
-        ctx.arc(n.x, n.y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
         ctx.stroke();
         
         // Status-specific effects
@@ -4306,16 +4306,16 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#f59e0b";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(n.x, n.y, pulseRadius + 6 * DPR, 0, Math.PI * 2);
+          ctx.arc(x, y, pulseRadius + 6 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         } else if (n.status === 'done') {
           // Done tasks get a subtle checkmark effect
           ctx.strokeStyle = "#10b981";
           ctx.lineWidth = 2 * DPR;
           ctx.beginPath();
-          ctx.moveTo(n.x - n.r * 0.3, n.y);
-          ctx.lineTo(n.x - n.r * 0.1, n.y + n.r * 0.2);
-          ctx.lineTo(n.x + n.r * 0.3, n.y - n.r * 0.2);
+          ctx.moveTo(x - n.r * 0.3, y);
+          ctx.lineTo(x - n.r * 0.1, y + n.r * 0.2);
+          ctx.lineTo(x + n.r * 0.3, y - n.r * 0.2);
           ctx.stroke();
         }
         
@@ -4324,14 +4324,14 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#f59e0b";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(n.x, n.y, n.r + 4 * DPR, 0, Math.PI * 2);
+          ctx.arc(x, y, n.r + 4 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         } else if (n.status === "doing") {
           const pulse = Math.sin(Date.now() * 0.003) * 0.1 + 1;
           ctx.beginPath();
           ctx.strokeStyle = baseColor + "80";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(n.x, n.y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
+          ctx.arc(x, y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
           ctx.stroke();
         }
         
@@ -4340,7 +4340,7 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
+          ctx.arc(x, y, n.r + 6 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         }
         
@@ -4352,14 +4352,14 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = "#ffd700";
         ctx.lineWidth = 2 * DPR;
-        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r + 8 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
       
       // Aging ring
       if (state.showAging) {
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r + 3 * DPR, 0, Math.PI * 2);
         ctx.strokeStyle = colorByAging(n.aging);
         ctx.lineWidth = 2 * DPR;
         ctx.stroke();
@@ -4378,10 +4378,10 @@ export function drawMap() {
         ctx.lineWidth = 2 * DPR;
         for (let i = 0; i < 8; i++) {
           const angle = (i / 8) * Math.PI * 2;
-          const startX = n.x + Math.cos(angle) * (n.r + 5 * DPR);
-          const startY = n.y + Math.sin(angle) * (n.r + 5 * DPR);
-          const endX = n.x + Math.cos(angle) * starRadius;
-          const endY = n.y + Math.sin(angle) * starRadius;
+          const startX = x + Math.cos(angle) * (n.r + 5 * DPR);
+          const startY = y + Math.sin(angle) * (n.r + 5 * DPR);
+          const endX = x + Math.cos(angle) * starRadius;
+          const endY = y + Math.sin(angle) * starRadius;
           
           ctx.beginPath();
           ctx.moveTo(startX, startY);
@@ -4393,14 +4393,14 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = baseColor + Math.floor(clickAlpha * 255).toString(16).padStart(2, '0');
         ctx.lineWidth = 4 * DPR;
-        ctx.arc(n.x, n.y, clickRadius, 0, Math.PI * 2);
+        ctx.arc(x, y, clickRadius, 0, Math.PI * 2);
         ctx.stroke();
         
         // Bright inner ring
         ctx.beginPath();
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 3 * DPR;
-        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r + 8 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
       
@@ -4409,7 +4409,7 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = "#f59e0b";
         ctx.lineWidth = 1 * DPR;
-        ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r + 6 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
       

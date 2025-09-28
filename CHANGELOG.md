@@ -692,6 +692,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(drag): add performance counters and disable hover during drag (a7381d3)
 - feat(drag): implement ghost preview with dragCtx (no state mutations) (fb8efbe)
 - fix(drag): eliminate double rendering causing visual artifacts (639a5c4)
 - fix(drag): address Bugbot findings for drag performance issues (0e3e069)
