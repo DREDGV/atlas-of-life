@@ -2733,7 +2733,7 @@ export function layoutMap() {
     console.log('✓ Adding checklists to nodes:', state.checklists.length);
     state.checklists.forEach(checklist => {
       if (checklist.x !== undefined && checklist.y !== undefined && checklist.r !== undefined) {
-        nodes.push({
+        const checklistNode = {
           _type: "checklist",
           id: checklist.id,
           title: checklist.title,
@@ -2745,7 +2745,9 @@ export function layoutMap() {
           items: checklist.items,
           projectId: checklist.projectId,
           domainId: checklist.domainId
-        });
+        };
+        nodes.push(checklistNode);
+        console.log('✓ Added checklist node:', checklistNode.id, 'at', checklistNode.x, checklistNode.y, 'radius', checklistNode.r);
       } else {
         console.warn('⚠️ Checklist missing coordinates:', checklist);
       }
