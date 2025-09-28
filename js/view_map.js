@@ -4655,7 +4655,10 @@ function handleObjectHover(screenX, screenY, worldPos) {
   }
   
   if (!n) {
-    hoverNodeId = null;
+    if (hoverNodeId !== null) {
+      hoverNodeId = null;
+      requestDraw(); // Перерисовываем карту для удаления hover эффектов
+    }
     tooltip.style.opacity = 0;
     currentHoveredObject = null;
     // Скрываем информационную панель
@@ -4670,7 +4673,11 @@ function handleObjectHover(screenX, screenY, worldPos) {
     return;
   }
   
-  hoverNodeId = n.id;
+  // Обновляем hover состояние и перерисовываем карту
+  if (hoverNodeId !== n.id) {
+    hoverNodeId = n.id;
+    requestDraw(); // Перерисовываем карту для показа hover эффектов
+  }
   
   // Задержка для всплывающей подсказки (настраиваемая)
   const delay = (state.settings && state.settings.tooltipDelay !== undefined) ? state.settings.tooltipDelay : 500;
@@ -5140,7 +5147,10 @@ function onPointerLeave(e) {
   }
   
   // Очищаем hover состояние для всех объектов
-  hoverNodeId = null;
+  if (hoverNodeId !== null) {
+    hoverNodeId = null;
+    requestDraw(); // Перерисовываем карту для удаления hover эффектов
+  }
   tooltip.style.opacity = 0;
   currentHoveredObject = null;
   
