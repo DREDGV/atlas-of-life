@@ -602,7 +602,7 @@ function handleDrop() {
     if (task) {
       if (dropTargetProjectId) {
         // Show confirmation dialog for task attachment
-        showTaskAttachConfirmation(task, dropTargetProjectId);
+        showTaskMoveConfirmation(task, task.projectId, dropTargetProjectId);
       } else if (dropTargetDomainId) {
         task.domainId = dropTargetDomainId;
         showToast(`Задача прикреплена к домену`, "ok");
