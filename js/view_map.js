@@ -6972,6 +6972,9 @@ function drawIdeas() {
     x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
   
   state.ideas.forEach(idea => {
+    // Skip if this idea is being dragged
+    if (draggedNode && draggedNode._type === 'idea' && draggedNode.id === idea.id) return;
+    
     if (!inView(idea.x, idea.y, idea.r + 20 * DPR)) return;
     
     const x = idea.x * DPR;
@@ -7057,6 +7060,9 @@ function drawNotes() {
     x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
   
   state.notes.forEach((note, index) => {
+    // Skip if this note is being dragged
+    if (draggedNode && draggedNode._type === 'note' && draggedNode.id === note.id) return;
+    
     if (!inView(note.x, note.y, note.r + 20 * DPR)) {
       return;
     }

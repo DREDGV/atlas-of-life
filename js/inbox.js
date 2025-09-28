@@ -1120,7 +1120,9 @@ function showInboxListModal() {
   });
   
   // Batch operation buttons
-  document.getElementById('batch-task').onclick = () => {
+  const batchTaskBtn = document.getElementById('batch-task');
+  if (batchTaskBtn) {
+    batchTaskBtn.onclick = () => {
     const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
       .map(cb => cb.dataset.id);
     
@@ -1145,9 +1147,12 @@ function showInboxListModal() {
       console.error('Error in batch task distribution:', error);
       if (window.showToast) window.showToast('Ошибка при создании задач', 'error');
     }
-  };
+    };
+  }
   
-  document.getElementById('batch-idea').onclick = () => {
+  const batchIdeaBtn = document.getElementById('batch-idea');
+  if (batchIdeaBtn) {
+    batchIdeaBtn.onclick = () => {
     const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
       .map(cb => cb.dataset.id);
     
@@ -1172,9 +1177,12 @@ function showInboxListModal() {
       console.error('Error in batch idea distribution:', error);
       if (window.showToast) window.showToast('Ошибка при создании идей', 'error');
     }
-  };
+    };
+  }
   
-  document.getElementById('batch-note').onclick = () => {
+  const batchNoteBtn = document.getElementById('batch-note');
+  if (batchNoteBtn) {
+    batchNoteBtn.onclick = () => {
     const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
       .map(cb => cb.dataset.id);
     
@@ -1199,9 +1207,12 @@ function showInboxListModal() {
       console.error('Error in batch note distribution:', error);
       if (window.showToast) window.showToast('Ошибка при создании заметок', 'error');
     }
-  };
+    };
+  }
   
-  document.getElementById('batch-delete').onclick = () => {
+  const batchDeleteBtn = document.getElementById('batch-delete');
+  if (batchDeleteBtn) {
+    batchDeleteBtn.onclick = () => {
     const selectedIds = Array.from(document.querySelectorAll('.inbox-item-checkbox:checked'))
       .map(cb => cb.dataset.id);
     
@@ -1219,14 +1230,18 @@ function showInboxListModal() {
       cleanup();
       showInboxListModal(); // Refresh
     }
-  };
+    };
+  }
   
-  document.getElementById('batch-clear').onclick = () => {
+  const batchClearBtn = document.getElementById('batch-clear');
+  if (batchClearBtn) {
+    batchClearBtn.onclick = () => {
     document.querySelectorAll('.inbox-item-checkbox').forEach(checkbox => {
       checkbox.checked = false;
     });
     updateBatchPanel();
-  };
+    };
+  }
   
   // Keyboard shortcuts
   modal.onkeydown = (e) => {
