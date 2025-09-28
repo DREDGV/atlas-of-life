@@ -271,7 +271,7 @@ function requestDraw() {
     if (drawTimeout) clearTimeout(drawTimeout);
     drawTimeout = setTimeout(() => {
       if (!pendingFrame && !isDrawing) {
-        pendingFrame = true;
+  pendingFrame = true;
         requestAnimationFrame(() => {
           pendingFrame = false;
           if (!isDrawing) {
@@ -369,17 +369,17 @@ function onWheel(e) {
   if (camera) {
     camera.zoomAt(zoomFactor, e.offsetX || 0, e.offsetY || 0);
   } else {
-    const dpr = window.devicePixelRatio || 1;
-    const cx = (e.offsetX || 0) * dpr;
-    const cy = (e.offsetY || 0) * dpr;
+  const dpr = window.devicePixelRatio || 1;
+  const cx = (e.offsetX || 0) * dpr;
+  const cy = (e.offsetY || 0) * dpr;
     const old = viewState.scale;
     const next = clamp(old * zoomFactor, 0.5, 2.2);
-    const invOld = 1 / old;
-    const wx = (cx - viewState.tx) * invOld;
-    const wy = (cy - viewState.ty) * invOld;
-    viewState.scale = next;
-    viewState.tx = cx - wx * next;
-    viewState.ty = cy - wy * next;
+  const invOld = 1 / old;
+  const wx = (cx - viewState.tx) * invOld;
+  const wy = (cy - viewState.ty) * invOld;
+  viewState.scale = next;
+  viewState.tx = cx - wx * next;
+  viewState.ty = cy - wy * next;
   }
   requestDraw(); // Возвращаем requestDraw() для плавного зума
   
@@ -2595,7 +2595,7 @@ function calculateDomainRadius(projects) {
   const totalProjectArea = projects.reduce((sum, project) => {
     const projectSize = project.r || 40 * DPR;
     return sum + Math.PI * projectSize * projectSize;
-  }, 0);
+            }, 0);
 
   // Добавляем пространство для отступов между проектами (50%)
   const areaWithPadding = totalProjectArea * 1.5;
@@ -2953,9 +2953,9 @@ export function layoutMap() {
         const tasksInRing = Math.min(maxTasksInRing, siblings.length - placed);
         
         if (tasksInRing > 0) {
-          const ringTasks = siblings.slice(placed, placed + tasksInRing);
-          rings.push({ radius: currentRadius, tasks: ringTasks });
-          placed += tasksInRing;
+        const ringTasks = siblings.slice(placed, placed + tasksInRing);
+        rings.push({ radius: currentRadius, tasks: ringTasks });
+        placed += tasksInRing;
         }
         
         currentRadius += minDist;
@@ -3659,9 +3659,9 @@ export function drawMap() {
       }
     });
 
-  // projects as planets
+  // projects as planets - exclude dragged node to prevent double rendering
   nodes
-    .filter((n) => n._type === "project")
+    .filter((n) => n._type === "project" && n.id !== draggedNode?.id)
     .forEach((n) => {
       const __skipCull2 = window.DEBUG_EDGE_TASKS === true;
       if (!__skipCull2 && !inView(n.x, n.y, n.r + 30 * DPR)) return;
@@ -3953,7 +3953,7 @@ export function drawMap() {
         ctx.lineTo(target.x, target.y);
         ctx.stroke();
         ctx.setLineDash([]);
-        }
+      }
       } else if (dropTargetDomainId) {
         const target = nodes.find(
           (n) => n._type === "domain" && n.id === dropTargetDomainId
@@ -4032,8 +4032,8 @@ export function drawMap() {
     } catch (_) {}
   }
 
-  // tasks as stars/asteroids
-  const taskNodes = nodes.filter((n) => n._type === "task");
+  // tasks as stars/asteroids - exclude dragged node to prevent double rendering
+  const taskNodes = nodes.filter((n) => n._type === "task" && n.id !== draggedNode?.id);
   
   // Отладка для Edge - показываем количество задач
   if (window.DEBUG_EDGE_TASKS) {
@@ -4079,13 +4079,13 @@ export function drawMap() {
         const isClicked = clickedNodeId === n.id;
         
         // Aging ring (if enabled)
-        if (state.showAging) {
-          ctx.beginPath();
-          ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
-          ctx.strokeStyle = colorByAging(n.aging);
-          ctx.lineWidth = 2 * DPR;
-          ctx.stroke();
-        }
+      if (state.showAging) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
+        ctx.strokeStyle = colorByAging(n.aging);
+        ctx.lineWidth = 2 * DPR;
+        ctx.stroke();
+      }
         
         // Main task circle with gradient
         const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, n.r);
@@ -4094,20 +4094,20 @@ export function drawMap() {
         gradient.addColorStop(0.7, baseColor + "AA");
         gradient.addColorStop(1, baseColor + "77");
         
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
         
         // Glow effect
-        if (state.showGlow && allowGlow) {
-          ctx.shadowColor = baseColor;
-          ctx.shadowBlur = 12 * DPR;
-        } else {
-          ctx.shadowBlur = 0;
-        }
+      if (state.showGlow && allowGlow) {
+        ctx.shadowColor = baseColor;
+        ctx.shadowBlur = 12 * DPR;
+      } else {
+        ctx.shadowBlur = 0;
+      }
         
         ctx.fillStyle = gradient;
-        ctx.fill();
-        ctx.shadowBlur = 0;
+      ctx.fill();
+      ctx.shadowBlur = 0;
         
         // Inner highlight for 3D effect
         const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.6);
@@ -4559,7 +4559,7 @@ function hit(x, y) {
     const n = nodes[i];
     const dx = x - n.x,
       dy = y - n.y;
-  const rr =
+    const rr =
       n._type === "task"
         ? n.r + 6 * DPR
         : n._type === "project"
@@ -5074,8 +5074,8 @@ function toggleChecklistItemFromView(checklistId, itemId) {
 
 // Toast helper function
 function showToast(message, type = "ok") {
-  const toast = document.getElementById("toast");
-  if (toast) {
+          const toast = document.getElementById("toast");
+          if (toast) {
     hideToast();
     
     // Set up toast content and classes
@@ -5087,7 +5087,7 @@ function showToast(message, type = "ok") {
     isModalOpen = true;
     
     // Auto-hide after 3 seconds
-    setTimeout(() => {
+            setTimeout(() => {
       hideToast();
     }, 3000);
   }
@@ -5143,8 +5143,8 @@ function showProjectMoveConfirmation(project, fromDomainId, toDomainId) {
           hideToast();
         };
       }
-      if (cancel) {
-        cancel.onclick = () => {
+              if (cancel) {
+                cancel.onclick = () => {
           pendingProjectMove = null;
           hideToast();
         };
@@ -5546,8 +5546,8 @@ function confirmProjectMove() {
       }, 1400);
     }
     
-    layoutMap();
-    drawMap();
+  layoutMap();
+  drawMap();
     return true;
   } catch (e) {
     console.error("Error in confirmProjectMove:", e);
