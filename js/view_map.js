@@ -1590,6 +1590,7 @@ export function initMap(canvasEl, tooltipEl) {
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointerenter", onPointerEnter);
   canvas.addEventListener("pointerleave", onPointerLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("click", onClick);
@@ -5138,7 +5139,28 @@ function onPointerLeave(e) {
     canvas.style.cursor = 'grab';
   }
   
+  // Очищаем hover состояние для всех объектов
+  hoverNodeId = null;
+  tooltip.style.opacity = 0;
+  currentHoveredObject = null;
+  
+  // Скрываем информационную панель
+  if (window.hideInfoPanel) {
+    window.hideInfoPanel();
+  }
+  
   onMouseLeave(e);
+}
+
+function onPointerEnter(e) {
+  // При входе в canvas сразу обновляем hover состояние
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const worldPos = screenToWorld(x, y);
+  
+  // Обновляем hover состояние
+  handleObjectHover(x, y, worldPos);
 }
 
 // Find drop target based on world coordinates
