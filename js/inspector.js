@@ -443,12 +443,15 @@ function showParentSelectionModal(obj) {
 }
 
 export function openInspectorFor(obj) {
+  console.log("🔍 Inspector: openInspectorFor called with", obj);
+  
   const ins = document.getElementById("inspector");
   if (!obj) {
     ins.innerHTML = `<div class="hint">Выберите объект на карте, чтобы увидеть детали.</div>`;
     return;
   }
   const type = obj._type;
+  console.log("🔍 Inspector: Object type", type);
   if (type === "domain") {
     const prjs = state.projects.filter((p) => p.domainId === obj.id);
     const totalTasks = prjs.reduce(
@@ -1199,6 +1202,8 @@ function showColorPicker(project) {
   
   // Обработка идей
   if (type === "idea") {
+    console.log("🔍 Inspector: Processing idea", obj);
+    
     // Определяем родителя на основе существующих полей
     let parent = null;
     let parentInfo = 'Независимая';
@@ -1210,8 +1215,10 @@ function showColorPicker(project) {
       }
     }
     
+    console.log("🔍 Inspector: Idea parent info", parentInfo);
+    
     ins.innerHTML = `
-      <h2>Идея: ${obj.title}</h2>
+      <h2>Идея: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Содержание: ${obj.content || 'Нет описания'}</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
@@ -1250,6 +1257,8 @@ function showColorPicker(project) {
   
   // Обработка заметок
   if (type === "note") {
+    console.log("🔍 Inspector: Processing note", obj);
+    
     // Определяем родителя на основе существующих полей
     let parent = null;
     let parentInfo = 'Независимая';
@@ -1261,8 +1270,10 @@ function showColorPicker(project) {
       }
     }
     
+    console.log("🔍 Inspector: Note parent info", parentInfo);
+    
     ins.innerHTML = `
-      <h2>Заметка: ${obj.title}</h2>
+      <h2>Заметка: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Содержание: ${obj.text || 'Нет описания'}</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
@@ -1301,6 +1312,8 @@ function showColorPicker(project) {
   
   // Обработка чек-листов
   if (type === "checklist") {
+    console.log("🔍 Inspector: Processing checklist", obj);
+    
     // Определяем родителя на основе существующих полей
     let parent = null;
     let parentInfo = 'Независимый';
@@ -1317,13 +1330,17 @@ function showColorPicker(project) {
       }
     }
     
+    console.log("🔍 Inspector: Checklist parent info", parentInfo);
+    
     // Подсчитываем прогресс
     const totalItems = obj.items?.length || 0;
     const completedItems = obj.items?.filter(item => item.completed) || [];
     const progress = totalItems > 0 ? Math.round((completedItems.length / totalItems) * 100) : 0;
     
+    console.log("🔍 Inspector: Checklist progress", progress, completedItems.length, totalItems);
+    
     ins.innerHTML = `
-      <h2>Чек-лист: ${obj.title}</h2>
+      <h2>Чек-лист: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Прогресс: ${progress}% (${completedItems.length}/${totalItems})</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создан: ${daysSince(obj.createdAt)} дн. назад</div>
