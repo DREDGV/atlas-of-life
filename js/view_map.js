@@ -2294,16 +2294,17 @@ export function layoutMap() {
   // cleanupDuplicateObjects();
   isLayouting = true;
   
-  // Отладка для Edge
-  if (window.DEBUG_EDGE_TASKS) {
-    console.log('=== LAYOUT MAP ===');
-    console.log('layoutMap called, state.tasks:', state.tasks.length, state.tasks);
-    console.log('state.projects:', state.projects.length, state.projects);
-    console.log('state.domains:', state.domains.length, state.domains);
-  }
-  
-  nodes = [];
-  edges = [];
+  try {
+    // Отладка для Edge
+    if (window.DEBUG_EDGE_TASKS) {
+      console.log('=== LAYOUT MAP ===');
+      console.log('layoutMap called, state.tasks:', state.tasks.length, state.tasks);
+      console.log('state.projects:', state.projects.length, state.projects);
+      console.log('state.domains:', state.domains.length, state.domains);
+    }
+    
+    nodes = [];
+    edges = [];
   // Filter domains based on focus mode
   let domains;
   if (focusMode.active) {
@@ -2776,6 +2777,31 @@ export function layoutMap() {
   
   // Reset layouting flag
   isLayouting = false;
+  } catch (error) {
+    console.error('Error in layoutMap:', error);
+    // Ensure we don't leave nodes empty on error
+    if (!nodes || nodes.length === 0) {
+      console.warn('Recovering from layoutMap error - rebuilding nodes');
+      // Try to rebuild with minimal data
+      nodes = [];
+      edges = [];
+      // Add at least domains to prevent empty map
+      if (state.domains && state.domains.length > 0) {
+        state.domains.forEach(d => {
+          nodes.push({
+            id: d.id,
+            _type: 'domain',
+            x: d.x || 0,
+            y: d.y || 0,
+            r: d.r || 100,
+            title: d.title,
+            color: d.color || '#2dd4bf'
+          });
+        });
+      }
+    }
+    isLayouting = false;
+  }
 }
 export function drawMap() {
   if (!ctx) return;
@@ -2793,9 +2819,30 @@ export function drawMap() {
   
   // if nodes not prepared (empty), try to rebuild layout once — helps recover after edits
   if (!nodes || nodes.length === 0) {
+    console.warn('🔄 drawMap: nodes empty, attempting recovery...');
     try {
       layoutMap();
-    } catch (_) {}
+      // If still empty after layout, show at least domains
+      if (!nodes || nodes.length === 0) {
+        console.warn('🔄 drawMap: layoutMap failed, showing minimal map');
+        nodes = [];
+        if (state.domains && state.domains.length > 0) {
+          state.domains.forEach(d => {
+            nodes.push({
+              id: d.id,
+              _type: 'domain',
+              x: d.x || 0,
+              y: d.y || 0,
+              r: d.r || 100,
+              title: d.title,
+              color: d.color || '#2dd4bf'
+            });
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error recovering in drawMap:', error);
+    }
   }
   const t0 = performance.now();
   
