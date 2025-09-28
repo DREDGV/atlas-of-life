@@ -1223,8 +1223,6 @@ function showColorPicker(project) {
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
       
-      ${renderHierarchySection(obj)}
-      
       <div class="btns">
         <button class="btn primary" id="editIdea">✏️ Редактировать</button>
         <button class="btn danger" id="delIdea">🗑️ Удалить</button>
@@ -1277,8 +1275,6 @@ function showColorPicker(project) {
       <div class="kv">Содержание: ${obj.text || 'Нет описания'}</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
-      
-      ${renderHierarchySection(obj)}
       
       <div class="btns">
         <button class="btn primary" id="editNote">✏️ Редактировать</button>
@@ -1344,8 +1340,6 @@ function showColorPicker(project) {
       <div class="kv">Прогресс: ${progress}% (${completedItems.length}/${totalItems})</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создан: ${daysSince(obj.createdAt)} дн. назад</div>
-      
-      ${renderHierarchySection(obj)}
       
       <div class="btns">
         <button class="btn primary" id="editChecklist">✏️ Редактировать</button>
