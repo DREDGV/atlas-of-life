@@ -295,7 +295,7 @@ function requestDraw() {
 
 // Более строгая защита от частых вызовов
 let lastRequestDrawTime = 0;
-const MIN_REQUEST_DRAW_INTERVAL = 16; // 60 FPS max
+const MIN_REQUEST_DRAW_INTERVAL = 33; // 30 FPS max to prevent visual glitches
 
 function requestDrawThrottled() {
   const now = performance.now();
@@ -601,24 +601,23 @@ function handleDrop() {
     const task = state.tasks.find((t) => t.id === node.id);
     if (task) {
       if (dropTargetProjectId) {
-        task.projectId = dropTargetProjectId;
-        showToast(`Задача прикреплена к проекту`, "ok");
+        // Show confirmation dialog for task attachment
+        showTaskAttachConfirmation(task, dropTargetProjectId);
       } else if (dropTargetDomainId) {
         task.domainId = dropTargetDomainId;
         showToast(`Задача прикреплена к домену`, "ok");
+        saveState();
       }
       // Coordinates already updated in handleDragMove
-      saveState();
     }
   } else if (node._type === "project") {
     const project = state.projects.find((p) => p.id === node.id);
     if (project) {
       if (dropTargetDomainId) {
-        project.domainId = dropTargetDomainId;
-        showToast(`Проект перенесён в домен`, "ok");
+        // Show confirmation dialog for project move
+        showProjectMoveConfirmation(project, project.domainId, dropTargetDomainId);
       }
       // Coordinates already updated in handleDragMove
-      saveState();
     }
   } else if (node._type === "idea") {
     const idea = state.ideas.find((i) => i.id === node.id);
@@ -667,11 +666,17 @@ function handlePanEnd(evt) {
 function handlePointerHover(evt) {
   updatePointerFromEvent(evt);
   if (!canvas) return;
+  
+  // Skip hover during drag to prevent visual glitches
+  if (__isDragging || draggedNode) {
+    return;
+  }
+  
   const rect = canvas.getBoundingClientRect();
   const offsetX = evt.clientX - rect.left;
   const offsetY = evt.clientY - rect.top;
   const worldPos = camera ? camera.screenToWorld(offsetX, offsetY) : screenToWorld(offsetX, offsetY);
-  if (!draggedNode && !isPanning) {
+  if (!isPanning) {
     handleChecklistHover(offsetX, offsetY, worldPos);
     handleObjectHover(offsetX, offsetY, worldPos);
   }

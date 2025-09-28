@@ -692,6 +692,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix(drag): resolve visual glitches during task dragging (e416e75)
 - fix(drag): resolve map glitches and attachment issues during drag (a865a79)
 - fix(today): display new thoughts from inbox in Today view (693cc70)
 - perf(drag): complete A4-A6 optimizations for smooth dragging (c59edf1)
