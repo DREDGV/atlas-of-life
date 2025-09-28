@@ -8305,11 +8305,11 @@ function drawChecklists() {
     checklist._hoverTimeout = null;
     
     // Проверяем hover и click состояния
-    const isHovered = hoverNodeId === checklist.id;
+    const isHoveredForEffect = hoverNodeId === checklist.id;
     const isClicked = clickedNodeId === checklist.id;
     
     // Hover effect - белое кольцо вокруг чек-листа
-    if (isHovered) {
+    if (isHoveredForEffect) {
       ctx.globalAlpha = 1.0;
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2 * DPR;
