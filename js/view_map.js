@@ -505,16 +505,17 @@ function handleDragStart(target, offsetX, offsetY, evt) {
 function handleDragMove(target, worldX, worldY, evt) {
   if (!target || draggedNode !== target) return;
   updatePointerFromEvent(evt);
-  draggedNode.x = worldX;
-  draggedNode.y = worldY;
   
-  // Update coordinates in state objects immediately
+  // Update coordinates ONLY in state objects to prevent double updates
   if (draggedNode._type === "task") {
     const task = state.tasks.find((t) => t.id === draggedNode.id);
     if (task) {
       task.x = worldX;
       task.y = worldY;
       task._pos = { x: worldX, y: worldY }; // Save position for layoutMap
+      // Update draggedNode from state to keep sync
+      draggedNode.x = worldX;
+      draggedNode.y = worldY;
     }
   } else if (draggedNode._type === "project") {
     const project = state.projects.find((p) => p.id === draggedNode.id);
@@ -522,24 +523,33 @@ function handleDragMove(target, worldX, worldY, evt) {
       project.x = worldX;
       project.y = worldY;
       project._pos = { x: worldX, y: worldY }; // Save position for layoutMap
+      // Update draggedNode from state to keep sync
+      draggedNode.x = worldX;
+      draggedNode.y = worldY;
     }
   } else if (draggedNode._type === "idea") {
     const idea = state.ideas.find((i) => i.id === draggedNode.id);
     if (idea) {
       idea.x = worldX;
       idea.y = worldY;
+      draggedNode.x = worldX;
+      draggedNode.y = worldY;
     }
   } else if (draggedNode._type === "note") {
     const note = state.notes.find((n) => n.id === draggedNode.id);
     if (note) {
       note.x = worldX;
       note.y = worldY;
+      draggedNode.x = worldX;
+      draggedNode.y = worldY;
     }
   } else if (draggedNode._type === "checklist") {
     const checklist = state.checklists.find((c) => c.id === draggedNode.id);
     if (checklist) {
       checklist.x = worldX;
       checklist.y = worldY;
+      draggedNode.x = worldX;
+      draggedNode.y = worldY;
     }
   }
   
@@ -553,12 +563,13 @@ function handleDragMove(target, worldX, worldY, evt) {
   }
   resolveDropTargets(draggedNode);
   
-  // Throttle redraw during drag to prevent visual glitches
+  // Improved throttling for smoother drag experience
   if (!__dragRedrawScheduled) {
     __dragRedrawScheduled = true;
     requestAnimationFrame(() => {
       __dragRedrawScheduled = false;
-      requestDrawThrottled();
+      // Use direct requestDraw instead of throttled version during drag
+      requestDraw();
     });
   }
 }

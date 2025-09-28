@@ -692,6 +692,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(drag): enable confirmation dialogs and prepare for Bugbot analysis (30ce394)
 - fix(drag): resolve ReferenceError for showTaskAttachConfirmation (eb6c40c)
 - fix(drag): resolve visual artifacts and restore confirmation dialogs (d396801)
 - fix(drag): resolve visual glitches during task dragging (e416e75)
