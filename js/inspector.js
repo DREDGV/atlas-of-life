@@ -1285,8 +1285,21 @@ function showColorPicker(project) {
   
   // Обработка чек-листов
   if (type === "checklist") {
-    const parent = getParentObjectFallback(obj);
-    const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимый';
+    // Определяем родителя на основе существующих полей
+    let parent = null;
+    let parentInfo = 'Независимый';
+    
+    if (obj.projectId) {
+      parent = state.projects.find(p => p.id === obj.projectId);
+      if (parent) {
+        parentInfo = `Проект: ${parent.title}`;
+      }
+    } else if (obj.domainId) {
+      parent = state.domains.find(d => d.id === obj.domainId);
+      if (parent) {
+        parentInfo = `Домен: ${parent.title}`;
+      }
+    }
     
     // Подсчитываем прогресс
     const totalItems = obj.items?.length || 0;

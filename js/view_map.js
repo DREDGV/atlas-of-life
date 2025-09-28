@@ -1343,6 +1343,10 @@ let pendingIdeaDetach = null;
 let pendingNoteMove = null;
 // transient pending note detach: { noteId, fromParentId, pos }
 let pendingNoteDetach = null;
+// transient pending checklist move: { checklistId, fromProjectId, fromDomainId, toParentId, targetType, pos }
+let pendingChecklistMove = null;
+// transient pending checklist detach: { checklistId, fromProjectId, fromDomainId, pos }
+let pendingChecklistDetach = null;
 let isModalOpen = false; // Flag to block canvas events when toast is shown
 
 // ===== Hierarchy sync helpers (safe, local) =====
@@ -5538,7 +5542,7 @@ function handleChecklistDrop(checklistNode, dropTarget) {
   const checklist = state.checklists.find(c => c.id === checklistNode.id);
   if (!checklist) return;
   
-  console.log("Checklist drop - target:", dropTarget, "current parent:", checklist.parentId);
+  console.log("Checklist drop - target:", dropTarget, "current project:", checklist.projectId, "current domain:", checklist.domainId);
   
   // Update position
   checklist.x = checklistNode.x;
@@ -5547,31 +5551,28 @@ function handleChecklistDrop(checklistNode, dropTarget) {
   
   // Handle different drop targets
   if (dropTarget) {
-    const fromParentId = checklist.parentId || null;
     const toParentId = dropTarget.id;
     
     if (dropTarget.type === 'domain') {
       // Moving to domain
-      if (checklist.parentId !== toParentId) {
-        showChecklistMoveConfirmation(checklist, fromParentId, toParentId);
+      if (checklist.domainId !== toParentId) {
+        showChecklistMoveConfirmation(checklist, checklist.projectId, checklist.domainId, toParentId, 'domain');
         return; // Wait for confirmation
       }
     } else if (dropTarget.type === 'project') {
       // Moving to project
-      if (checklist.parentId !== toParentId) {
-        showChecklistMoveConfirmation(checklist, fromParentId, toParentId);
+      if (checklist.projectId !== toParentId) {
+        showChecklistMoveConfirmation(checklist, checklist.projectId, checklist.domainId, toParentId, 'project');
         return; // Wait for confirmation
       }
     } else if (dropTarget.type === 'task') {
-      // Moving to task
-      if (checklist.parentId !== toParentId) {
-        showChecklistMoveConfirmation(checklist, fromParentId, toParentId);
-        return; // Wait for confirmation
-      }
+      // Moving to task (not supported for checklists, but keeping for consistency)
+      showToast("Чек-листы нельзя привязывать к задачам", "warn");
+      return;
     }
   } else {
     // Moving to independent (outside any parent)
-    if (checklist.parentId !== null) {
+    if (checklist.projectId !== null || checklist.domainId !== null) {
       showChecklistDetachConfirmation(checklist);
       return; // Wait for confirmation
     }
@@ -6217,6 +6218,174 @@ function confirmNoteDetach() {
   saveState();
   showToast("Заметка отвязана", "ok");
   pendingNoteDetach = null;
+}
+
+// Confirmation action functions for checklists
+function confirmChecklistMove() {
+  if (!pendingChecklistMove) return;
+  
+  const checklist = state.checklists.find(c => c.id === pendingChecklistMove.checklistId);
+  if (!checklist) {
+    pendingChecklistMove = null;
+    return;
+  }
+  
+  const fromProjectId = pendingChecklistMove.fromProjectId;
+  const fromDomainId = pendingChecklistMove.fromDomainId;
+  const toParentId = pendingChecklistMove.toParentId;
+  const targetType = pendingChecklistMove.targetType;
+  
+  // Update checklist parent based on target type
+  if (targetType === 'project') {
+    checklist.projectId = toParentId;
+    // Get domain from project
+    const project = state.projects.find(p => p.id === toParentId);
+    if (project) {
+      checklist.domainId = project.domainId;
+    }
+  } else if (targetType === 'domain') {
+    checklist.domainId = toParentId;
+    checklist.projectId = null; // Remove project assignment when moving to domain
+  }
+  
+  checklist.updatedAt = Date.now();
+  
+  // Update position
+  if (pendingChecklistMove.pos) {
+    checklist.x = pendingChecklistMove.pos.x;
+    checklist.y = pendingChecklistMove.pos.y;
+  }
+  
+  saveState();
+  showToast("Чек-лист перемещен", "ok");
+  pendingChecklistMove = null;
+}
+
+function confirmChecklistDetach() {
+  if (!pendingChecklistDetach) return;
+  
+  const checklist = state.checklists.find(c => c.id === pendingChecklistDetach.checklistId);
+  if (!checklist) {
+    pendingChecklistDetach = null;
+    return;
+  }
+  
+  // Remove all parent assignments
+  checklist.projectId = null;
+  checklist.domainId = null;
+  checklist.updatedAt = Date.now();
+  
+  // Update position
+  if (pendingChecklistDetach.pos) {
+    checklist.x = pendingChecklistDetach.pos.x;
+    checklist.y = pendingChecklistDetach.pos.y;
+  }
+  
+  saveState();
+  showToast("Чек-лист отвязан", "ok");
+  pendingChecklistDetach = null;
+}
+
+// Checklist move confirmation functions
+function showChecklistMoveConfirmation(checklist, fromProjectId, fromDomainId, toParentId, targetType) {
+  let fromParent = 'независимый';
+  if (fromProjectId) {
+    const project = state.projects.find(p => p.id === fromProjectId);
+    fromParent = project ? `проект "${project.title}"` : 'неизвестный проект';
+  } else if (fromDomainId) {
+    const domain = state.domains.find(d => d.id === fromDomainId);
+    fromParent = domain ? `домен "${domain.title}"` : 'неизвестный домен';
+  }
+  
+  let toParent = 'независимый';
+  if (targetType === 'project') {
+    const project = state.projects.find(p => p.id === toParentId);
+    toParent = project ? `проект "${project.title}"` : 'неизвестный проект';
+  } else if (targetType === 'domain') {
+    const domain = state.domains.find(d => d.id === toParentId);
+    toParent = domain ? `домен "${domain.title}"` : 'неизвестный домен';
+  }
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast attach show";
+    toast.innerHTML = `Переместить чек-лист "${checklist.title}" из ${fromParent} в ${toParent}? <button id="checklistMoveOk">Переместить</button> <button id="checklistMoveCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending move
+    pendingChecklistMove = {
+      checklistId: checklist.id,
+      fromProjectId: fromProjectId,
+      fromDomainId: fromDomainId,
+      toParentId: toParentId,
+      targetType: targetType,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("checklistMoveOk");
+      const cancel = document.getElementById("checklistMoveCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmChecklistMove();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingChecklistMove = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+function showChecklistDetachConfirmation(checklist) {
+  let currentParent = 'независимый';
+  if (checklist.projectId) {
+    const project = state.projects.find(p => p.id === checklist.projectId);
+    currentParent = project ? `проект "${project.title}"` : 'неизвестный проект';
+  } else if (checklist.domainId) {
+    const domain = state.domains.find(d => d.id === checklist.domainId);
+    currentParent = domain ? `домен "${domain.title}"` : 'неизвестный домен';
+  }
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast detach show";
+    toast.innerHTML = `Отвязать чек-лист "${checklist.title}" от ${currentParent} (сделать независимым)? <button id="checklistDetachOk">Отвязать</button> <button id="checklistDetachCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending detach
+    pendingChecklistDetach = {
+      checklistId: checklist.id,
+      fromProjectId: checklist.projectId,
+      fromDomainId: checklist.domainId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("checklistDetachOk");
+      const cancel = document.getElementById("checklistDetachCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmChecklistDetach();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingChecklistDetach = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
 }
 
 // Export requestDraw and requestLayout functions
