@@ -194,7 +194,7 @@ import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
 import { openChecklistWindow, closeChecklistWindow } from "./ui/checklist-window.js";
-import { createFSM } from "./view_map/input/fsm.js";
+import { createFSM, dragCtx } from "./view_map/input/fsm.js";
 import { createCamera } from "./view_map/camera.js";
 import { createScenegraph } from './view_map/scenegraph.js';
 import { createRenderLayers, renderLayers } from './view_map/layers/index.js';
@@ -506,61 +506,11 @@ function handleDragMove(target, worldX, worldY, evt) {
   if (!target || draggedNode !== target) return;
   updatePointerFromEvent(evt);
   
-  // Update coordinates ONLY in state objects to prevent double updates
-  if (draggedNode._type === "task") {
-    const task = state.tasks.find((t) => t.id === draggedNode.id);
-    if (task) {
-      task.x = worldX;
-      task.y = worldY;
-      task._pos = { x: worldX, y: worldY }; // Save position for layoutMap
-      // Update draggedNode from state to keep sync
-      draggedNode.x = worldX;
-      draggedNode.y = worldY;
-    }
-  } else if (draggedNode._type === "project") {
-    const project = state.projects.find((p) => p.id === draggedNode.id);
-    if (project) {
-      project.x = worldX;
-      project.y = worldY;
-      project._pos = { x: worldX, y: worldY }; // Save position for layoutMap
-      // Update draggedNode from state to keep sync
-      draggedNode.x = worldX;
-      draggedNode.y = worldY;
-    }
-  } else if (draggedNode._type === "idea") {
-    const idea = state.ideas.find((i) => i.id === draggedNode.id);
-    if (idea) {
-      idea.x = worldX;
-      idea.y = worldY;
-      draggedNode.x = worldX;
-      draggedNode.y = worldY;
-    }
-  } else if (draggedNode._type === "note") {
-    const note = state.notes.find((n) => n.id === draggedNode.id);
-    if (note) {
-      note.x = worldX;
-      note.y = worldY;
-      draggedNode.x = worldX;
-      draggedNode.y = worldY;
-    }
-  } else if (draggedNode._type === "checklist") {
-    const checklist = state.checklists.find((c) => c.id === draggedNode.id);
-    if (checklist) {
-      checklist.x = worldX;
-      checklist.y = worldY;
-      draggedNode.x = worldX;
-      draggedNode.y = worldY;
-    }
-  }
+  // NO STATE MUTATIONS during drag - only update draggedNode for visual feedback
+  draggedNode.x = worldX;
+  draggedNode.y = worldY;
   
-  // Emit event for object position change
-  if (window.eventBus) {
-    window.eventBus.emit('object:moved', { 
-      object: draggedNode, 
-      x: worldX, 
-      y: worldY 
-    });
-  }
+  // Update drop targets based on new position
   resolveDropTargets(draggedNode);
   
   // Fixed throttling - flag is reset after drawing completes
@@ -578,11 +528,9 @@ function handleDragMove(target, worldX, worldY, evt) {
 function handleDragEnd(target, evt) {
   updatePointerFromEvent(evt);
   if (!target || draggedNode !== target) {
-    // Drag was cancelled - still save coordinates if draggedNode exists
-    if (draggedNode) {
-      // Save coordinates even for cancelled drag
-      saveState();
-    }
+    // Drag was cancelled - reset drag context
+    dragCtx.active = false;
+    dragCtx.id = null;
     draggedNode = null;
     dragOffset.x = dragOffset.y = 0;
     canvas.style.cursor = "";
@@ -594,6 +542,60 @@ function handleDragEnd(target, evt) {
     endDrag();
     return;
   }
+  
+  // COMMIT TO STATE - single commit on pointerup
+  if (draggedNode) {
+    const worldX = draggedNode.x;
+    const worldY = draggedNode.y;
+    
+    // Update coordinates in state objects
+    if (draggedNode._type === "task") {
+      const task = state.tasks.find((t) => t.id === draggedNode.id);
+      if (task) {
+        task.x = worldX;
+        task.y = worldY;
+        task._pos = { x: worldX, y: worldY };
+      }
+    } else if (draggedNode._type === "project") {
+      const project = state.projects.find((p) => p.id === draggedNode.id);
+      if (project) {
+        project.x = worldX;
+        project.y = worldY;
+        project._pos = { x: worldX, y: worldY };
+      }
+    } else if (draggedNode._type === "idea") {
+      const idea = state.ideas.find((i) => i.id === draggedNode.id);
+      if (idea) {
+        idea.x = worldX;
+        idea.y = worldY;
+      }
+    } else if (draggedNode._type === "note") {
+      const note = state.notes.find((n) => n.id === draggedNode.id);
+      if (note) {
+        note.x = worldX;
+        note.y = worldY;
+      }
+    } else if (draggedNode._type === "checklist") {
+      const checklist = state.checklists.find((c) => c.id === draggedNode.id);
+      if (checklist) {
+        checklist.x = worldX;
+        checklist.y = worldY;
+      }
+    }
+    
+    // Single emit for state change
+    if (window.eventBus) {
+      window.eventBus.emit('object:moved', { 
+        object: draggedNode, 
+        x: worldX, 
+        y: worldY 
+      });
+    }
+    
+    // Save state
+    saveState();
+  }
+  
   handleDrop();
   draggedNode = null;
   dragOffset.x = dragOffset.y = 0;
@@ -4055,7 +4057,12 @@ export function drawMap() {
   }
   taskNodes.forEach((n) => {
       const __skipCull3 = window.DEBUG_EDGE_TASKS === true;
-      if (!__skipCull3 && !inView(n.x, n.y, n.r + 20 * DPR)) return;
+      
+      // Use dragCtx coordinates for ghost preview during drag
+      const x = (dragCtx.active && dragCtx.id === n.id) ? dragCtx.ghostX : n.x;
+      const y = (dragCtx.active && dragCtx.id === n.id) ? dragCtx.ghostY : n.y;
+      
+      if (!__skipCull3 && !inView(x, y, n.r + 20 * DPR)) return;
       const t = state.tasks.find((x) => x.id === n.id);
       
       // Отладка отрисовки задач в Edge

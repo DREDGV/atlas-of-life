@@ -692,6 +692,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix(drag): eliminate double rendering causing visual artifacts (639a5c4)
 - fix(drag): address Bugbot findings for drag performance issues (0e3e069)
 - fix(drag): resolve visual artifacts and improve performance (5e6f56b)
 - feat(drag): enable confirmation dialogs and prepare for Bugbot analysis (30ce394)

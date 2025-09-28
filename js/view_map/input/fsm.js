@@ -12,6 +12,16 @@ const PHASE_DRAG_OBJECT = 'drag-object';
 const PHASE_PAN = 'pan';
 const RESUME_ALT_DISTANCE = 16;
 
+// Drag context for ghost preview (no state mutations during drag)
+export const dragCtx = { 
+  active: false, 
+  id: null, 
+  ghostX: 0, 
+  ghostY: 0,
+  startX: 0,
+  startY: 0
+};
+
 function isAltOnly(e) {
   return e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey;
 }
@@ -76,6 +86,14 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
     if (hitResult && typeof hitResult === 'object' && 'x' in hitResult && 'y' in hitResult) {
       state.dragOffsetX = hitPt.x - hitResult.x;
       state.dragOffsetY = hitPt.y - hitResult.y;
+      
+      // Initialize drag context for ghost preview
+      dragCtx.active = false;
+      dragCtx.id = hitResult.id;
+      dragCtx.ghostX = hitResult.x;
+      dragCtx.ghostY = hitResult.y;
+      dragCtx.startX = hitResult.x;
+      dragCtx.startY = hitResult.y;
     }
     onHover?.(e);
   }
@@ -147,6 +165,12 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
       const pt = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
       const worldX = pt.x - state.dragOffsetX;
       const worldY = pt.y - state.dragOffsetY;
+      
+      // Update drag context for ghost preview (NO state mutations)
+      dragCtx.active = true;
+      dragCtx.ghostX = worldX;
+      dragCtx.ghostY = worldY;
+      
       onDrag?.(state.target, worldX, worldY, e);
     }
     state.lastX = e.clientX;
@@ -166,6 +190,17 @@ export function createFSM({ canvas, camera, hit, onClick, onDrag, onDragStart, o
       onPanEnd?.(e);
     }
     try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    
+    // Commit drag changes to state (single commit on pointerup)
+    if (dragCtx.active && dragCtx.id) {
+      // This will be handled by the main view_map.js handleDragEnd
+      // which will call state update functions
+    }
+    
+    // Reset drag context
+    dragCtx.active = false;
+    dragCtx.id = null;
+    
     reset();
   }
 
