@@ -1210,31 +1210,17 @@ function showColorPicker(project) {
   // Обработка идей
   if (type === "idea") {
     console.log("🔍 Inspector: Processing idea", obj);
-    console.log("🔍 Inspector: Idea fields:", {
-      title: obj.title,
-      content: obj.content,
-      domainId: obj.domainId,
-      createdAt: obj.createdAt
-    });
     
-    // Определяем родителя на основе существующих полей
-    let parent = null;
-    let parentInfo = 'Независимая';
-    
-    if (obj.domainId) {
-      parent = state.domains.find(d => d.id === obj.domainId);
-      if (parent) {
-        parentInfo = `Домен: ${parent.title}`;
-      }
-    }
-    
-    console.log("🔍 Inspector: Idea parent info", parentInfo);
+    const parent = getParentObjectFallback(obj);
+    const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : 'Объект'}: ${parent.title}` : 'Независимая';
     
     ins.innerHTML = `
       <h2>Идея: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Содержание: ${obj.content || 'Нет описания'}</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
+      
+      ${renderHierarchySection(obj)}
       
       <div class="btns">
         <button class="btn primary" id="editIdea">✏️ Редактировать</button>
@@ -1270,24 +1256,16 @@ function showColorPicker(project) {
   if (type === "note") {
     console.log("🔍 Inspector: Processing note", obj);
     
-    // Определяем родителя на основе существующих полей
-    let parent = null;
-    let parentInfo = 'Независимая';
-    
-    if (obj.domainId) {
-      parent = state.domains.find(d => d.id === obj.domainId);
-      if (parent) {
-        parentInfo = `Домен: ${parent.title}`;
-      }
-    }
-    
-    console.log("🔍 Inspector: Note parent info", parentInfo);
+    const parent = getParentObjectFallback(obj);
+    const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимая';
     
     ins.innerHTML = `
       <h2>Заметка: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Содержание: ${obj.text || 'Нет описания'}</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
+      
+      ${renderHierarchySection(obj)}
       
       <div class="btns">
         <button class="btn primary" id="editNote">✏️ Редактировать</button>
@@ -1323,36 +1301,21 @@ function showColorPicker(project) {
   if (type === "checklist") {
     console.log("🔍 Inspector: Processing checklist", obj);
     
-    // Определяем родителя на основе существующих полей
-    let parent = null;
-    let parentInfo = 'Независимый';
-    
-    if (obj.projectId) {
-      parent = state.projects.find(p => p.id === obj.projectId);
-      if (parent) {
-        parentInfo = `Проект: ${parent.title}`;
-      }
-    } else if (obj.domainId) {
-      parent = state.domains.find(d => d.id === obj.domainId);
-      if (parent) {
-        parentInfo = `Домен: ${parent.title}`;
-      }
-    }
-    
-    console.log("🔍 Inspector: Checklist parent info", parentInfo);
+    const parent = getParentObjectFallback(obj);
+    const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимый';
     
     // Подсчитываем прогресс
     const totalItems = obj.items?.length || 0;
     const completedItems = obj.items?.filter(item => item.completed) || [];
     const progress = totalItems > 0 ? Math.round((completedItems.length / totalItems) * 100) : 0;
     
-    console.log("🔍 Inspector: Checklist progress", progress, completedItems.length, totalItems);
-    
     ins.innerHTML = `
       <h2>Чек-лист: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Прогресс: ${progress}% (${completedItems.length}/${totalItems})</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создан: ${daysSince(obj.createdAt)} дн. назад</div>
+      
+      ${renderHierarchySection(obj)}
       
       <div class="btns">
         <button class="btn primary" id="editChecklist">✏️ Редактировать</button>

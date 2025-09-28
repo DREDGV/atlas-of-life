@@ -1778,6 +1778,7 @@ function createChecklistAtPosition(x, y) {
     title: 'Новый чек-лист',
     projectId: null,
     domainId: state.activeDomain || state.domains[0]?.id || null,
+    parentId: state.activeDomain || state.domains[0]?.id || null, // Добавляем parentId для совместимости
     x: x,
     y: y,
     r: 20,

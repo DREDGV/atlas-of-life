@@ -917,6 +917,7 @@ export function createIdea(title, content = '', domainId = null) {
     title: title,
     content: content,
     domainId: domainId,
+    parentId: domainId, // Добавляем parentId для совместимости
     x: Math.random() * 2000 - 1000,
     y: Math.random() * 2000 - 1000,
     r: 15,
@@ -935,6 +936,7 @@ export function createNote(title, text = '', domainId = null) {
     title: title,
     text: text,
     domainId: domainId,
+    parentId: domainId, // Добавляем parentId для совместимости
     x: Math.random() * 2000 - 1000,
     y: Math.random() * 2000 - 1000,
     r: 12,
@@ -953,6 +955,7 @@ export function createChecklist(title, projectId = null, domainId = null) {
     title: title,
     projectId: projectId,
     domainId: domainId,
+    parentId: projectId || domainId, // Добавляем parentId для совместимости
     x: 0, // Центр экрана по X
     y: 0, // Центр экрана по Y
     r: 20, // Увеличиваем размер для лучшей видимости
