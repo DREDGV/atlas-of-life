@@ -1609,8 +1609,7 @@ window.createNote = function() {
   
   state.notes.push(note);
   saveState();
-  layoutMap();
-  drawMap();
+  requestLayout(); // Use optimized layout request
   return note;
 };
 
@@ -2845,7 +2844,7 @@ function renderSidebar() {
         if (window.layoutMap) window.layoutMap();
         if (window.drawMap) window.drawMap();
       } else if (e.key === "Enter") {
-        e.preventDefault();
+      e.preventDefault();
         performSearch();
       }
     });
@@ -4159,6 +4158,7 @@ function setupCreationPanel() {
       
       state.tasks.push(newTask);
       saveState();
+      requestLayout(); // Update map layout with new task
       showTaskEditor(newTask);
     });
   }
@@ -4185,6 +4185,7 @@ function setupCreationPanel() {
       
       state.projects.push(newProject);
       saveState();
+      requestLayout(); // Update map layout with new project
       showProjectEditor(newProject);
     });
   }
@@ -4620,7 +4621,7 @@ async function init() {
     })();
     // For now always run legacy implementation to keep behavior unchanged.
     // When v2 is ready: if (useV2) createMapV2(...) else initMap(...)
-    initMap(canvas, tooltip);
+  initMap(canvas, tooltip);
   }
   updateWip();
   
