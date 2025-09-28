@@ -6793,6 +6793,16 @@ function onDblClick(e) {
     requestLayout(); // Use optimized layout request
     fitActiveDomain();
   }
+  if (n._type === "checklist") {
+    // Двойной клик по чек-листу - открываем редактор
+    const checklist = state.checklists.find(c => c.id === n.id);
+    if (checklist) {
+      // Закрываем возможные всплывающие окна, затем открываем редактор
+      try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+      try { if (typeof window.closeChecklistWindow === 'function') window.closeChecklistWindow(); } catch(_) {}
+      window.showChecklistEditor(checklist);
+    }
+  }
 }
 
 function onContextMenu(e) {
@@ -7187,17 +7197,14 @@ function onClick(e) {
     }
     return;
             } else if (n._type === 'checklist') {
-              // Левый клик по чек-листу - открываем полный редактор
+              // Левый клик по чек-листу - открываем инспектор (как у других объектов)
               const checklist = state.checklists.find(c => c.id === n.id);
               if (checklist) {
                 // Запускаем эффект клика
                 clickedNodeId = n.id;
                 clickEffectTime = 1.0;
                 
-                // Закрываем возможные всплывающие окна, затем открываем редактор
-                try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
-                try { if (typeof window.closeChecklistWindow === 'function') window.closeChecklistWindow(); } catch(_) {}
-                window.showChecklistEditor(checklist);
+                openInspectorFor({...checklist, _type: 'checklist'});
               }
               return;
             } else {

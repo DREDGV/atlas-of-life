@@ -1282,4 +1282,48 @@ function showColorPicker(project) {
     // Обработчики действий иерархии
     setupHierarchyActionHandlers(obj);
   }
+  
+  // Обработка чек-листов
+  if (type === "checklist") {
+    const parent = getParentObjectFallback(obj);
+    const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимый';
+    
+    // Подсчитываем прогресс
+    const totalItems = obj.items?.length || 0;
+    const completedItems = obj.items?.filter(item => item.completed) || [];
+    const progress = totalItems > 0 ? Math.round((completedItems.length / totalItems) * 100) : 0;
+    
+    ins.innerHTML = `
+      <h2>Чек-лист: ${obj.title}</h2>
+      <div class="kv">Прогресс: ${progress}% (${completedItems.length}/${totalItems})</div>
+      <div class="kv">Родитель: ${parentInfo}</div>
+      <div class="kv">Создан: ${daysSince(obj.createdAt)} дн. назад</div>
+      
+      ${renderHierarchySection(obj)}
+      
+      <div class="btns">
+        <button class="btn primary" id="editChecklist">✏️ Редактировать</button>
+        <button class="btn danger" id="delChecklist">🗑️ Удалить</button>
+      </div>
+    `;
+    
+    document.getElementById("editChecklist").onclick = () => {
+      // Закрываем возможные всплывающие окна, затем открываем редактор
+      try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+      try { if (typeof window.closeChecklistWindow === 'function') window.closeChecklistWindow(); } catch(_) {}
+      window.showChecklistEditor(obj);
+    };
+    
+    document.getElementById("delChecklist").onclick = () => {
+      if (confirm(`Удалить чек-лист "${obj.title}"?`)) {
+        state.checklists = state.checklists.filter(c => c.id !== obj.id);
+        saveState();
+        drawMap();
+        openInspectorFor(null);
+      }
+    };
+    
+    // Обработчики действий иерархии
+    setupHierarchyActionHandlers(obj);
+  }
 }
