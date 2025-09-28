@@ -1,156 +1,18 @@
 // js/view_map.js
 
-// Performance telemetry for drag optimization
-const __perf = { buckets: {}, lastPrint: 0 };
-function __time(name, fn) {
-  const t0 = performance.now();
-  const r = fn();
-  const dt = performance.now() - t0;
-  __perf.buckets[name] = (__perf.buckets[name] || 0) + dt;
-  return r;
-}
-function __perfPrint() {
-  const now = performance.now();
-  if (now - __perf.lastPrint >= 500) {
-    const rows = Object.entries(__perf.buckets)
-      .map(([k,v]) => ({ section: k, ms: +v.toFixed(2) }))
-      .sort((a,b)=>b.ms - a.ms);
-    if (rows.length) console.table(rows);
-    __perf.buckets = {}; __perf.lastPrint = now;
-  }
-}
-
-// Static snapshot for drag optimization
-let __staticSnap = null, __sctx = null, __isDragging = false, __draggedNode = null;
-let __dragRedrawScheduled = false; // Throttle drag redraws
-
-function beginDrag(draggedNode) {
-  __isDragging = true;
-  __draggedNode = draggedNode;
-  
-  // Temporarily disable static snapshot due to visual glitches
-  // TODO: Fix static snapshot rendering logic
-  /*
-  __staticSnap = document.createElement('canvas');
-  __staticSnap.width = canvas.width; 
-  __staticSnap.height = canvas.height;
-  __sctx = __staticSnap.getContext('2d');
-  
-  // Нарисуем фон и все слои КРОМЕ перетаскиваемого узла
-  __time('static-snapshot', () => {
-    drawBackground(__sctx);
-    drawAllLayersExceptDragged(__sctx, draggedNode);
-  });
-  */
-}
-
-function renderDuringDrag(draggedNode) {
-  __time('draw-static', () => {
-    ctx.drawImage(__staticSnap, 0, 0);
-  });
-  
-  __time('draw-dragged', () => {
-    drawDraggedNode(ctx, draggedNode, camera);
-    drawIncidentLinks(ctx, draggedNode, camera);
-  });
-}
-
-function endDrag() { 
-  __isDragging = false; 
-  __draggedNode = null;
-  __dragRedrawScheduled = false; // Reset throttling flag
-  // Static snapshot cleanup disabled
-  // __staticSnap = __sctx = null; 
-}
-
-// Placeholder functions for static snapshot (to be implemented)
-function drawBackground(ctx) {
-  // Clear background
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-}
-
-function drawAllLayersExceptDragged(ctx, draggedNode) {
-  // Draw all layers except the dragged node
-  // This will be implemented with proper layer filtering
-  if (renderLayersList) {
-    const visibleNodes = scenegraph?.getVisible({
-      x: camera.getParams().x,
-      y: camera.getParams().y,
-      scale: camera.getParams().scale,
-      width: canvas.width,
-      height: canvas.height
-    }) || [];
-    
-    const filteredNodes = visibleNodes.filter(node => node.id !== draggedNode.id);
-    renderLayers(ctx, filteredNodes, camera, renderLayersList);
-  }
-}
-
-function drawDraggedNode(ctx, draggedNode, camera) {
-  // Draw only the dragged node
-  if (renderLayersList) {
-    const draggedNodes = [{ ...draggedNode, type: draggedNode._type }];
-    renderLayers(ctx, draggedNodes, camera, renderLayersList);
-  }
-}
-
-function drawIncidentLinks(ctx, draggedNode, camera) {
-  // Draw only links connected to the dragged node
-  if (!state.showLinks || !edges) return;
-  
-  const draggedId = draggedNode.id;
-  const incidentEdges = edges.filter(e => e.a.id === draggedId || e.b.id === draggedId);
-  
-  if (incidentEdges.length === 0) return;
-  
-  ctx.lineCap = "round";
-  incidentEdges.forEach((e) => {
-    const a = e.a, b = e.b;
-    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    const dist = Math.hypot(b.x - a.x, b.y - a.y);
-    const k = 0.12 * (1 / (1 + dist / (300 * DPR)));
-    const dx = (b.y - a.y) * k, dy = (a.x - b.x) * k;
-    
-    // Draw connection with enhanced visibility
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = e.color + '40';
-    ctx.strokeStyle = e.color + '20';
-    ctx.lineWidth = e.w + 4;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
-    ctx.stroke();
-    
-    // Inner core
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = e.color;
-    ctx.lineWidth = e.w;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
-    ctx.stroke();
-  });
-}
-
 // Helper function for rounded rectangles (compatibility)
 function drawRoundedRect(ctx, x, y, width, height, radius) {
-  // Delegate to shared util to keep path logic consistent across codebase
-  try {
-    roundedRectPath(ctx, x, y, width, height, radius);
-  } catch (_) {
-    // Fallback to local path if util not available (should not happen)
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
-  }
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
 }
 
 // Compute stable checklist rect from center and base radius (with pulse for hit-test)
@@ -194,24 +56,8 @@ import { openInspectorFor } from "./inspector.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
 import { openChecklistWindow, closeChecklistWindow } from "./ui/checklist-window.js";
-import { createFSM, dragCtx } from "./view_map/input/fsm.js";
-import { createCamera } from "./view_map/camera.js";
-import { createScenegraph } from './view_map/scenegraph.js';
-import { createRenderLayers, renderLayers } from './view_map/layers/index.js';
 
 // showToast is defined globally in app.js
-
-// Performance counters for drag diagnostics
-let evtMove = 0, emits = 0, sgb = 0;
-if (window.eventBus) {
-  const originalEmit = window.eventBus.emit;
-  window.eventBus.emit = function(event, data) {
-    if (event.startsWith('object:moved') || event.startsWith('task:') || event.startsWith('project:')) {
-      emits++;
-    }
-    return originalEmit.call(this, event, data);
-  };
-}
 
 let canvas,
   tooltip,
@@ -238,12 +84,6 @@ const viewState = {
   lastX: 0,
   lastY: 0,
 };
-// Camera instance (initialized in initMap)
-let camera = null;
-// Scenegraph instance (initialized in initMap)
-let scenegraph = null;
-// Render layers (initialized in initMap)
-let renderLayersList = null;
 // remember last mouse client position for mouseup fallback
 let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
 // Last zoom time to detect zoom+drag perf hotspot
@@ -283,7 +123,7 @@ function requestDraw() {
     if (drawTimeout) clearTimeout(drawTimeout);
     drawTimeout = setTimeout(() => {
       if (!pendingFrame && !isDrawing) {
-  pendingFrame = true;
+        pendingFrame = true;
         requestAnimationFrame(() => {
           pendingFrame = false;
           if (!isDrawing) {
@@ -307,7 +147,7 @@ function requestDraw() {
 
 // Более строгая защита от частых вызовов
 let lastRequestDrawTime = 0;
-const MIN_REQUEST_DRAW_INTERVAL = 33; // 30 FPS max to prevent visual glitches
+const MIN_REQUEST_DRAW_INTERVAL = 16; // 60 FPS max
 
 function requestDrawThrottled() {
   const now = performance.now();
@@ -368,31 +208,27 @@ function onWheel(e) {
   try {
     e.preventDefault();
   } catch (_) {}
-  // Normalize wheel for lines/pages
-  const LINE = 1, PAGE = 2;
-  let dy = e.deltaY || 0;
-  if (e.deltaMode === LINE) dy *= 16;
-  else if (e.deltaMode === PAGE) dy *= window.innerHeight || 800;
-  const zoomFactor = dy > 0 ? 0.9 : 1.1;
+  const d = e.deltaY || e.wheelDelta || 0;
+  const zoomFactor = d > 0 ? 0.9 : 1.1;
+  const old = viewState.scale;
+  const next = clamp(old * zoomFactor, 0.5, 2.2);
   _lastZoomTs = performance.now();
   lastZoomTime = performance.now(); // Track zoom for performance optimization
   isLightMode = true; // Enable light mode during zoom
   
-  if (camera) {
-    camera.zoomAt(zoomFactor, e.offsetX || 0, e.offsetY || 0);
-  } else {
+  // keep world point under cursor stable
   const dpr = window.devicePixelRatio || 1;
   const cx = (e.offsetX || 0) * dpr;
   const cy = (e.offsetY || 0) * dpr;
-    const old = viewState.scale;
-    const next = clamp(old * zoomFactor, 0.5, 2.2);
   const invOld = 1 / old;
   const wx = (cx - viewState.tx) * invOld;
   const wy = (cy - viewState.ty) * invOld;
   viewState.scale = next;
   viewState.tx = cx - wx * next;
   viewState.ty = cy - wy * next;
-  }
+  try {
+    logEvent("map_zoom", { scale: Math.round(next * 100) / 100 });
+  } catch (_) {}
   requestDraw(); // Возвращаем requestDraw() для плавного зума
   
   // Disable light mode after zoom cooldown
@@ -405,400 +241,46 @@ let draggedNode = null;
 let dragOffset = { x: 0, y: 0 };
 let dropTargetProjectId = null;
 let dropTargetDomainId = null;
-let isPanning = false;
+// drag threshold (px, screen space before scale/DPR)
+let pendingDragNode = null;
 
-// Pointer FSM instance (initialized in initMap)
-let inputFSM = null;
+// GPT-5 mouse system
+const mouse = {
+  phase: 'idle',            // 'idle' | 'press' | 'drag-object' | 'pan'
+  startX: 0, startY: 0,     // экранные координаты старта
+  lastX: 0, lastY: 0,       // экранные координаты предыдущего move
+  threshold: 10,
+  target: null,             // объект под курсором в момент mousedown
+  dragOffsetX: 0,           // смещение хвата внутри объекта (в мировых координатах)
+  dragOffsetY: 0
+};
 
-function updatePointerFromEvent(evt) {
-  if (!evt || !canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  lastMouseClient = {
-    clientX: evt.clientX,
-    clientY: evt.clientY,
-    offsetX: evt.clientX - rect.left,
-    offsetY: evt.clientY - rect.top,
-  };
+// GPT-5 utilities
+function distance2(x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  return dx*dx + dy*dy;
 }
-
-function handlePointerClick(worldPt, evt) {
-  updatePointerFromEvent(evt);
-  try {
-    if (performance.now() < suppressClickUntil) return;
-  } catch (_) {}
-
-  const node = hit(worldPt.x, worldPt.y);
-  if (!node) {
-    state.activeDomain = null;
-    requestLayout();
-    return;
-  }
-
-  hoverNodeId = node.id;
-  clickedNodeId = node.id;
-  clickEffectTime = 1;
-
-  switch (node._type) {
-    case "task": {
-      const task = state.tasks.find((t) => t.id === node.id);
-      if (task) {
-        task._type = "task";
-        openInspectorFor(task);
-      }
-      break;
-    }
-    case "project": {
-    const projectNode = state.projects.find((p) => p.id === node.id);
-      if (projectNode) {
-        projectNode._type = "project";
-        openInspectorFor(projectNode);
-      }
-      break;
-    }
-    case "idea": {
-      const idea = state.ideas.find((i) => i.id === node.id);
-      if (idea) {
-        openInspectorFor({ ...idea, _type: "idea" });
-      }
-      return;
-    }
-    case "note": {
-      const note = state.notes.find((n) => n.id === node.id);
-      if (note) {
-        openInspectorFor({ ...note, _type: "note" });
-      }
-      return;
-    }
-    case "checklist": {
-      const checklist = state.checklists.find((c) => c.id === node.id);
-      if (checklist) {
-        try { window.hideChecklistToggleView?.(); } catch (_) {}
-        try { window.closeChecklistWindow?.(); } catch (_) {}
-        window.showChecklistEditor?.(checklist);
-      }
-      return;
-    }
-    case "domain": {
-      const domain = state.domains.find((d) => d.id === node.id);
-      if (domain) {
-        domain._type = "domain";
-        openInspectorFor(domain);
-      }
-      break;
-    }
-    default:
-      break;
-  }
-
-  requestDrawThrottled();
-}
-
-function handleDragStart(target, offsetX, offsetY, evt) {
-  updatePointerFromEvent(evt);
-  if (!target) return false;
-  if (!canMoveObject(target)) {
-    showToast("Объект заблокирован для перемещения", "warn");
-    return false;
-  }
-  draggedNode = target;
-  dragOffset.x = offsetX;
-  dragOffset.y = offsetY;
-  suppressClickUntil = performance.now() + 260;
-  canvas.style.cursor = target._type === "task" ? "move" : "grabbing";
-  resolveDropTargets(target);
-  
-  // Start static snapshot for drag optimization
-  beginDrag(target);
-  
-  requestDrawThrottled();
-  return true;
-}
-
-function handleDragMove(target, worldX, worldY, evt) {
-  if (!target || draggedNode !== target) return;
-  updatePointerFromEvent(evt);
-  
-  // NO STATE MUTATIONS during drag - only update draggedNode for visual feedback
-  draggedNode.x = worldX;
-  draggedNode.y = worldY;
-  
-  // Update drop targets based on new position
-  resolveDropTargets(draggedNode);
-  
-  // Fixed throttling - flag is reset after drawing completes
-  if (!__dragRedrawScheduled) {
-    __dragRedrawScheduled = true;
-    requestAnimationFrame(() => {
-      // Use direct requestDraw instead of throttled version during drag
-      requestDraw();
-      // Reset flag AFTER drawing is complete
-      __dragRedrawScheduled = false;
-    });
-  }
-}
-
-function handleDragEnd(target, evt) {
-  updatePointerFromEvent(evt);
-  if (!target || draggedNode !== target) {
-    // Drag was cancelled - reset drag context
-    dragCtx.active = false;
-    dragCtx.id = null;
-    draggedNode = null;
-    dragOffset.x = dragOffset.y = 0;
-    canvas.style.cursor = "";
-    dropTargetProjectId = null;
-    dropTargetDomainId = null;
-    currentDropHint = null;
-    
-    // End static snapshot
-    endDrag();
-    return;
-  }
-  
-  // COMMIT TO STATE - single commit on pointerup
-  if (draggedNode) {
-    const worldX = draggedNode.x;
-    const worldY = draggedNode.y;
-    
-    // Update coordinates in state objects
-    if (draggedNode._type === "task") {
-      const task = state.tasks.find((t) => t.id === draggedNode.id);
-      if (task) {
-        task.x = worldX;
-        task.y = worldY;
-        task._pos = { x: worldX, y: worldY };
-      }
-    } else if (draggedNode._type === "project") {
-      const project = state.projects.find((p) => p.id === draggedNode.id);
-      if (project) {
-        project.x = worldX;
-        project.y = worldY;
-        project._pos = { x: worldX, y: worldY };
-      }
-    } else if (draggedNode._type === "idea") {
-      const idea = state.ideas.find((i) => i.id === draggedNode.id);
-      if (idea) {
-        idea.x = worldX;
-        idea.y = worldY;
-      }
-    } else if (draggedNode._type === "note") {
-      const note = state.notes.find((n) => n.id === draggedNode.id);
-      if (note) {
-        note.x = worldX;
-        note.y = worldY;
-      }
-    } else if (draggedNode._type === "checklist") {
-      const checklist = state.checklists.find((c) => c.id === draggedNode.id);
-      if (checklist) {
-        checklist.x = worldX;
-        checklist.y = worldY;
-      }
-    }
-    
-    // Single emit for state change
-    if (window.eventBus) {
-      window.eventBus.emit('object:moved', { 
-        object: draggedNode, 
-        x: worldX, 
-        y: worldY 
-      });
-    }
-    
-    // Save state
-    saveState();
-  }
-  
-  handleDrop();
-  draggedNode = null;
-  dragOffset.x = dragOffset.y = 0;
-  dropTargetProjectId = null;
-  dropTargetDomainId = null;
-  currentDropHint = null;
-  canvas.style.cursor = "";
-  suppressClickUntil = performance.now() + 260;
-  
-  // End static snapshot
-  endDrag();
-  
-  requestDrawThrottled();
-}
-
-function handleDrop() {
-  if (!draggedNode) return;
-
-  const node = draggedNode;
-  let hasChanges = false;
-
-  if (node._type === "task") {
-    const task = state.tasks.find((t) => t.id === node.id);
-    if (task) {
-      if (dropTargetProjectId) {
-        // Show confirmation dialog for task attachment
-        showTaskMoveConfirmation(task, task.projectId, dropTargetProjectId);
-        hasChanges = true;
-      } else if (dropTargetDomainId) {
-        task.domainId = dropTargetDomainId;
-        showToast(`Задача прикреплена к домену`, "ok");
-        hasChanges = true;
-      }
-      // Always save coordinates even if no drop target
-      saveState();
-    }
-  } else if (node._type === "project") {
-    const project = state.projects.find((p) => p.id === node.id);
-    if (project) {
-      if (dropTargetDomainId) {
-        // Show confirmation dialog for project move
-        showProjectMoveConfirmation(project, project.domainId, dropTargetDomainId);
-        hasChanges = true;
-      }
-      // Always save coordinates even if no drop target
-      saveState();
-    }
-  } else if (node._type === "idea") {
-    const idea = state.ideas.find((i) => i.id === node.id);
-    if (idea) {
-      // Always save coordinates even if no drop target
-      saveState();
-    }
-  } else if (node._type === "note") {
-    const note = state.notes.find((n) => n.id === node.id);
-    if (note) {
-      // Always save coordinates even if no drop target
-      saveState();
-    }
-  }
-
-  if (window.refreshSidebar) {
-    window.refreshSidebar();
-  }
-}
-
-function handlePanStart(evt) {
-  if (isModalOpen) return;
-  updatePointerFromEvent(evt);
-  isPanning = true;
-  canvas.style.cursor = "grabbing";
-}
-
-function handlePanMove(dxScreen, dyScreen, evt) {
-  if (!isPanning) return;
-  updatePointerFromEvent(evt);
-  if (camera) {
-    camera.translate(dxScreen, dyScreen);
-  }
-  requestDrawThrottled();
-}
-
-function handlePanEnd(evt) {
-  if (!isPanning) return;
-  updatePointerFromEvent(evt);
-  isPanning = false;
-  canvas.style.cursor = "";
-  suppressClickUntil = performance.now() + 260;
-  requestDrawThrottled();
-}
-
-function handlePointerHover(evt) {
-  updatePointerFromEvent(evt);
-  if (!canvas) return;
-  
-  // Skip hover during drag to prevent visual glitches and performance issues
-  if (__isDragging || draggedNode || dragCtx.active) {
-    return;
-  }
-  
-  const rect = canvas.getBoundingClientRect();
-  const offsetX = evt.clientX - rect.left;
-  const offsetY = evt.clientY - rect.top;
-  const worldPos = camera ? camera.screenToWorld(offsetX, offsetY) : screenToWorld(offsetX, offsetY);
-  if (!isPanning) {
-    handleChecklistHover(offsetX, offsetY, worldPos);
-    handleObjectHover(offsetX, offsetY, worldPos);
-  }
-}
-
-function resolveDropTargets(node) {
-  dropTargetProjectId = null;
-  dropTargetDomainId = null;
-  currentDropHint = null;
-  if (!node) {
-    canvas.style.cursor = "";
-    return;
-  }
-  if (node._type === "task") {
-    let bestProject = null;
-    let bestDist = Infinity;
-    for (const project of state.projects) {
-      const projectNode = nodes.find((n) => n._type === "project" && n.id === project.id);
-      if (!projectNode) continue;
-      const dx = node.x - projectNode.x;
-      const dy = node.y - projectNode.y;
-      const dist = Math.hypot(dx, dy);
-      const hitRadius = projectNode.r * 1.35;
-      if (dist <= hitRadius && dist < bestDist) {
-        bestDist = dist;
-        bestProject = projectNode;
-      }
-    }
-    if (bestProject) {
-      dropTargetProjectId = bestProject.id;
-      currentDropHint = { type: "project", id: bestProject.id, node: bestProject };
-      canvas.style.cursor = "copy";
-      return;
-    }
-    for (const domain of state.domains) {
-      const domainNode = nodes.find((n) => n._type === "domain" && n.id === domain.id);
-      if (!domainNode) continue;
-      const dx = node.x - domainNode.x;
-      const dy = node.y - domainNode.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist <= domainNode.r) {
-        dropTargetDomainId = domain.id;
-        currentDropHint = { type: "domain", id: domain.id, node: domainNode };
-        canvas.style.cursor = "copy";
-        return;
-      }
-    }
-    canvas.style.cursor = "move";
-    return;
-  }
-  if (node._type === "project") {
-    for (const domain of state.domains) {
-      const domainNode = nodes.find((n) => n._type === "domain" && n.id === domain.id);
-      if (!domainNode) continue;
-      const dx = node.x - domainNode.x;
-      const dy = node.y - domainNode.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist <= domainNode.r) {
-        dropTargetDomainId = domain.id;
-        currentDropHint = { type: "domain", id: domain.id, node: domainNode };
-        canvas.style.cursor = "copy";
-        return;
-      }
-    }
-    canvas.style.cursor = "grabbing";
-    return;
-  }
-  canvas.style.cursor = "grabbing";
-}
-
-// GPT-5 utilities (moved: import from render utils)
-import { lerp, dist2, isPointInCircle, roundedRectPath, strokeLine, fillCircle, strokeCircle, drawArrow, rgba, withAlpha } from './view_map/render/draw-utils.js';
-import { measureTextCached, ellipsize, wrapText } from './view_map/render/text.js';
 
 function setCursor(type) {
   canvas.style.cursor = type;
 }
 
 function selectObject(obj) {
-  clickedNodeId = obj ? obj.id : null;
+  if (obj) {
+    clickedNodeId = obj.id;
+    console.log('🖱️ Object selected:', obj._type, obj.id);
+  } else {
+    clickedNodeId = null;
+    console.log('🖱️ Selection cleared');
+  }
   requestDrawThrottled();
 }
 
 function commitObjectPosition(obj) {
   if (!obj) return;
-
+  
+  console.log('🖱️ Object position committed:', obj._type, obj.id, 'at:', obj.x, obj.y);
+  
   // Сохраняем текущий зум перед изменениями
   const currentScale = viewState.scale;
   const currentTx = viewState.tx;
@@ -868,6 +350,7 @@ function setProjectVisualStyle(style) {
   if (['galaxy', 'simple', 'planet', 'modern', 'neon', 'tech', 'minimal', 'holographic', 'gradient', 'mixed', 'original'].includes(style)) {
   projectVisualStyle = style;
   requestDrawThrottled(); // Use optimized draw request
+  console.log(`Project visualization style changed to: ${style}`);
   } else {
     console.warn('Invalid visualization style. Use: galaxy, simple, planet, modern, neon, tech, minimal, holographic, gradient, mixed, or original');
   }
@@ -876,7 +359,53 @@ function setProjectVisualStyle(style) {
 // Export function globally
 try { 
   window.setProjectVisualStyle = setProjectVisualStyle;
+  // Добавляем удобные функции для тестирования
+  window.testProjectColors = () => {
+    console.log('🎨 Доступные стили проектов:');
+    console.log('- original (по умолчанию) - улучшенный с эффектами');
+    console.log('- modern, simple, planet');
+    console.log('- neon, tech, minimal, holographic');
+    console.log('- gradient, mixed, galaxy');
+    console.log('Использование: setProjectVisualStyle("modern")');
+    console.log('✨ Все стили теперь имеют улучшенные эффекты клика!');
+  };
+  
+  // Функция для тестирования эффекта клика
+  window.testClickEffect = () => {
+    if (nodes.length > 0) {
+      const project = nodes.find(n => n._type === 'project');
+      if (project) {
+        clickedNodeId = project.id;
+        clickEffectTime = 1.0;
+        console.log('🎯 Тестируем эффект клика на проекте:', project.id);
+      } else {
+        console.log('❌ Проекты не найдены');
+      }
+    } else {
+      console.log('❌ Узлы не загружены');
+    }
+  };
+  
+  // Функция для тестирования мыши
+  window.testMouse = () => {
+    console.log('🖱️ Тестирование мыши:');
+    console.log('- Средняя кнопка мыши: панорамирование (только на пустом месте)');
+    console.log('- Alt + левая кнопка: панорамирование (только на пустом месте)');
+    console.log('- Левая кнопка: перетаскивание объектов');
+    console.log('- Для отладки: window.DEBUG_MOUSE = true');
+  };
+  
+  // Функция для тестирования задач
+  window.testTasks = () => {
+    console.log('📋 Тестирование задач:');
+    console.log('State tasks:', state.tasks);
+    console.log('Nodes:', nodes);
+    console.log('Task nodes:', nodes.filter(n => n._type === 'task'));
+    console.log('Для отладки: window.DEBUG_EDGE_TASKS = true');
+    console.log('Принудительно перерисовать: layoutMap(); drawMap();');
+  };
 } catch (_) {}
+
 // Demo functions for different visual styles
 function demoNeonStyle(ctx, x, y, radius, color, type) {
   ctx.save();
@@ -1062,6 +591,7 @@ function demoTechStyle(ctx, x, y, radius, color, type) {
   
   ctx.restore();
 }
+
 function demoMinimalStyle(ctx, x, y, radius, color, type) {
   ctx.save();
   
@@ -1412,6 +942,7 @@ function drawMinimalStyle(ctx, x, y, radius, color, type) {
   
   ctx.restore();
 }
+
 // New style: Holographic
 function drawHolographicStyle(ctx, x, y, radius, color, type) {
   ctx.save();
@@ -1860,6 +1391,7 @@ function syncProjectDomainLink(projectId, fromDomainId, toDomainId) {
     }
   } catch (_) {}
 }
+
 // Синхронизация связи Задача ↔ Проект (parentId/children)
 function syncTaskProjectLink(taskId, fromProjectId, toProjectId) {
   try {
@@ -1903,6 +1435,42 @@ let dndData = null; // { type: 'task'|'project', id: string, startPos: {x,y} }
 // Suppress synthetic click after pan/drag
 let suppressClickUntil = 0;
 
+// Navigation model: left-drag pans everywhere; click selects; drag node requires Alt or long-press
+const NAV = {
+  mode: 'idle', // 'idle'|'pending'|'pan'|'drag'
+  downCX: 0,
+  downCY: 0,
+  lastCX: 0,
+  lastCY: 0,
+  downTime: 0,
+  pointerId: null,
+  hitNode: null,
+  dragOffset: { x: 0, y: 0 },
+};
+const CLICK_MS = 220;
+const HOLD_MS = 320; // reserved (long-press currently disabled)
+const MOVE_SLOP = 5; // px (screen) — более чувствительное управление
+
+function startPan() {
+  NAV.mode = 'pan';
+  canvas.style.cursor = 'grabbing';
+  // Показываем подсказку о панорамировании
+  if (window.DEBUG_MOUSE) console.log('[NAV] Pan mode activated - LMB drag to pan');
+}
+function updatePan(e) {
+  const dx = e.clientX - NAV.lastCX;
+  const dy = e.clientY - NAV.lastCY;
+  NAV.lastCX = e.clientX;
+  NAV.lastCY = e.clientY;
+  const dpr = window.devicePixelRatio || 1;
+  viewState.tx += dx * dpr;
+  viewState.ty += dy * dpr;
+  requestDraw(); // Возвращаем requestDraw() для плавного панорамирования
+}
+function endPan() {
+  NAV.mode = 'idle';
+  canvas.style.cursor = '';
+}
 function triggerClickAt(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   const offsetX = clientX - rect.left;
@@ -1959,10 +1527,13 @@ function positionToastNearAction(worldX, worldY, toast) {
 
 // Helper function to convert world coordinates to screen coordinates
 function worldToScreen(worldX, worldY) {
-  if (camera) return camera.worldToScreen(worldX, worldY);
+  const canvas = document.getElementById('canvas');
   const dpr = window.devicePixelRatio || 1;
-  const screenX = (worldX * viewState.scale + viewState.tx) / dpr;
-  const screenY = (worldY * viewState.scale + viewState.ty) / dpr;
+  
+  // Apply view transform
+  const screenX = (worldX - viewState.tx) * viewState.scale / dpr;
+  const screenY = (worldY - viewState.ty) * viewState.scale / dpr;
+  
   return { x: screenX, y: screenY };
 }
 // perf tuning
@@ -1991,42 +1562,6 @@ export function initMap(canvasEl, tooltipEl) {
   canvas = canvasEl;
   tooltip = tooltipEl;
   resize();
-  // Initialize camera
-  try {
-    camera = createCamera(canvas, viewState);
-  } catch (e) {
-    console.warn('Camera module failed to init; continuing with legacy transforms', e);
-  }
-  
-  // Initialize scenegraph (will be properly initialized after layoutMap)
-  try {
-    // Create a simple event manager that provides getAllObjects
-    const simpleEventManager = {
-      getAllObjects: () => nodes || []
-    };
-    scenegraph = createScenegraph(simpleEventManager);
-    console.log('Scenegraph initialized successfully');
-  } catch (e) {
-    console.warn('Scenegraph module failed to init; continuing with legacy rendering', e);
-  }
-  
-  // Initialize render layers
-  try {
-    renderLayersList = createRenderLayers();
-  } catch (e) {
-    console.warn('Render layers failed to init; continuing with legacy rendering', e);
-  }
-  
-  // Subscribe to state events for scenegraph updates
-  if (window.eventBus && scenegraph) {
-    window.eventBus.on('objects:changed', () => {
-      scenegraph.markDirty();
-    });
-    window.eventBus.on('object:moved', () => {
-      scenegraph.markDirty();
-    });
-    console.log('Subscribed to state events for scenegraph updates');
-  }
   // initStarField(); // TEMPORARILY DISABLED
   
   // Initialize cosmic animations
@@ -2043,52 +1578,23 @@ export function initMap(canvasEl, tooltipEl) {
     // initStarField(); // TEMPORARILY DISABLED
     try { fitAll(); } catch(_) {}
   });
-  // react to DPR changes as well
-  try {
-  window.matchMedia(`(resolution: ${Math.round((window.devicePixelRatio||1)*96)}dpi)`).addEventListener('change', resize);
-  } catch(_) {}
   // Use pointer events for better DnD handling - FIXED BY GPT-5
-  inputFSM = createFSM({
-    canvas,
-    camera,
-    hit,
-    onClick: handlePointerClick,
-    onDragStart: handleDragStart,
-    onDrag: handleDragMove,
-    onDragEnd: handleDragEnd,
-    onPanStart: handlePanStart,
-    onPanMove: handlePanMove,
-    onPanEnd: handlePanEnd,
-    onHover: handlePointerHover,
-  });
-  canvas.addEventListener("pointerdown", inputFSM.pointerDown);
-  canvas.addEventListener("pointermove", (e) => {
-    evtMove++;
-    inputFSM.pointerMove(e);
-  }, { passive: true });
-  canvas.addEventListener("pointerup", inputFSM.pointerUp);
-  canvas.addEventListener("pointerleave", inputFSM.pointerLeave);
-  canvas.addEventListener("pointercancel", inputFSM.pointerCancel);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointerleave", onPointerLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
-  canvas.addEventListener("click", handlePointerClick);
+  canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
-  
-  // Performance monitoring
-  setInterval(() => {
-    console.log('[drag-stats]', { 
-      perSecMoves: evtMove, 
-      perSecTaskEvents: emits, 
-      scenegraphRebuilds: sgb,
-      dragActive: dragCtx.active,
-      draggedId: dragCtx.id
-    });
-    evtMove = emits = sgb = 0;
-  }, 1000);
   canvas.addEventListener("contextmenu", onContextMenu);
   
   // Контекстное меню браузера блокируем внутри обработчика onContextMenu
   // Дополнительных глобальных блокировок не ставим, чтобы не ломать наш обработчик
   
+  // DISABLED: Mouse events - using pointer events instead
+  // canvas.addEventListener("mousedown", onMouseDown);
+  // canvas.addEventListener("mousemove", onMouseMove);
+  // canvas.addEventListener("mouseup", onMouseUp);
   layoutMap();
   drawMap();
   // Автоматически подгоняем вид под все объекты при инициализации
@@ -2096,12 +1602,13 @@ export function initMap(canvasEl, tooltipEl) {
     try { fitAll(); } catch(_) {}
   }, 100);
   
-  // Start cosmic animation loop - TEMPORARILY DISABLED FOR PERFORMANCE
-  // startCosmicAnimationLoop();
+  // Start cosmic animation loop
+  startCosmicAnimationLoop();
   
   // Initialize context menu
   initContextMenu();
 }
+
 // Context menu functions
 function initContextMenu() {
   const contextMenu = document.getElementById('contextMenu');
@@ -2368,11 +1875,8 @@ export function centerView() {
     if (isFinite(minX)) {
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
-      if (camera) camera.centerOn({ x: centerX, y: centerY });
-      else {
-        viewState.tx = W * 0.5 - centerX;
-        viewState.ty = H * 0.5 - centerY;
-      }
+      viewState.tx = W * 0.5 - centerX;
+      viewState.ty = H * 0.5 - centerY;
     }
   } else {
     viewState.tx = 0;
@@ -2548,18 +2052,14 @@ export function fitActiveProject() {
 }
 
 export function resize() {
-  const wrap = document.getElementById("canvasWrap");
-  if (!wrap) return;
-  const rect = wrap.getBoundingClientRect();
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  const w = Math.round(rect.width * dpr);
-  const h = Math.round(rect.height * dpr);
-  if (canvas.width !== w) canvas.width = w;
-  if (canvas.height !== h) canvas.height = h;
+  const rect = document.getElementById("canvasWrap").getBoundingClientRect();
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  W = Math.floor(rect.width * DPR);
+  H = Math.floor(rect.height * DPR);
+  canvas.width = W;
+  canvas.height = H;
   canvas.style.width = rect.width + "px";
   canvas.style.height = rect.height + "px";
-  DPR = dpr;
-  W = w; H = h;
   ctx = canvas.getContext("2d");
 }
 
@@ -2624,7 +2124,7 @@ function calculateDomainRadius(projects) {
   const totalProjectArea = projects.reduce((sum, project) => {
     const projectSize = project.r || 40 * DPR;
     return sum + Math.PI * projectSize * projectSize;
-            }, 0);
+  }, 0);
 
   // Добавляем пространство для отступов между проектами (50%)
   const areaWithPadding = totalProjectArea * 1.5;
@@ -2635,6 +2135,7 @@ function calculateDomainRadius(projects) {
   // Возвращаем максимальное значение между базовым радиусом и вычисленным
   return Math.max(baseRadius, radiusFromArea);
 }
+
 // Функция очистки дубликатов объектов
 function cleanupDuplicateObjects() {
   console.log('🧹 Очистка дубликатов объектов...');
@@ -2736,6 +2237,7 @@ function cleanupDuplicateObjects() {
     }
   }
 }
+
 // Функция для избежания наложения объектов
 function avoidOverlap(x, y, r, existingNodes, maxAttempts = 20) {
   // Проверяем, что existingNodes существует
@@ -2781,6 +2283,7 @@ function avoidOverlap(x, y, r, existingNodes, maxAttempts = 20) {
   const fallbackY = y + (Math.random() - 0.5) * 1000;
   return { x: fallbackX, y: fallbackY };
 }
+
 export function layoutMap() {
   // Prevent recursive layout calls
   if (isLayouting) {
@@ -2982,9 +2485,9 @@ export function layoutMap() {
         const tasksInRing = Math.min(maxTasksInRing, siblings.length - placed);
         
         if (tasksInRing > 0) {
-        const ringTasks = siblings.slice(placed, placed + tasksInRing);
-        rings.push({ radius: currentRadius, tasks: ringTasks });
-        placed += tasksInRing;
+          const ringTasks = siblings.slice(placed, placed + tasksInRing);
+          rings.push({ radius: currentRadius, tasks: ringTasks });
+          placed += tasksInRing;
         }
         
         currentRadius += minDist;
@@ -3274,55 +2777,6 @@ export function layoutMap() {
   // Reset layouting flag
   isLayouting = false;
 }
-
-/**
- * New modular rendering using scenegraph and layers
- */
-function drawMapModular() {
-  // Temporarily disable static snapshot optimization due to visual glitches
-  // TODO: Fix static snapshot rendering logic
-  /*
-  // Check if we're dragging and use optimized rendering
-  if (__isDragging && __draggedNode) {
-    renderDuringDrag(__draggedNode);
-    __perfPrint();
-    return;
-  }
-  */
-  
-  // Clear canvas
-  __time('clear', () => {
-    ctx.clearRect(0, 0, W, H);
-  });
-  
-  // Check if we have nodes to render
-  if (!nodes || nodes.length === 0) {
-    console.log('No nodes to render in modular mode, falling back to legacy');
-    throw new Error('No nodes available');
-  }
-  
-  // Get camera parameters
-  const cameraParams = __time('camera-params', () => camera.getParams());
-  
-  // Get visible nodes from scenegraph
-  const visibleNodes = __time('scenegraph-visible', () => scenegraph.getVisible({
-    x: cameraParams.x,
-    y: cameraParams.y,
-    scale: cameraParams.scale,
-    width: W,
-    height: H
-  }));
-  
-  // Render all layers
-  __time('render-layers', () => {
-    renderLayers(ctx, visibleNodes, camera, renderLayersList);
-  });
-  
-  __perfPrint();
-  
-  // Mark scenegraph as dirty for next frame (in case objects moved)
-  scenegraph.markDirty();
-}
 export function drawMap() {
   if (!ctx) return;
   
@@ -3331,21 +2785,6 @@ export function drawMap() {
     return;
   }
   isDrawing = true;
-  
-  // Temporarily disable modular rendering due to visual glitches
-  // TODO: Fix modular rendering issues
-  /*
-  // Try new modular rendering first (v2) if enabled
-  if (state.settings.mapVersion === 'v2' && scenegraph && renderLayersList && camera) {
-    try {
-      drawMapModular();
-      isDrawing = false;
-      return;
-    } catch (e) {
-      console.warn('Modular rendering failed, falling back to legacy:', e);
-    }
-  }
-  */
   
   // Отладочная информация для диагностики фризов (только при проблемах)
   if (window.DEBUG_DRAW_CALLS) {
@@ -3418,13 +2857,15 @@ export function drawMap() {
     }
   }
   
-  // single transform matrix: use camera as single source of truth
-  if (camera && camera.getParams) {
-    const { x, y, scale } = camera.getParams();
-    ctx.setTransform(scale, 0, 0, scale, -x * scale, -y * scale);
-  } else {
-    ctx.setTransform(viewState.scale, 0, 0, viewState.scale, viewState.tx, viewState.ty);
-  }
+  // single transform matrix: scale + translate
+  ctx.setTransform(
+    viewState.scale,
+    0,
+    0,
+    viewState.scale,
+    viewState.tx,
+    viewState.ty
+  );
 
   // Cosmic starfield with twinkling stars - TEMPORARILY DISABLED
   // drawStarfield(ctx, W, H, viewState);
@@ -3441,18 +2882,6 @@ export function drawMap() {
     drawChecklists();
   }
 
-  // Dev-only camera invariants check (silent if OK)
-  try {
-    if (camera) {
-      const p = { x: 123.456, y: -7.89 };
-      const s = camera.worldToScreen(p.x, p.y);
-      const w = camera.screenToWorld(s.x, s.y);
-      if (Math.abs(w.x - p.x) > 1e-4 || Math.abs(w.y - p.y) > 1e-4) {
-        console.warn('Camera mapping broken', { p, s, w });
-      }
-    }
-  } catch(_) {}
-
   // Use pre-calculated viewport bounds for culling (already defined above)
 
   // edges - enhanced visibility
@@ -3461,10 +2890,10 @@ export function drawMap() {
     edges.forEach((e) => {
       if (!inView(e.a.x, e.a.y, e.a.r) && !inView(e.b.x, e.b.y, e.b.r)) return;
       
-      // Add energy flow effect for connections - TEMPORARILY DISABLED FOR PERFORMANCE
-      // if (window.cosmicAnimations && Math.random() < 0.1) { // 10% chance per frame
-      //   window.cosmicAnimations.createEnergyFlow(e.a.x, e.a.y, e.b.x, e.b.y, e.color);
-      // }
+      // Add energy flow effect for connections
+      if (window.cosmicAnimations && Math.random() < 0.1) { // 10% chance per frame
+        window.cosmicAnimations.createEnergyFlow(e.a.x, e.a.y, e.b.x, e.b.y, e.color);
+      }
       
       const a = e.a,
         b = e.b;
@@ -3688,9 +3117,9 @@ export function drawMap() {
       }
     });
 
-  // projects as planets - exclude dragged node to prevent double rendering
+  // projects as planets
   nodes
-    .filter((n) => n._type === "project" && n.id !== draggedNode?.id)
+    .filter((n) => n._type === "project")
     .forEach((n) => {
       const __skipCull2 = window.DEBUG_EDGE_TASKS === true;
       if (!__skipCull2 && !inView(n.x, n.y, n.r + 30 * DPR)) return;
@@ -3877,6 +3306,7 @@ export function drawMap() {
         }
       }
     });
+
   // Enhanced drag feedback: improved visual indicators for all drag operations
   if (draggedNode) {
     try {
@@ -3982,7 +3412,7 @@ export function drawMap() {
         ctx.lineTo(target.x, target.y);
         ctx.stroke();
         ctx.setLineDash([]);
-      }
+        }
       } else if (dropTargetDomainId) {
         const target = nodes.find(
           (n) => n._type === "domain" && n.id === dropTargetDomainId
@@ -4061,8 +3491,8 @@ export function drawMap() {
     } catch (_) {}
   }
 
-  // tasks as stars/asteroids - exclude dragged node to prevent double rendering
-  const taskNodes = nodes.filter((n) => n._type === "task" && n.id !== draggedNode?.id);
+  // tasks as stars/asteroids
+  const taskNodes = nodes.filter((n) => n._type === "task");
   
   // Отладка для Edge - показываем количество задач
   if (window.DEBUG_EDGE_TASKS) {
@@ -4084,12 +3514,7 @@ export function drawMap() {
   }
   taskNodes.forEach((n) => {
       const __skipCull3 = window.DEBUG_EDGE_TASKS === true;
-      
-      // Use dragCtx coordinates for ghost preview during drag
-      const x = (dragCtx.active && dragCtx.id === n.id) ? dragCtx.ghostX : n.x;
-      const y = (dragCtx.active && dragCtx.id === n.id) ? dragCtx.ghostY : n.y;
-      
-      if (!__skipCull3 && !inView(x, y, n.r + 20 * DPR)) return;
+      if (!__skipCull3 && !inView(n.x, n.y, n.r + 20 * DPR)) return;
       const t = state.tasks.find((x) => x.id === n.id);
       
       // Отладка отрисовки задач в Edge
@@ -4113,58 +3538,58 @@ export function drawMap() {
         const isClicked = clickedNodeId === n.id;
         
         // Aging ring (if enabled)
-      if (state.showAging) {
-        ctx.beginPath();
-        ctx.arc(x, y, n.r + 3 * DPR, 0, Math.PI * 2);
-        ctx.strokeStyle = colorByAging(n.aging);
-        ctx.lineWidth = 2 * DPR;
-        ctx.stroke();
-      }
+        if (state.showAging) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
+          ctx.strokeStyle = colorByAging(n.aging);
+          ctx.lineWidth = 2 * DPR;
+          ctx.stroke();
+        }
         
         // Main task circle with gradient
-        const gradient = ctx.createRadialGradient(x - n.r/2, y - n.r/2, 0, x, y, n.r);
+        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, n.r);
         gradient.addColorStop(0, baseColor + "FF");
         gradient.addColorStop(0.3, baseColor + "DD");
         gradient.addColorStop(0.7, baseColor + "AA");
         gradient.addColorStop(1, baseColor + "77");
         
-      ctx.beginPath();
-      ctx.arc(x, y, n.r, 0, Math.PI * 2);
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
         
         // Glow effect
-      if (state.showGlow && allowGlow) {
-        ctx.shadowColor = baseColor;
-        ctx.shadowBlur = 12 * DPR;
-      } else {
-        ctx.shadowBlur = 0;
-      }
+        if (state.showGlow && allowGlow) {
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 12 * DPR;
+        } else {
+          ctx.shadowBlur = 0;
+        }
         
         ctx.fillStyle = gradient;
-      ctx.fill();
-      ctx.shadowBlur = 0;
+        ctx.fill();
+        ctx.shadowBlur = 0;
         
         // Inner highlight for 3D effect
-        const innerGradient = ctx.createRadialGradient(x - n.r/3, y - n.r/3, 0, x, y, n.r * 0.6);
+        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.6);
         innerGradient.addColorStop(0, "#ffffff40");
         innerGradient.addColorStop(1, "#00000000");
         
         ctx.beginPath();
         ctx.fillStyle = innerGradient;
-        ctx.arc(x, y, n.r * 0.6, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r * 0.6, 0, Math.PI * 2);
         ctx.fill();
         
         // Border with contrast color
         ctx.beginPath();
         ctx.strokeStyle = getContrastColor(baseColor);
         ctx.lineWidth = 1.5 * DPR;
-        ctx.arc(x, y, n.r, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
         ctx.stroke();
         
         // Outer glow for depth
         ctx.beginPath();
         ctx.strokeStyle = baseColor + "30";
         ctx.lineWidth = 3 * DPR;
-        ctx.arc(x, y, n.r + 1 * DPR, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r + 1 * DPR, 0, Math.PI * 2);
         ctx.stroke();
         
         // Status-specific styling
@@ -4173,7 +3598,7 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#f59e0b";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(x, y, n.r + 4 * DPR, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, n.r + 4 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         } else if (n.status === "doing") {
           // Pulsing effect for "doing" tasks
@@ -4181,7 +3606,7 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = baseColor + "80";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(x, y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
           ctx.stroke();
         }
         
@@ -4190,24 +3615,24 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(x, y, n.r + 6 * DPR, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         }
         
         // Click effect will be drawn after all other layers
         
       } else if (projectVisualStyle === 'neon') {
-        drawNeonStyle(ctx, x, y, n.r, baseColor, 'task');
+        drawNeonStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'tech') {
-        drawTechStyle(ctx, x, y, n.r, baseColor, 'task');
+        drawTechStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'minimal') {
-        drawMinimalStyle(ctx, x, y, n.r, baseColor, 'task');
+        drawMinimalStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'holographic') {
-        drawHolographicStyle(ctx, x, y, n.r, baseColor, 'task');
+        drawHolographicStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'gradient') {
-        drawGradientStyle(ctx, x, y, n.r, baseColor, 'task');
+        drawGradientStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else if (projectVisualStyle === 'mixed') {
-        drawMixedStyle(ctx, x, y, n.r, baseColor, 'task');
+        drawMixedStyle(ctx, n.x, n.y, n.r, baseColor, 'task');
       } else {
         // Enhanced task rendering with advanced effects
         const isHovered = hoverNodeId === n.id;
@@ -4219,7 +3644,7 @@ export function drawMap() {
         const pulseRadius = n.r * pulseIntensity;
         
         // Enhanced gradient with multiple color stops
-        const gradient = ctx.createRadialGradient(x - n.r/2, y - n.r/2, 0, x, y, pulseRadius);
+        const gradient = ctx.createRadialGradient(n.x - n.r/2, n.y - n.r/2, 0, n.x, n.y, pulseRadius);
         gradient.addColorStop(0, baseColor + "FF");
         gradient.addColorStop(0.2, baseColor + "EE");
         gradient.addColorStop(0.4, baseColor + "CC");
@@ -4233,14 +3658,14 @@ export function drawMap() {
           ctx.strokeStyle = baseColor + "60";
           ctx.lineWidth = 2 * DPR;
           ctx.beginPath();
-          ctx.arc(x, y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
           ctx.stroke();
           ctx.shadowBlur = 0;
         }
         
         // Main task circle with enhanced gradient
         ctx.beginPath();
-        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
         
         if (state.showGlow && allowGlow) {
           ctx.shadowColor = baseColor;
@@ -4254,7 +3679,7 @@ export function drawMap() {
         ctx.shadowBlur = 0;
         
         // Enhanced inner highlight with multiple layers
-        const innerGradient = ctx.createRadialGradient(x - n.r/3, y - n.r/3, 0, x, y, n.r * 0.7);
+        const innerGradient = ctx.createRadialGradient(n.x - n.r/3, n.y - n.r/3, 0, n.x, n.y, n.r * 0.7);
         innerGradient.addColorStop(0, "#ffffff60");
         innerGradient.addColorStop(0.3, "#ffffff30");
         innerGradient.addColorStop(0.7, "#ffffff10");
@@ -4262,21 +3687,21 @@ export function drawMap() {
         
         ctx.beginPath();
         ctx.fillStyle = innerGradient;
-        ctx.arc(x, y, n.r * 0.7, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r * 0.7, 0, Math.PI * 2);
         ctx.fill();
         
         // Secondary inner highlight for more depth
-        const innerGradient2 = ctx.createRadialGradient(x - n.r/4, y - n.r/4, 0, x, y, n.r * 0.4);
+        const innerGradient2 = ctx.createRadialGradient(n.x - n.r/4, n.y - n.r/4, 0, n.x, n.y, n.r * 0.4);
         innerGradient2.addColorStop(0, "#ffffff80");
         innerGradient2.addColorStop(1, "#00000000");
         
         ctx.beginPath();
         ctx.fillStyle = innerGradient2;
-        ctx.arc(x, y, n.r * 0.4, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r * 0.4, 0, Math.PI * 2);
         ctx.fill();
         
         // Enhanced border with gradient
-        const borderGradient = ctx.createLinearGradient(x - n.r, y, x + n.r, y);
+        const borderGradient = ctx.createLinearGradient(n.x - n.r, n.y, n.x + n.r, n.y);
         borderGradient.addColorStop(0, getContrastColor(baseColor) + "CC");
         borderGradient.addColorStop(0.5, getContrastColor(baseColor) + "FF");
         borderGradient.addColorStop(1, getContrastColor(baseColor) + "CC");
@@ -4284,20 +3709,20 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = borderGradient;
         ctx.lineWidth = 2 * DPR;
-        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, pulseRadius, 0, Math.PI * 2);
         ctx.stroke();
         
         // Outer glow with multiple rings
         ctx.beginPath();
         ctx.strokeStyle = baseColor + "40";
         ctx.lineWidth = 4 * DPR;
-        ctx.arc(x, y, pulseRadius + 2 * DPR, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, pulseRadius + 2 * DPR, 0, Math.PI * 2);
         ctx.stroke();
         
         ctx.beginPath();
         ctx.strokeStyle = baseColor + "20";
         ctx.lineWidth = 6 * DPR;
-        ctx.arc(x, y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, pulseRadius + 4 * DPR, 0, Math.PI * 2);
         ctx.stroke();
         
         // Status-specific effects
@@ -4306,16 +3731,16 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#f59e0b";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(x, y, pulseRadius + 6 * DPR, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, pulseRadius + 6 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         } else if (n.status === 'done') {
           // Done tasks get a subtle checkmark effect
           ctx.strokeStyle = "#10b981";
           ctx.lineWidth = 2 * DPR;
           ctx.beginPath();
-          ctx.moveTo(x - n.r * 0.3, y);
-          ctx.lineTo(x - n.r * 0.1, y + n.r * 0.2);
-          ctx.lineTo(x + n.r * 0.3, y - n.r * 0.2);
+          ctx.moveTo(n.x - n.r * 0.3, n.y);
+          ctx.lineTo(n.x - n.r * 0.1, n.y + n.r * 0.2);
+          ctx.lineTo(n.x + n.r * 0.3, n.y - n.r * 0.2);
           ctx.stroke();
         }
         
@@ -4324,14 +3749,14 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#f59e0b";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(x, y, n.r + 4 * DPR, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, n.r + 4 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         } else if (n.status === "doing") {
           const pulse = Math.sin(Date.now() * 0.003) * 0.1 + 1;
           ctx.beginPath();
           ctx.strokeStyle = baseColor + "80";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(x, y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, n.r + 2 * DPR * pulse, 0, Math.PI * 2);
           ctx.stroke();
         }
         
@@ -4340,7 +3765,7 @@ export function drawMap() {
           ctx.beginPath();
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 2 * DPR;
-          ctx.arc(x, y, n.r + 6 * DPR, 0, Math.PI * 2);
+          ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
           ctx.stroke();
         }
         
@@ -4352,14 +3777,14 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = "#ffd700";
         ctx.lineWidth = 2 * DPR;
-        ctx.arc(x, y, n.r + 8 * DPR, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
       
       // Aging ring
       if (state.showAging) {
         ctx.beginPath();
-        ctx.arc(x, y, n.r + 3 * DPR, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r + 3 * DPR, 0, Math.PI * 2);
         ctx.strokeStyle = colorByAging(n.aging);
         ctx.lineWidth = 2 * DPR;
         ctx.stroke();
@@ -4378,10 +3803,10 @@ export function drawMap() {
         ctx.lineWidth = 2 * DPR;
         for (let i = 0; i < 8; i++) {
           const angle = (i / 8) * Math.PI * 2;
-          const startX = x + Math.cos(angle) * (n.r + 5 * DPR);
-          const startY = y + Math.sin(angle) * (n.r + 5 * DPR);
-          const endX = x + Math.cos(angle) * starRadius;
-          const endY = y + Math.sin(angle) * starRadius;
+          const startX = n.x + Math.cos(angle) * (n.r + 5 * DPR);
+          const startY = n.y + Math.sin(angle) * (n.r + 5 * DPR);
+          const endX = n.x + Math.cos(angle) * starRadius;
+          const endY = n.y + Math.sin(angle) * starRadius;
           
           ctx.beginPath();
           ctx.moveTo(startX, startY);
@@ -4393,14 +3818,14 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = baseColor + Math.floor(clickAlpha * 255).toString(16).padStart(2, '0');
         ctx.lineWidth = 4 * DPR;
-        ctx.arc(x, y, clickRadius, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, clickRadius, 0, Math.PI * 2);
         ctx.stroke();
         
         // Bright inner ring
         ctx.beginPath();
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 3 * DPR;
-        ctx.arc(x, y, n.r + 8 * DPR, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r + 8 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
       
@@ -4409,7 +3834,7 @@ export function drawMap() {
         ctx.beginPath();
         ctx.strokeStyle = "#f59e0b";
         ctx.lineWidth = 1 * DPR;
-        ctx.arc(x, y, n.r + 6 * DPR, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r + 6 * DPR, 0, Math.PI * 2);
         ctx.stroke();
       }
       
@@ -4517,6 +3942,7 @@ export function drawMap() {
 }
 // optionally draw debug overlay
 debugOverlay();
+
 // DEBUG: optional overlay to help diagnose layout issues
 // Enable by setting `window.ALF_DEBUG = true` in the console and reloading.
 function debugOverlay() {
@@ -4567,33 +3993,21 @@ function debugOverlay() {
 }
 
 function screenToWorld(x, y) {
-  if (camera) return camera.screenToWorld(x, y);
   const dpr = window.devicePixelRatio || 1;
-  const cx = x * dpr, cy = y * dpr;
-  const inv = 1 / viewState.scale;
-  return { x: (cx - viewState.tx) * inv, y: (cy - viewState.ty) * inv };
+  const cx = x * dpr,
+    cy = y * dpr;
+  const invScale = 1 / viewState.scale;
+  return {
+    x: (cx - viewState.tx) * invScale,
+    y: (cy - viewState.ty) * invScale,
+  };
 }
 function hit(x, y) {
-  // During drag, skip expensive hit testing
-  if (__isDragging) {
-    return null; // No hit testing during drag
-  }
-  
-  // Try scenegraph first if available
-  if (scenegraph) {
-    const results = scenegraph.hitTest(x, y, 20); // 20px search radius
-    if (results.length > 0) {
-      return results[0].data; // Return original object data
-    }
-    return null;
-  }
-  
-  // Fallback to legacy hit testing
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
     const dx = x - n.x,
       dy = y - n.y;
-    const rr =
+  const rr =
       n._type === "task"
         ? n.r + 6 * DPR
         : n._type === "project"
@@ -4637,6 +4051,605 @@ function hitExcluding(x, y, ignoreId) {
   }
   return null;
 }
+
+function onMouseMove(e) {
+  // track last mouse for mouseup outside canvas
+  lastMouseClient = {
+    clientX: e.clientX,
+    clientY: e.clientY,
+    offsetX: e.offsetX,
+    offsetY: e.offsetY,
+  };
+  
+  // Любые действия только если ЛКМ реально зажата
+  if (!(e.buttons & 1)) {
+    // если кнопку «потеряли» (вышли из окна и т.п.) — корректно завершить
+    onMouseUp(e);
+    return;
+  }
+
+  if (mouse.phase === 'idle') return; // без нажатия — никаких движений
+
+  const sx = e.clientX, sy = e.clientY;
+
+  // PRESS: ждём превышения порога, чтобы решить, что именно делать
+  if (mouse.phase === 'press') {
+    const moved2 = distance2(mouse.startX, mouse.startY, sx, sy);
+    console.log('🖱️ Mouse moved2:', moved2, 'threshold2:', mouse.threshold * mouse.threshold);
+    
+    if (moved2 >= mouse.threshold * mouse.threshold) {
+      // превысили порог — выбираем режим
+      const { x: wx, y: wy } = screenToWorld(mouse.startX, mouse.startY);
+
+      if (mouse.target) {
+        // стартуем drag объекта — фиксируем смещение хвата
+        mouse.phase = 'drag-object';
+        // предполагаем у объекта поля x,y (мировые координаты центра/якоря)
+        mouse.dragOffsetX = wx - mouse.target.x;
+        mouse.dragOffsetY = wy - mouse.target.y;
+        setCursor('grabbing');
+        console.log('🖱️ Phase: drag-object, offset:', mouse.dragOffsetX, mouse.dragOffsetY);
+      } else {
+        // стартуем панорамирование
+        mouse.phase = 'pan';
+        setCursor('grabbing');
+        console.log('🖱️ Phase: pan');
+      }
+    }
+    mouse.lastX = sx; mouse.lastY = sy;
+    return;
+  }
+
+  // DRAG-OBJECT: двигаем объект в мировых координатах,
+  // используя текущее положение курсора минус зафиксированный оффсет.
+  if (mouse.phase === 'drag-object') {
+    const { x: wx, y: wy } = screenToWorld(sx, sy);
+    // перемещаем объект без «дрожи»
+    mouse.target.x = wx - mouse.dragOffsetX;
+    mouse.target.y = wy - mouse.dragOffsetY;
+    mouse.lastX = sx; mouse.lastY = sy;
+    requestDraw(); // Возвращаем requestDraw() для плавного перетаскивания объектов
+    return;
+  }
+
+  // PAN: двигаем камеру относительно последнего положения мыши.
+  if (mouse.phase === 'pan') {
+    const dxScreen = sx - mouse.lastX;
+    const dyScreen = sy - mouse.lastY;
+    if (dxScreen !== 0 || dyScreen !== 0) {
+      const dpr = window.devicePixelRatio || 1;
+      viewState.tx += (dxScreen * dpr) / viewState.scale;
+      viewState.ty += (dyScreen * dpr) / viewState.scale;
+      mouse.lastX = sx; mouse.lastY = sy;
+      requestDraw(); // Возвращаем requestDraw() для плавного панорамирования
+      console.log('🖱️ Panning delta:', dxScreen, dyScreen);
+    }
+    return;
+  }
+  
+  // Legacy panning (middle button)
+  if (viewState.dragging) {
+    const dx = e.clientX - viewState.lastX,
+      dy = e.clientY - viewState.lastY;
+    const dpr = window.devicePixelRatio || 1;
+    viewState.tx += (dx * dpr) / viewState.scale;
+    viewState.ty += (dy * dpr) / viewState.scale;
+    viewState.lastX = e.clientX;
+    viewState.lastY = e.clientY;
+    requestDraw(); // Возвращаем requestDraw() для плавного панорамирования
+    return;
+  }
+  
+  // promote pending drag after threshold (4-6px)
+  if (pendingDragNode && pendingDragNode.x !== undefined && pendingDragNode.y !== undefined) {
+    const dx = e.clientX - pendingDragStart.x;
+    const dy = e.clientY - pendingDragStart.y;
+    const dist = Math.hypot(dx, dy);
+    const threshold = 5; // px
+    if (dist >= threshold) {
+      // Cancel click timer and start drag
+      cancelClickTimer();
+      
+      // start actual drag
+      const pt = screenToWorld(
+        pendingDragStart.x - (e.clientX - e.offsetX),
+        pendingDragStart.y - (e.clientY - e.offsetY)
+      );
+      draggedNode = pendingDragNode;
+      dragOffset.x = pt.x - pendingDragNode.x;
+      dragOffset.y = pt.y - pendingDragNode.y;
+      pendingDragNode = null;
+      canvas.style.cursor = "grabbing";
+      
+      // Add visual feedback for drag start
+      canvas.style.filter = "brightness(1.05)";
+      canvas.style.transition = "filter 0.2s ease";
+    }
+  }
+  if (draggedNode) {
+    const pt = screenToWorld(e.offsetX, e.offsetY);
+    draggedNode.x = pt.x - dragOffset.x;
+    draggedNode.y = pt.y - dragOffset.y;
+    
+    // Enhanced drop target detection with better visual feedback
+    dropTargetProjectId = null;
+    dropTargetDomainId = null;
+    const hitNode = hitExcluding(pt.x, pt.y, draggedNode.id);
+    
+    // More precise domain detection for tasks and projects
+    let targetDomain = null;
+    for (const domain of state.domains) {
+      const dNode = nodes.find(n => n._type === 'domain' && n.id === domain.id);
+      if (dNode) {
+        const dx = pt.x - dNode.x;
+        const dy = pt.y - dNode.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= dNode.r) {
+          targetDomain = domain;
+          break;
+        }
+      }
+    }
+    
+    // Also do tolerant project detection for tasks (radius * 1.6)
+    let targetProject = null;
+    if (draggedNode._type === 'task') {
+      for (const project of state.projects) {
+        const pNode = nodes.find(n => n._type === 'project' && n.id === project.id);
+        if (!pNode) continue;
+        const dx = pt.x - pNode.x;
+        const dy = pt.y - pNode.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= pNode.r * 1.6) { targetProject = { id: project.id, node: pNode }; break; }
+      }
+    }
+    
+    // reset hint
+    currentDropHint = null;
+    
+    if (draggedNode._type === 'task' && targetProject) {
+      dropTargetProjectId = targetProject.id;
+      canvas.style.cursor = 'copy';
+      currentDropHint = { type: 'project', id: targetProject.id, node: targetProject.node };
+    } else if (hitNode && draggedNode._type === 'task' && hitNode._type === 'project') {
+      dropTargetProjectId = hitNode.id;
+      canvas.style.cursor = 'copy';
+      currentDropHint = { type: 'project', id: hitNode.id, node: hitNode };
+    } else if (targetDomain) {
+      dropTargetDomainId = targetDomain.id;
+      canvas.style.cursor = 'copy';
+      const dNode = nodes.find(n => n._type === 'domain' && n.id === targetDomain.id);
+      if (dNode) currentDropHint = { type: 'domain', id: targetDomain.id, node: dNode };
+    } else {
+      // empty space
+      canvas.style.cursor = draggedNode._type === 'task' ? 'move' : 'grabbing';
+    }
+    
+    requestDrawThrottled();
+    return;
+  }
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  const n = hit(pt.x, pt.y);
+  if (!n) {
+    hoverNodeId = null;
+    tooltip.style.opacity = 0;
+    // clear drop targets when not dragging
+    dropTargetProjectId = null;
+    dropTargetDomainId = null;
+    // Скрываем информационную панель
+    if (window.hideInfoPanel) {
+      window.hideInfoPanel();
+    }
+    requestDrawThrottled();
+    return;
+  }
+  tooltip.style.left = e.clientX + "px";
+  tooltip.style.top = e.clientY + "px";
+  tooltip.style.opacity = 1;
+  hoverNodeId = n.id;
+  if (n._type === "task") {
+    const t = state.tasks.find((x) => x.id === n.id);
+    const tags = (t.tags || []).map((s) => `#${s}`).join(" ");
+    const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
+    const tooltipText = `🪐 <b>${t.title}</b> — ${
+      t.status
+    }${est}<br/><span class="hint">обновл. ${daysSince(
+      t.updatedAt
+    )} дн. ${tags}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    console.log('🎯 Task hover:', t.title, 'showInfoPanel available:', !!window.showInfoPanel);
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🪐', true);
+    } else {
+      console.error('❌ showInfoPanel not available');
+    }
+  } else if (n._type === "project") {
+    const p = state.projects.find((x) => x.id === n.id);
+    const tags = (p.tags || []).map((s) => `#${s}`).join(" ");
+    const tooltipText = `🛰 Проект: <b>${p.title}</b>${
+      tags ? `<br/><span class="hint">${tags}</span>` : ""
+    }`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    console.log('🎯 Project hover:', p.title, 'showInfoPanel available:', !!window.showInfoPanel);
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🛰', true);
+    } else {
+      console.error('❌ showInfoPanel not available');
+    }
+  } else if (n._type === "idea") {
+    const idea = state.ideas.find((x) => x.id === n.id);
+    const content = idea.content ? `<br/><span class="hint">${idea.content.substring(0, 100)}${idea.content.length > 100 ? '...' : ''}</span>` : "";
+    const tooltipText = `🌌 Идея: <b>${idea.title}</b>${content}<br/><span class="hint">создана ${daysSince(idea.createdAt)} дн. назад</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🌌', true);
+    }
+  } else if (n._type === "note") {
+    const note = state.notes.find((x) => x.id === n.id);
+    const content = note.content ? `<br/><span class="hint">${note.content.substring(0, 80)}${note.content.length > 80 ? '...' : ''}</span>` : "";
+    const tooltipText = `🪨 Заметка: <b>${note.title}</b>${content}<br/><span class="hint">создана ${daysSince(note.createdAt)} дн. назад</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🪨', true);
+    }
+  } else if (n._type === "checklist") {
+    const checklist = state.checklists.find((x) => x.id === n.id);
+    const progress = getChecklistProgress(checklist.id);
+    const progressText = progress.total > 0 ? `${progress.completed}/${progress.total} (${Math.round(progress.completed/progress.total*100)}%)` : '0/0 (0%)';
+    const tooltipText = `✓ Чек-лист: <b>${checklist.title}</b><br/><span class="hint">прогресс: ${progressText}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '✓', true);
+    }
+  } else {
+    const d = state.domains.find((x) => x.id === n.id);
+    const mood = n.mood || 'balance';
+    const moodDescription = n.moodDescription || 'Баланс: стабильное состояние';
+    const tooltipText = `🌌 Домен: <b>${d.title}</b><br/><span class="hint">${moodDescription}</span>`;
+    tooltip.innerHTML = tooltipText;
+    // Показываем в информационной панели
+    if (window.showInfoPanel) {
+      window.showInfoPanel(tooltipText, '🌌', true);
+    }
+  }
+  requestDrawThrottled();
+}
+
+function onMouseLeave() {
+  pendingDragNode = null;
+  if (draggedNode) {
+    draggedNode = null;
+    canvas.style.cursor = "";
+    
+    // Reset visual effects
+    canvas.style.filter = "";
+    canvas.style.transition = "";
+  }
+  dropTargetProjectId = null;
+  
+  // Очищаем таймеры подсказок
+  if (tooltipTimeout) {
+    clearTimeout(tooltipTimeout);
+    tooltipTimeout = null;
+  }
+  currentHoveredObject = null;
+  hoverNodeId = null;
+  tooltip.style.opacity = 0;
+  
+  // Скрываем информационную панель
+  if (window.hideInfoPanel) {
+    window.hideInfoPanel();
+  }
+  dropTargetDomainId = null;
+  requestDrawThrottled(); // Use optimized draw request
+}
+function onMouseUp(e) {
+  // Разрешаем вызывать повторно (если уже idle — просто выходим)
+  if (mouse.phase === 'idle') return;
+
+  const sx = e.clientX, sy = e.clientY;
+
+  if (mouse.phase === 'press') {
+    // Порог не превышен — это КЛИК
+    const { x: wx, y: wy } = screenToWorld(sx, sy);
+    const clicked = hit(wx, wy);
+    // Селектим объект (или снимаем выделение)
+    selectObject(clicked || null);
+    setCursor('default');
+    console.log('🖱️ Click processed');
+  } else if (mouse.phase === 'drag-object') {
+    // Завершили перетаскивание
+    commitObjectPosition(mouse.target);
+    setCursor('default');
+    console.log('🖱️ Object drag completed');
+  } else if (mouse.phase === 'pan') {
+    // Завершили панорамирование
+    setCursor('default');
+    console.log('🖱️ Panning completed');
+  }
+
+  // Сброс состояния
+  mouse.phase = 'idle';
+  mouse.target = null;
+  mouse.dragOffsetX = 0;
+  mouse.dragOffsetY = 0;
+  
+  console.log('🖱️ Mouse state reset to idle');
+}
+
+function onMouseDown(e) {
+  // Disabled: navigation uses pointer events; prevent legacy mouse drag path
+    return;
+  if (e.button !== 0) return;                 // только ЛКМ
+  if (e.buttons !== 1) return;                // только ЛКМ зажата
+  e.preventDefault();
+
+  const sx = e.clientX, sy = e.clientY;
+  mouse.startX = mouse.lastX = sx;
+  mouse.startY = mouse.lastY = sy;
+
+  const { x: wx, y: wy } = screenToWorld(e.offsetX, e.offsetY);
+  mouse.target = hit(wx, wy);
+
+  mouse.phase = 'press';
+  setCursor(mouse.target ? 'grab' : 'grab');  // визуальная подсказка одинаковая на press
+  
+  console.log('🖱️ Mouse down, phase: press, target:', mouse.target ? `${mouse.target._type}:${mouse.target.id}` : 'none');
+}
+// Helper function to properly hide toast and clean up handlers
+function hideToast() {
+  const toast = document.getElementById("toast");
+  if (toast) {
+    // Clear all event handlers
+    const buttons = toast.querySelectorAll("button");
+    buttons.forEach(btn => {
+      btn.onclick = null;
+    });
+    
+    // Hide toast with proper cleanup
+    toast.classList.remove("show");
+    toast.className = "toast";
+    toast.innerHTML = "";
+    
+    // Clear any inline styles that might interfere
+    toast.style.display = "";
+    toast.style.opacity = "";
+    toast.style.visibility = "";
+    toast.style.zIndex = "";
+    
+    // Clear modal flag
+    isModalOpen = false;
+  }
+}
+
+// New pointer event handlers with robust navigation model
+function onPointerDown(e) {
+  try { e.preventDefault(); } catch(_) {}
+  if (isModalOpen) return;
+  if (e.button === 2) return; // context menu handled separately
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const worldPos = screenToWorld(x, y);
+  const hitNode = hit(worldPos.x, worldPos.y);
+  NAV.mode = 'pending';
+  NAV.downCX = NAV.lastCX = e.clientX;
+  NAV.downCY = NAV.lastCY = e.clientY;
+  NAV.downTime = performance.now();
+  NAV.pointerId = e.pointerId;
+  NAV.hitNode = hitNode || null;
+  NAV.dragOffset = hitNode ? { x: worldPos.x - hitNode.x, y: worldPos.y - hitNode.y } : { x: 0, y: 0 };
+  try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+  if (window.DEBUG_MOUSE) {
+    console.log('[NAV] down pending; hit:', hitNode? hitNode._type+':'+hitNode.id : 'none');
+  }
+}
+
+function onPointerMove(e) {
+  try { e.preventDefault(); } catch(_) {}
+  if (isModalOpen) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const worldPos = screenToWorld(x, y);
+  // Обновляем lastMouseClient для корректного handleDrop() в pointer-схеме
+  lastMouseClient = { clientX: e.clientX, clientY: e.clientY, offsetX: x, offsetY: y };
+  
+  // Throttle heavy operations during drag
+  const now = performance.now();
+  if (NAV.mode === 'drag' && now - lastDrawTime < DRAG_THROTTLE_MS) {
+    return;
+  }
+  
+  // Skip heavy hit-tests immediately after zoom
+  if (now - lastZoomTime < ZOOM_COOLDOWN_MS) {
+    return;
+  }
+  
+  // Обработка наведения на чек-листы - ВСЕГДА вызываем
+  handleChecklistHover(x, y, worldPos);
+  
+  // Обработка подсказок для обычных объектов
+  handleObjectHover(x, y, worldPos);
+  
+  if (NAV.mode === 'idle') return;
+  const moved = Math.hypot(e.clientX - NAV.downCX, e.clientY - NAV.downCY);
+  if (NAV.mode === 'pending') {
+    if (moved > MOVE_SLOP) {
+      // Start object drag ONLY with Alt pressed; otherwise pan
+      if (NAV.hitNode && e.altKey) {
+        // Проверяем блокировку перемещения
+        if (!canMoveObject(NAV.hitNode)) {
+          console.log('🚫 Объект заблокирован для перемещения:', NAV.hitNode._type, NAV.hitNode.id);
+          showToast('Объект заблокирован для перемещения', 'warn');
+          startPan(); // Переключаемся на панорамирование
+          if (window.DEBUG_MOUSE) console.log('[NAV] blocked drag, switching to pan');
+        } else {
+          NAV.mode = 'drag';
+          draggedNode = NAV.hitNode;
+          dragOffset = { x: NAV.dragOffset.x, y: NAV.dragOffset.y };
+          canvas.style.cursor = 'grabbing';
+          if (window.DEBUG_MOUSE) console.log('[NAV] start drag (alt+move)');
+        }
+      } else {
+        // По умолчанию - панорамирование (даже если есть объект под курсором)
+        startPan();
+        if (window.DEBUG_MOUSE) console.log('[NAV] start pan (default behavior)');
+      }
+    }
+      return;
+    }
+  if (NAV.mode === 'pan') {
+    updatePan(e);
+    if (window.DEBUG_MOUSE) console.log('[NAV] pan move');
+    return;
+  }
+  if (NAV.mode === 'drag' && draggedNode) {
+    draggedNode.x = worldPos.x - dragOffset.x;
+    draggedNode.y = worldPos.y - dragOffset.y;
+    
+    // Определяем цель перетаскивания (подсветка + корректный выбор цели)
+    dropTargetProjectId = null;
+    dropTargetDomainId = null;
+    currentDropHint = null;
+    
+    // Если только что был зум — пропускаем тяжёлые расчёты 1 кадр
+    if (performance.now() - _lastZoomTs < 50) {
+      // Не вызываем requestDraw() при каждом движении мыши - это создает фризы
+      return;
+    }
+
+    if (draggedNode._type === 'task') {
+      // Толерантный хит-поиск проекта для задач
+      let bestProject = null;
+      let bestDist = Infinity;
+      for (const project of state.projects) {
+        const pNode = nodes.find(n => n._type === 'project' && n.id === project.id);
+        if (!pNode) continue;
+        const dx = draggedNode.x - pNode.x;
+        const dy = draggedNode.y - pNode.y;
+        const dist = Math.hypot(dx, dy);
+        const hitR = pNode.r * 1.35; // чуть меньше радиус — меньше лишних пересчётов
+        if (dist <= hitR && dist < bestDist) { bestDist = dist; bestProject = pNode; }
+      }
+      if (bestProject) {
+        dropTargetProjectId = bestProject.id;
+        currentDropHint = { type: 'project', id: bestProject.id, node: bestProject };
+        canvas.style.cursor = 'copy';
+      } else {
+        // Проверяем домен под курсором (если потребуется для других типов)
+        for (const domain of state.domains) {
+          const dNode = nodes.find(n => n._type === 'domain' && n.id === domain.id);
+          if (!dNode) continue;
+          const dx = draggedNode.x - dNode.x;
+          const dy = draggedNode.y - dNode.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist <= dNode.r) {
+            dropTargetDomainId = domain.id;
+            currentDropHint = { type: 'domain', id: domain.id, node: dNode };
+            canvas.style.cursor = 'copy';
+            break;
+          }
+        }
+      }
+      if (!currentDropHint) canvas.style.cursor = 'move';
+    }
+    // если перетаскиваем чек-лист — сразу сохраняем координаты в state
+    if (draggedNode._type === 'checklist') {
+      const cl = state.checklists.find(c => c.id === draggedNode.id);
+      if (cl) { cl.x = draggedNode.x; cl.y = draggedNode.y; }
+    }
+    requestDraw(); // Возвращаем requestDraw() для плавного перетаскивания объектов
+    if (window.DEBUG_MOUSE) console.log('[NAV] drag move');
+    return;
+  }
+}
+
+// Простая система для чек-листов - курсор + быстрый просмотр
+let currentHoveredChecklist = null;
+let quickViewTimer = null;
+
+// Глобальные переменные для управления задержкой подсказок
+let tooltipTimeout = null;
+let currentHoveredObject = null;
+
+function handleObjectHover(screenX, screenY, worldPos) {
+  const n = hit(worldPos.x, worldPos.y);
+  
+  // Если объект изменился, сбрасываем таймер
+  if (currentHoveredObject !== n?.id) {
+    if (tooltipTimeout) {
+      clearTimeout(tooltipTimeout);
+      tooltipTimeout = null;
+    }
+    currentHoveredObject = n?.id;
+  }
+  
+  if (!n) {
+    hoverNodeId = null;
+    tooltip.style.opacity = 0;
+    currentHoveredObject = null;
+    // Скрываем информационную панель
+    if (window.hideInfoPanel) {
+      window.hideInfoPanel();
+    }
+    return;
+  }
+  
+  // Если уже показываем подсказку для этого объекта, не создаем новую
+  if (hoverNodeId === n.id && tooltip.style.opacity === "1") {
+    return;
+  }
+  
+  hoverNodeId = n.id;
+  
+  // Задержка для всплывающей подсказки (настраиваемая)
+  const delay = (state.settings && state.settings.tooltipDelay !== undefined) ? state.settings.tooltipDelay : 500;
+  console.log('⏱️ Задержка подсказки:', delay, 'мс для объекта:', n._type, n.id);
+  tooltipTimeout = setTimeout(() => {
+    showTooltipForObject(n, screenX, screenY);
+  }, delay);
+  
+  // Сразу показываем детальную информацию в нижней панели
+  showDetailedInfoForObject(n);
+}
+
+function showTooltipForObject(n, screenX, screenY) {
+  tooltip.style.left = screenX + "px";
+  tooltip.style.top = screenY + "px";
+  tooltip.style.opacity = 1;
+  
+  // Краткая информация для всплывающей подсказки
+  if (n._type === "task") {
+    const t = state.tasks.find((x) => x.id === n.id);
+    const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
+    tooltip.innerHTML = `🪐 <b>${t.title}</b><br/><span class="hint">${t.status}${est}</span>`;
+  } else if (n._type === "project") {
+    const p = state.projects.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🛰 <b>${p.title}</b><br/><span class="hint">Проект</span>`;
+  } else if (n._type === "idea") {
+    const idea = state.ideas.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🌌 <b>${idea.title}</b><br/><span class="hint">Идея</span>`;
+  } else if (n._type === "note") {
+    const note = state.notes.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🪨 <b>${note.title}</b><br/><span class="hint">Заметка</span>`;
+  } else if (n._type === "checklist") {
+    const checklist = state.checklists.find((x) => x.id === n.id);
+    const progress = getChecklistProgress(checklist.id);
+    const progressText = progress.total > 0 ? `${progress.completed}/${progress.total}` : '0/0';
+    tooltip.innerHTML = `✓ <b>${checklist.title}</b><br/><span class="hint">${progressText}</span>`;
+  } else {
+    const d = state.domains.find((x) => x.id === n.id);
+    tooltip.innerHTML = `🌍 <b>${d.title}</b><br/><span class="hint">Домен</span>`;
+  }
+}
+
 function showDetailedInfoForObject(n) {
   // Детальная информация для нижней панели
   if (n._type === "task") {
@@ -4705,105 +4718,6 @@ function showDetailedInfoForObject(n) {
   }
 }
 
-// Checklist hover state
-let currentHoveredChecklist = null;
-let quickViewTimer = null;
-let tooltipTimeout = null;
-let currentHoveredObject = null;
-
-function handleObjectHover(screenX, screenY, worldPos) {
-  if (!tooltip) return;
-  const node = hit(worldPos.x, worldPos.y);
-
-  if (!node) {
-    if (tooltipTimeout) {
-      clearTimeout(tooltipTimeout);
-      tooltipTimeout = null;
-    }
-    tooltip.style.opacity = 0;
-    currentHoveredObject = null;
-    if (window.hideInfoPanel) window.hideInfoPanel();
-    return;
-  }
-
-  if (currentHoveredObject === node.id) return;
-
-  currentHoveredObject = node.id;
-  if (tooltipTimeout) {
-    clearTimeout(tooltipTimeout);
-  }
-
-  const delay = (state.settings && state.settings.tooltipDelay != null) ? state.settings.tooltipDelay : 450;
-  tooltipTimeout = setTimeout(() => {
-    tooltipTimeout = null;
-    showTooltipForNode(node, screenX, screenY);
-  }, delay);
-
-  showDetailedInfoForObject(node);
-}
-
-function showTooltipForNode(node, screenX, screenY) {
-  if (!tooltip) return;
-  let title = '';
-  let subtitle = '';
-
-  switch (node._type) {
-    case 'task': {
-      const task = state.tasks.find((t) => t.id === node.id);
-      if (task) {
-        title = `🪐 ${task.title}`;
-        subtitle = task.status || '';
-      }
-      break;
-    }
-    case 'project': {
-      const project = state.projects.find((p) => p.id === node.id);
-      if (project) {
-        title = `🛰 ${project.title}`;
-        subtitle = (project.tags || []).map((tag) => `#${tag}`).join(' ');
-      }
-      break;
-    }
-    case 'idea': {
-      const idea = state.ideas.find((i) => i.id === node.id);
-      if (idea) {
-        title = `🌌 ${idea.title}`;
-        subtitle = idea.content ? idea.content.slice(0, 60) : '';
-      }
-      break;
-    }
-    case 'note': {
-      const note = state.notes.find((n) => n.id === node.id);
-      if (note) {
-        title = `🪨 ${note.title}`;
-        subtitle = note.content ? note.content.slice(0, 60) : '';
-      }
-      break;
-    }
-    case 'checklist': {
-      const checklist = state.checklists.find((c) => c.id === node.id);
-      if (checklist) {
-        title = `✓ ${checklist.title}`;
-        const progress = getChecklistProgress(checklist.id);
-        subtitle = `${progress.completed}/${progress.total}`;
-      }
-      break;
-    }
-    default: {
-      const domain = state.domains.find((d) => d.id === node.id);
-      if (domain) {
-        title = `🌌 ${domain.title}`;
-        subtitle = domain.moodDescription || '';
-      }
-    }
-  }
-
-  tooltip.innerHTML = subtitle ? `<strong>${title}</strong><br/><span class="hint">${subtitle}</span>` : `<strong>${title}</strong>`;
-  tooltip.style.left = `${screenX + 12}px`;
-  tooltip.style.top = `${screenY + 12}px`;
-  tooltip.style.opacity = 1;
-}
-
 function handleChecklistHover(screenX, screenY, worldPos) {
   if (!state.checklists || state.checklists.length === 0) {
     return;
@@ -4864,6 +4778,7 @@ function handleChecklistHover(screenX, screenY, worldPos) {
     }
   }
 }
+
 // Простой быстрый просмотр чек-листа
 function showQuickChecklistView(checklist, screenX, screenY) {
   if (window.isChecklistEditorOpen) return; // не показываем поверх редактора
@@ -4912,6 +4827,7 @@ function hideQuickChecklistView() {
     quickView.style.display = 'none';
   }
 }
+
 // Полноценное окно чек-листа с вкладками
 function showChecklistToggleView(checklist, screenX, screenY) {
   if (window.isChecklistEditorOpen) return; // не открываем полноразмерное окно поверх редактора
@@ -4998,6 +4914,7 @@ function showChecklistToggleView(checklist, screenX, screenY) {
     completedItems: completedItems
   };
 }
+
 function hideChecklistToggleView() {
   const toggleView = document.getElementById('checklistToggleView');
   if (toggleView) {
@@ -5106,10 +5023,279 @@ function toggleChecklistItemFromView(checklistId, itemId) {
   if (window.drawMap) window.drawMap();
 }
 
+function onPointerUp(e) {
+  try { e.preventDefault(); } catch(_) {}
+  if (isModalOpen) return;
+  try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+  const elapsed = performance.now() - NAV.downTime;
+  const moved = Math.hypot(e.clientX - NAV.downCX, e.clientY - NAV.downCY);
+  if (NAV.mode === 'drag' && draggedNode) {
+    handleDrop();
+    if (window.DEBUG_MOUSE) console.log('[NAV] end drag');
+    suppressClickUntil = performance.now() + 260;
+  } else if (NAV.mode === 'pan') {
+    endPan();
+    if (window.DEBUG_MOUSE) console.log('[NAV] end pan');
+    suppressClickUntil = performance.now() + 260;
+  } else if (NAV.mode === 'pending' && elapsed <= CLICK_MS && moved <= MOVE_SLOP) {
+    triggerClickAt(e.clientX, e.clientY);
+    if (window.DEBUG_MOUSE) console.log('[NAV] click');
+  }
+  NAV.mode = 'idle';
+  NAV.pointerId = null;
+  draggedNode = null;
+}
+
+function onPointerLeave(e) {
+  // Handle pointer leave
+  if (dndState === DnDState.DRAGGING) {
+    // Continue dragging even if pointer leaves canvas
+    return;
+  }
+  
+  // Очищаем наведение на чек-листы
+  if (state.checklists && state.checklists.length > 0) {
+    for (const checklist of state.checklists) {
+      if (checklist._hover) {
+        checklist._hover = false;
+        checklist._hoverTime = 0;
+        
+        if (checklist._hoverTimeout) {
+          clearTimeout(checklist._hoverTimeout);
+          checklist._hoverTimeout = null;
+        }
+      }
+    }
+    
+    // Скрываем попап
+    if (window.hideQuickChecklistView) {
+      window.hideQuickChecklistView();
+    }
+    
+    // Возвращаем обычный курсор
+    canvas.style.cursor = 'grab';
+  }
+  
+  onMouseLeave(e);
+}
+
+// Find drop target based on world coordinates
+function findDropTarget(worldX, worldY) {
+  // При перетаскивании задачи в приоритете ищем проект, и с расширенным радиусом
+  if (draggedNode && draggedNode._type === 'task') {
+    for (const project of state.projects) {
+      const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+      if (projectNode) {
+        const dx = worldX - projectNode.x;
+        const dy = worldY - projectNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitR = projectNode.r * 1.6; // расширяем площадь захвата
+        if (distance <= hitR) {
+          return { type: 'project', id: project.id, node: projectNode };
+        }
+      }
+    }
+  }
+
+  // Для проектов ищем домен обычным радиусом
+  if (draggedNode && draggedNode._type === 'project') {
+    for (const domain of state.domains) {
+      const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
+      if (domainNode) {
+        const dx = worldX - domainNode.x;
+        const dy = worldY - domainNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= domainNode.r) {
+          return { type: 'domain', id: domain.id, node: domainNode };
+        }
+      }
+    }
+  }
+
+  // Общий резервный поиск (если тип не определен)
+  for (const project of state.projects) {
+    const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+    if (projectNode) {
+      const dx = worldX - projectNode.x;
+      const dy = worldY - projectNode.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= projectNode.r * 1.4) {
+        return { type: 'project', id: project.id, node: projectNode };
+      }
+    }
+  }
+  for (const domain of state.domains) {
+    const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
+    if (domainNode) {
+      const dx = worldX - domainNode.x;
+      const dy = worldY - domainNode.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= domainNode.r) {
+        return { type: 'domain', id: domain.id, node: domainNode };
+      }
+    }
+  }
+  
+  return null; // No target found
+}
+
+// Consolidated drop handler
+function handleDrop() {
+  if (!draggedNode) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = lastMouseClient.offsetX || 0;
+  const y = lastMouseClient.offsetY || 0;
+  const worldPos = screenToWorld(x, y);
+  
+  console.log("Handling drop for:", draggedNode._type, draggedNode.id, "at world pos:", worldPos);
+  
+  // Find drop target
+  const dropTarget = findDropTarget(worldPos.x, worldPos.y);
+  
+  if (draggedNode._type === "project") {
+    handleProjectDrop(draggedNode, dropTarget);
+  } else if (draggedNode._type === "task") {
+    handleTaskDrop(draggedNode, dropTarget);
+  } else if (draggedNode._type === "idea") {
+    handleIdeaDrop(draggedNode, dropTarget);
+  } else if (draggedNode._type === "note") {
+    handleNoteDrop(draggedNode, dropTarget);
+  }
+}
+
+// Simplified project drop handler
+function handleProjectDrop(projectNode, dropTarget) {
+  const project = state.projects.find(p => p.id === projectNode.id);
+  if (!project) return;
+  
+  console.log("Project drop - target:", dropTarget, "current domain:", project.domainId);
+  
+  if (dropTarget && dropTarget.type === 'domain') {
+    // Moving to domain
+    if (project.domainId !== dropTarget.id) {
+      showProjectMoveConfirmation(project, project.domainId, dropTarget.id);
+    } else {
+      // Already in this domain, just update position
+      project.pos = { x: projectNode.x, y: projectNode.y };
+      project.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция проекта обновлена", "ok");
+    }
+  } else {
+    // Moving to independent (outside any domain)
+    if (project.domainId !== null) {
+      showProjectExtractConfirmation(project, projectNode);
+    } else {
+      // Already independent, just update position
+      project.pos = { x: projectNode.x, y: projectNode.y };
+      project.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция проекта обновлена", "ok");
+    }
+  }
+}
+
+// Simplified task drop handler
+function handleTaskDrop(taskNode, dropTarget) {
+  const task = state.tasks.find(t => t.id === taskNode.id);
+  if (!task) return;
+  
+  console.log("Task drop - target:", dropTarget, "current project:", task.projectId);
+  
+  if (dropTarget && dropTarget.type === 'project') {
+    // Moving to project
+    if (task.projectId !== dropTarget.id) {
+      // Если перетаскиваем из одного проекта в другой — сразу спрашиваем о переносе
+      showTaskMoveConfirmation(task, task.projectId || null, dropTarget.id);
+    } else {
+      // Already in this project, just update position
+      task.pos = { x: taskNode.x, y: taskNode.y };
+      task.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция задачи обновлена", "ok");
+    }
+  } else {
+    // Moving to independent (outside any project)
+    if (task.projectId !== null) {
+      // Перетаскивание вне проектов — это именно отвязка
+      showTaskDetachConfirmation(task);
+    } else {
+      // Already independent, just update position
+      task.pos = { x: taskNode.x, y: taskNode.y };
+      task.updatedAt = Date.now();
+      saveState();
+      showToast("Позиция задачи обновлена", "ok");
+    }
+  }
+}
+
+function handleIdeaDrop(ideaNode, dropTarget) {
+  const idea = state.ideas.find(i => i.id === ideaNode.id);
+  if (!idea) return;
+  
+  console.log("Idea drop - target:", dropTarget, "current domain:", idea.domainId);
+  
+  // Update position
+  idea.x = ideaNode.x;
+  idea.y = ideaNode.y;
+  idea.updatedAt = Date.now();
+  
+  // Update domain if dropped on a domain
+  if (dropTarget && dropTarget.type === 'domain') {
+    const fromDomainId = idea.domainId || null;
+    const toDomainId = dropTarget.id;
+    idea.domainId = toDomainId;
+    // Иерархия: ensure fields and sync children
+    try {
+      ensureHierarchyFieldsLocal(idea, 'idea');
+      const fromDomain = fromDomainId ? state.domains.find(d => d.id === fromDomainId) : null;
+      const toDomain = state.domains.find(d => d.id === toDomainId);
+      if (fromDomain) { ensureHierarchyFieldsLocal(fromDomain, 'domain'); arrayRemove(fromDomain.children.ideas, idea.id); }
+      if (toDomain) { ensureHierarchyFieldsLocal(toDomain, 'domain'); arrayAddUnique(toDomain.children.ideas, idea.id); }
+      idea.parentId = toDomainId;
+    } catch (_) {}
+  }
+  
+  saveState();
+  showToast("Позиция идеи обновлена", "ok");
+}
+
+function handleNoteDrop(noteNode, dropTarget) {
+  const note = state.notes.find(n => n.id === noteNode.id);
+  if (!note) return;
+  
+  console.log("Note drop - target:", dropTarget, "current domain:", note.domainId);
+  
+  // Update position
+  note.x = noteNode.x;
+  note.y = noteNode.y;
+  note.updatedAt = Date.now();
+  
+  // Update domain if dropped on a domain
+  if (dropTarget && dropTarget.type === 'domain') {
+    const fromDomainId = note.domainId || null;
+    const toDomainId = dropTarget.id;
+    note.domainId = toDomainId;
+    // Иерархия: ensure fields and sync children
+    try {
+      ensureHierarchyFieldsLocal(note, 'note');
+      const fromDomain = fromDomainId ? state.domains.find(d => d.id === fromDomainId) : null;
+      const toDomain = state.domains.find(d => d.id === toDomainId);
+      if (fromDomain) { ensureHierarchyFieldsLocal(fromDomain, 'domain'); arrayRemove(fromDomain.children.notes, note.id); }
+      if (toDomain) { ensureHierarchyFieldsLocal(toDomain, 'domain'); arrayAddUnique(toDomain.children.notes, note.id); }
+      note.parentId = toDomainId;
+    } catch (_) {}
+  }
+  
+  saveState();
+  showToast("Позиция заметки обновлена", "ok");
+}
+
 // Toast helper function
 function showToast(message, type = "ok") {
-          const toast = document.getElementById("toast");
-          if (toast) {
+  const toast = document.getElementById("toast");
+  if (toast) {
     hideToast();
     
     // Set up toast content and classes
@@ -5121,17 +5307,10 @@ function showToast(message, type = "ok") {
     isModalOpen = true;
     
     // Auto-hide after 3 seconds
-            setTimeout(() => {
+    setTimeout(() => {
       hideToast();
     }, 3000);
   }
-}
-
-function hideToast() {
-  const toast = document.getElementById("toast");
-  if (!toast) return;
-  toast.classList.remove("show");
-  isModalOpen = false;
 }
 
 // Project move confirmation functions
@@ -5177,8 +5356,8 @@ function showProjectMoveConfirmation(project, fromDomainId, toDomainId) {
           hideToast();
         };
       }
-              if (cancel) {
-                cancel.onclick = () => {
+      if (cancel) {
+        cancel.onclick = () => {
           pendingProjectMove = null;
           hideToast();
         };
@@ -5276,6 +5455,7 @@ function showTaskMoveConfirmation(task, fromProjectId, toProjectId) {
     }, 20);
   }
 }
+
 function showTaskDetachConfirmation(task) {
   const currentProject = task.projectId ? state.projects.find(p => p.id === task.projectId)?.title : "независимая";
   
@@ -5360,8 +5540,8 @@ function confirmTaskDetach() {
   pendingDetach = null;
 }
 
-// Export requestDraw and requestLayout functions
-export { requestDraw, requestLayout };
+// Export requestDraw function
+export { requestDraw };
 
 // expose undo function
 export function undoLastMove() {
@@ -5518,6 +5698,7 @@ function confirmDetach() {
     return false;
   }
 }
+
 // Confirm project move between domains (uses pendingProjectMove)
 function confirmProjectMove() {
   try {
@@ -5580,8 +5761,8 @@ function confirmProjectMove() {
       }, 1400);
     }
     
-  layoutMap();
-  drawMap();
+    layoutMap();
+    drawMap();
     return true;
   } catch (e) {
     console.error("Error in confirmProjectMove:", e);
@@ -5660,6 +5841,7 @@ window.mapApi.toggleFps = () => {
   setShowFps();
   showToast(`FPS ${showFps ? 'включен' : 'отключен'}`, 'info');
 };
+
 // Search functionality
 let searchResults = [];
 let currentSearchIndex = 0;
@@ -5711,6 +5893,7 @@ window.mapApi.nextSearchResult = () => {
   centerOnObject(searchResults[currentSearchIndex]);
   showToast(`Результат ${currentSearchIndex + 1} из ${searchResults.length}: ${searchResults[currentSearchIndex].title}`, 'info');
 };
+
 window.mapApi.previousSearchResult = () => {
   if (searchResults.length === 0) return;
   
@@ -5718,6 +5901,7 @@ window.mapApi.previousSearchResult = () => {
   centerOnObject(searchResults[currentSearchIndex]);
   showToast(`Результат ${currentSearchIndex + 1} из ${searchResults.length}: ${searchResults[currentSearchIndex].title}`, 'info');
 };
+
 function centerOnObject(obj) {
   if (!obj) return;
   
@@ -5759,7 +5943,6 @@ function centerOnObject(obj) {
 try {
   window.layoutMap = layoutMap;
   window.drawMap = drawMap;
-  window.requestLayout = requestLayout;
   window.toggleFocusMode = toggleFocusMode;
   window.isFocusModeActive = isFocusModeActive;
   window.getFocusedDomainId = getFocusedDomainId;
@@ -5772,6 +5955,7 @@ try {
   window.switchChecklistTab = switchChecklistTab;
   window.renderChecklistTabContent = renderChecklistTabContent;
 } catch(_) {}
+
 // small modal helper (reuse existing modal structure in index.html)
 function openModalLocal({
   title,
@@ -5893,6 +6077,7 @@ function openMoveTaskModal(task, targetDomainId, worldX, worldY) {
     }, 20);
   }
 }
+
 function onDblClick(e) {
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
@@ -6102,8 +6287,246 @@ function showObjectContextMenu(x, y, node) {
     hideContextMenu();
   });
 }
+// Old function - will be removed
+function onContextMenuOld(e) {
+  e.preventDefault(); // Prevent default browser context menu
+  
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  const n = hit(pt.x, pt.y);
+  
+  if (!n) return;
+  
+  // Create context menu
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+  menu.style.cssText = `
+    position: fixed;
+    left: ${e.clientX}px;
+    top: ${e.clientY}px;
+    background: var(--panel-1);
+    border: 1px solid var(--panel-2);
+    border-radius: 6px;
+    padding: 8px 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    min-width: 150px;
+  `;
+  
+  // Add menu items based on object type
+  if (n._type === 'task') {
+    menu.innerHTML = `
+      <div class="context-item" data-action="edit">✏️ Редактировать</div>
+      <div class="context-item" data-action="delete">🗑️ Удалить</div>
+    `;
+  } else if (n._type === 'project') {
+    menu.innerHTML = `
+      <div class="context-item" data-action="edit">✏️ Редактировать</div>
+      <div class="context-item" data-action="delete">🗑️ Удалить проект</div>
+    `;
+  } else if (n._type === 'domain') {
+    menu.innerHTML = `
+      <div class="context-item" data-action="edit">✏️ Редактировать</div>
+      <div class="context-item" data-action="delete">🗑️ Удалить домен</div>
+    `;
+  }
+  
+  // Style menu items
+  const style = document.createElement('style');
+  style.textContent = `
+    .context-item {
+      padding: 8px 16px;
+      cursor: pointer;
+      color: var(--text-1);
+      font-size: 14px;
+    }
+    .context-item:hover {
+      background: var(--panel-2);
+    }
+  `;
+  document.head.appendChild(style);
+  
+  document.body.appendChild(menu);
+  
+  // Handle menu item clicks
+  menu.addEventListener('click', (e) => {
+    const action = e.target.dataset.action;
+    if (action === 'edit') {
+      // Open inspector for editing
+      if (window.openInspectorFor) {
+        window.openInspectorFor(n);
+      }
+    } else if (action === 'delete') {
+      // Trigger deletion based on type
+      if (n._type === 'task') {
+        if (confirm("Удалить задачу без возможности восстановления?")) {
+          // Trigger cosmic explosion
+          if (window.cosmicAnimations) {
+            window.cosmicAnimations.animateTaskDeletion(n.x, n.y, n.status);
+          }
+          // Delete task
+          state.tasks = state.tasks.filter((t) => t.id !== n.id);
+          saveState();
+          requestDrawThrottled(); // Use optimized draw request
+          if (window.renderToday) window.renderToday();
+        }
+      } else if (n._type === 'project') {
+        if (confirm(`Удалить проект "${n.title}" и все его задачи?`)) {
+          // Trigger cosmic explosion
+          if (window.cosmicAnimations) {
+            window.cosmicAnimations.animateTaskDeletion(n.x, n.y, 'project');
+          }
+          // Delete project and its tasks
+          state.tasks = state.tasks.filter((t) => t.projectId !== n.id);
+          state.projects = state.projects.filter((p) => p.id !== n.id);
+          saveState();
+          
+          // Force layout and redraw
+          requestLayout(); // Use optimized layout request
+          
+          if (window.updateDomainsList) window.updateDomainsList();
+          if (window.updateStatistics) window.updateStatistics();
+          if (window.renderToday) window.renderToday();
+          if (window.renderSidebar) window.renderSidebar();
+        }
+      } else if (n._type === 'domain') {
+        if (confirm(`Удалить домен "${n.title}" и все его проекты и задачи?`)) {
+          // Trigger cosmic explosion
+          if (window.cosmicAnimations) {
+            window.cosmicAnimations.animateDomainPulse(n.x, n.y, n.r, n.color);
+          }
+          // Delete domain and all its content
+          const projIds = state.projects.filter((p) => p.domainId === n.id).map((p) => p.id);
+          state.tasks = state.tasks.filter((t) => !projIds.includes(t.projectId));
+          state.projects = state.projects.filter((p) => p.domainId !== n.id);
+          state.domains = state.domains.filter((d) => d.id !== n.id);
+          // Clear active domain to show entire project instead of focusing on remaining domain
+          state.activeDomain = null;
+          saveState();
+          
+          // Force layout and redraw
+          requestLayout(); // Use optimized layout request
+          
+          if (window.updateDomainsList) window.updateDomainsList();
+          if (window.updateStatistics) window.updateStatistics();
+          if (window.renderToday) window.renderToday();
+          if (window.renderSidebar) window.renderSidebar();
+        }
+      }
+    }
+    
+    // Remove menu
+    try {
+      if (menu.parentNode) {
+        document.body.removeChild(menu);
+      }
+    } catch (e) {
+      // Menu already removed
+    }
+    try {
+      if (style.parentNode) {
+        document.head.removeChild(style);
+      }
+    } catch (e) {
+      // Style already removed
+    }
+  });
+  
+  // Remove menu when clicking outside
+  const removeMenu = (e) => {
+    if (!menu.contains(e.target)) {
+      try {
+        if (menu.parentNode) {
+          document.body.removeChild(menu);
+        }
+      } catch (e) {
+        // Menu already removed
+      }
+      try {
+        if (style.parentNode) {
+          document.head.removeChild(style);
+        }
+      } catch (e) {
+        // Style already removed
+      }
+      document.removeEventListener('click', removeMenu);
+    }
+  };
+  
+  setTimeout(() => {
+    document.addEventListener('click', removeMenu);
+  }, 100);
+}
 
-// legacyClickHandler removed in favor of handlePointerClick
+function onClick(e) {
+  // Ignore click generated right after a pan/drag
+  try {
+    if (performance.now() < suppressClickUntil) return;
+  } catch (_) {}
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  const n = hit(pt.x, pt.y);
+  if (!n) {
+    // click on empty space: show all domains (но НЕ сбрасываем зум)
+    state.activeDomain = null;
+    requestLayout(); // Use optimized layout request
+    // Убрали fitAll() - теперь зум не сбрасывается при клике в пустое место
+    return;
+  }
+  hoverNodeId = n.id;
+  if (n._type === "task") {
+    const obj = state.tasks.find((t) => t.id === n.id);
+    obj._type = "task";
+    openInspectorFor(obj);
+  } else if (n._type === "project") {
+    const obj = state.projects.find((p) => p.id === n.id);
+    obj._type = "project";
+    
+    // Запускаем эффект клика
+    clickedNodeId = n.id;
+    clickEffectTime = 1.0;
+    
+    openInspectorFor(obj);
+  } else if (n._type === 'idea') {
+    // Левый клик по идее - открываем инспектор
+    const idea = state.ideas.find(i => i.id === n.id);
+    if (idea) {
+      // Запускаем эффект клика
+      clickedNodeId = n.id;
+      clickEffectTime = 1.0;
+      
+      openInspectorFor({...idea, _type: 'idea'});
+    }
+    return;
+  } else if (n._type === 'note') {
+    // Левый клик по заметке - открываем инспектор
+    const note = state.notes.find(note => note.id === n.id);
+    if (note) {
+      // Запускаем эффект клика
+      clickedNodeId = n.id;
+      clickEffectTime = 1.0;
+      
+      openInspectorFor({...note, _type: 'note'});
+    }
+    return;
+            } else if (n._type === 'checklist') {
+              // Левый клик по чек-листу - открываем полный редактор
+              const checklist = state.checklists.find(c => c.id === n.id);
+              if (checklist) {
+                // Запускаем эффект клика
+                clickedNodeId = n.id;
+                clickEffectTime = 1.0;
+                
+                // Закрываем возможные всплывающие окна, затем открываем редактор
+                try { if (typeof window.hideChecklistToggleView === 'function') window.hideChecklistToggleView(); } catch(_) {}
+                try { if (typeof window.closeChecklistWindow === 'function') window.closeChecklistWindow(); } catch(_) {}
+                window.showChecklistEditor(checklist);
+              }
+              return;
+            } else {
+    const obj = state.domains.find((d) => d.id === n.id);
+    obj._type = "domain";
+    openInspectorFor(obj);
+  }
+}
 
 // ===== COSMIC EFFECTS =====
 
@@ -6170,6 +6593,7 @@ function drawStarfield(ctx, width, height, viewState) {
     }
   });
 }
+
 function drawPlanet(ctx, x, y, radius, color, type = 'planet') {
   ctx.save();
   
@@ -6267,6 +6691,7 @@ function drawPlanet(ctx, x, y, radius, color, type = 'planet') {
   
   ctx.restore();
 }
+
 // Modern Flat Design for projects
 function drawProjectModern(ctx, x, y, radius, color, seed = 0) {
   ctx.save();
@@ -6390,6 +6815,7 @@ function drawGalaxy(ctx, x, y, radius, color, seed = 0) {
   
   ctx.restore();
 }
+
 function drawTaskModern(ctx, x, y, radius, color, status) {
   ctx.save();
   
@@ -6523,6 +6949,7 @@ function drawTaskModern(ctx, x, y, radius, color, status) {
   
   ctx.restore();
 }
+
 // Функции рендеринга новых космических объектов
 function drawIdeas() {
   if (!state.ideas || state.ideas.length === 0) return;
@@ -6740,6 +7167,189 @@ function drawNotes() {
   });
 }
 
+// Функции обработки кликов по новым объектам
+function handleIdeaClick(idea) {
+  // Показываем модальное окно для редактирования идеи
+  showIdeaEditor(idea);
+}
+
+function handleNoteClick(note) {
+  // Показываем модальное окно для редактирования заметки
+  showNoteEditor(note);
+}
+
+function showIdeaEditor(idea) {
+  // Используем существующее модальное окно
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  modal.innerHTML = `
+    <div class="box idea-editor">
+      <div class="title">🌌 Редактировать идею</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название идеи:</label>
+          <input type="text" id="ideaTitle" value="${idea.title}" placeholder="Введите название идеи" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <textarea id="ideaContent" placeholder="Опишите вашу идею подробнее..." class="form-textarea">${idea.content}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Цвет:</label>
+          <div class="color-picker">
+            <input type="color" id="ideaColor" value="${idea.color}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#ff6b6b" style="background: #ff6b6b;"></div>
+              <div class="color-preset" data-color="#4ecdc4" style="background: #4ecdc4;"></div>
+              <div class="color-preset" data-color="#45b7d1" style="background: #45b7d1;"></div>
+              <div class="color-preset" data-color="#96ceb4" style="background: #96ceb4;"></div>
+              <div class="color-preset" data-color="#feca57" style="background: #feca57;"></div>
+              <div class="color-preset" data-color="#ff9ff3" style="background: #ff9ff3;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Размер:</label>
+          <input type="range" id="ideaSize" min="20" max="60" value="${idea.r}" class="form-range">
+          <span class="size-value">${idea.r}px</span>
+        </div>
+        <div class="form-group">
+          <label>Прозрачность:</label>
+          <input type="range" id="ideaOpacity" min="0.1" max="1" step="0.1" value="${idea.opacity}" class="form-range">
+          <span class="opacity-value">${Math.round(idea.opacity * 100)}%</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveIdea('${idea.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteIdea('${idea.id}')">🗑️ Удалить</button>
+      </div>
+    </div>
+    <div class="backdrop"></div>
+  `;
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#ideaColor').value = color;
+    });
+  });
+  
+  // Добавляем обработчики для слайдеров с дебаунсингом
+  let sizeTimeout, opacityTimeout;
+  
+  modal.querySelector('#ideaSize').addEventListener('input', (e) => {
+    modal.querySelector('.size-value').textContent = e.target.value + 'px';
+    
+    // Дебаунсинг для обновления размера
+    clearTimeout(sizeTimeout);
+    sizeTimeout = setTimeout(() => {
+      idea.r = parseInt(e.target.value);
+      requestDrawThrottled();
+    }, 100);
+  });
+  
+  modal.querySelector('#ideaOpacity').addEventListener('input', (e) => {
+    modal.querySelector('.opacity-value').textContent = Math.round(e.target.value * 100) + '%';
+    
+    // Дебаунсинг для обновления прозрачности
+    clearTimeout(opacityTimeout);
+    opacityTimeout = setTimeout(() => {
+      idea.opacity = parseFloat(e.target.value);
+      requestDrawThrottled();
+    }, 100);
+  });
+}
+
+function showNoteEditor(note) {
+  // Используем существующее модальное окно
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  modal.innerHTML = `
+    <div class="box note-editor">
+      <div class="title">🪨 Редактировать заметку</div>
+      <div class="body">
+        <div class="form-group">
+          <label>Название заметки:</label>
+          <input type="text" id="noteTitle" value="${note.title}" placeholder="Введите название заметки" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Содержание:</label>
+          <textarea id="noteContent" placeholder="Опишите содержимое заметки..." class="form-textarea">${note.content}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Цвет:</label>
+          <div class="color-picker">
+            <input type="color" id="noteColor" value="${note.color}" class="color-input">
+            <div class="color-presets">
+              <div class="color-preset" data-color="#8b7355" style="background: #8b7355;"></div>
+              <div class="color-preset" data-color="#a0a0a0" style="background: #a0a0a0;"></div>
+              <div class="color-preset" data-color="#6c757d" style="background: #6c757d;"></div>
+              <div class="color-preset" data-color="#495057" style="background: #495057;"></div>
+              <div class="color-preset" data-color="#343a40" style="background: #343a40;"></div>
+              <div class="color-preset" data-color="#212529" style="background: #212529;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Размер:</label>
+          <input type="range" id="noteSize" min="5" max="20" value="${note.r}" class="form-range">
+          <span class="size-value">${note.r}px</span>
+        </div>
+        <div class="form-group">
+          <label>Прозрачность:</label>
+          <input type="range" id="noteOpacity" min="0.3" max="1" step="0.1" value="${note.opacity}" class="form-range">
+          <span class="opacity-value">${Math.round(note.opacity * 100)}%</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button class="btn" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" onclick="saveNote('${note.id}')">💾 Сохранить</button>
+        <button class="btn danger" onclick="deleteNote('${note.id}')">🗑️ Удалить</button>
+      </div>
+    </div>
+    <div class="backdrop"></div>
+  `;
+  modal.style.display = 'flex';
+  
+  // Добавляем обработчики для цветовых пресетов
+  modal.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      modal.querySelector('#noteColor').value = color;
+    });
+  });
+  
+  // Добавляем обработчики для слайдеров с дебаунсингом
+  let sizeTimeout, opacityTimeout;
+  
+  modal.querySelector('#noteSize').addEventListener('input', (e) => {
+    modal.querySelector('.size-value').textContent = e.target.value + 'px';
+    
+    // Дебаунсинг для обновления размера
+    clearTimeout(sizeTimeout);
+    sizeTimeout = setTimeout(() => {
+      note.r = parseInt(e.target.value);
+      requestDrawThrottled();
+    }, 100);
+  });
+  
+  modal.querySelector('#noteOpacity').addEventListener('input', (e) => {
+    modal.querySelector('.opacity-value').textContent = Math.round(e.target.value * 100) + '%';
+    
+    // Дебаунсинг для обновления прозрачности
+    clearTimeout(opacityTimeout);
+    opacityTimeout = setTimeout(() => {
+      note.opacity = parseFloat(e.target.value);
+      requestDrawThrottled();
+    }, 100);
+  });
+}
+
 function drawChecklists() {
   if (!state.checklists) {
     state.checklists = [];
@@ -6867,16 +7477,16 @@ function drawChecklists() {
       let face = `${weight} ${size}px system-ui`;
       ctx.font = face;
       let t = text || '';
-      let w = measureTextCached(ctx, t);
+      let w = ctx.measureText(t).width;
       while (w > maxWidth && size > minPx) {
         size -= 1;
         face = `${weight} ${size}px system-ui`;
         ctx.font = face;
-        w = measureTextCached(ctx, t);
+        w = ctx.measureText(t).width;
       }
       if (w > maxWidth) {
         // даже на минимальном размере — усекать посимвольно
-        while (t.length > 0 && measureTextCached(ctx, t + ellipsis) > maxWidth) {
+        while (t.length > 0 && ctx.measureText(t + ellipsis).width > maxWidth) {
           t = t.slice(0, -1);
         }
         t = t + ellipsis;
