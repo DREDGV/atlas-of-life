@@ -457,6 +457,8 @@ export function openInspectorFor(obj) {
   }
   const type = obj._type;
   console.log("🔍 Inspector: Object type", type);
+  console.log("🔍 Inspector: All object keys", Object.keys(obj));
+  
   if (type === "domain") {
     const prjs = state.projects.filter((p) => p.domainId === obj.id);
     const totalTasks = prjs.reduce(
