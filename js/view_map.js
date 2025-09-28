@@ -7234,6 +7234,7 @@ function onClick(e) {
   } catch (_) {}
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
+  console.log("🔍 Click: hit result", n);
   if (!n) {
     // click on empty space: show all domains (но НЕ сбрасываем зум)
     state.activeDomain = null;
@@ -7242,6 +7243,7 @@ function onClick(e) {
     return;
   }
   hoverNodeId = n.id;
+  console.log("🔍 Click: processing object type", n._type);
   if (n._type === "task") {
     const obj = state.tasks.find((t) => t.id === n.id);
     obj._type = "task";
@@ -7278,13 +7280,16 @@ function onClick(e) {
     }
     return;
             } else if (n._type === 'checklist') {
+              console.log("🔍 Click: Processing checklist", n.id);
               // Левый клик по чек-листу - открываем инспектор (как у других объектов)
               const checklist = state.checklists.find(c => c.id === n.id);
+              console.log("🔍 Click: Found checklist", checklist);
               if (checklist) {
                 // Запускаем эффект клика
                 clickedNodeId = n.id;
                 clickEffectTime = 1.0;
                 
+                console.log("🔍 Click: Opening inspector for checklist", checklist);
                 openInspectorFor({...checklist, _type: 'checklist'});
               }
               return;
