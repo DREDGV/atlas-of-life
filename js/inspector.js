@@ -444,6 +444,11 @@ function showParentSelectionModal(obj) {
 
 export function openInspectorFor(obj) {
   console.log("🔍 Inspector: openInspectorFor called with", obj);
+  console.log("🔍 Inspector: state available?", !!state);
+  console.log("🔍 Inspector: state.domains?", state?.domains?.length);
+  console.log("🔍 Inspector: state.ideas?", state?.ideas?.length);
+  console.log("🔍 Inspector: state.notes?", state?.notes?.length);
+  console.log("🔍 Inspector: state.checklists?", state?.checklists?.length);
   
   const ins = document.getElementById("inspector");
   if (!obj) {
