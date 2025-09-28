@@ -1199,8 +1199,16 @@ function showColorPicker(project) {
   
   // Обработка идей
   if (type === "idea") {
-    const parent = getParentObjectFallback(obj);
-    const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : 'Объект'}: ${parent.title}` : 'Независимая';
+    // Определяем родителя на основе существующих полей
+    let parent = null;
+    let parentInfo = 'Независимая';
+    
+    if (obj.domainId) {
+      parent = state.domains.find(d => d.id === obj.domainId);
+      if (parent) {
+        parentInfo = `Домен: ${parent.title}`;
+      }
+    }
     
     ins.innerHTML = `
       <h2>Идея: ${obj.title}</h2>
@@ -1242,12 +1250,20 @@ function showColorPicker(project) {
   
   // Обработка заметок
   if (type === "note") {
-    const parent = getParentObjectFallback(obj);
-    const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимая';
+    // Определяем родителя на основе существующих полей
+    let parent = null;
+    let parentInfo = 'Независимая';
+    
+    if (obj.domainId) {
+      parent = state.domains.find(d => d.id === obj.domainId);
+      if (parent) {
+        parentInfo = `Домен: ${parent.title}`;
+      }
+    }
     
     ins.innerHTML = `
       <h2>Заметка: ${obj.title}</h2>
-      <div class="kv">Содержание: ${obj.content || 'Нет описания'}</div>
+      <div class="kv">Содержание: ${obj.text || 'Нет описания'}</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
       

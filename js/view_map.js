@@ -1335,13 +1335,13 @@ let pendingAttach = null;
 let pendingDetach = null;
 // transient pending project move: { projectId, fromDomainId, toDomainId, pos }
 let pendingProjectMove = null;
-// transient pending idea move: { ideaId, fromParentId, toParentId, pos }
+// transient pending idea move: { ideaId, fromDomainId, toDomainId, pos }
 let pendingIdeaMove = null;
-// transient pending idea detach: { ideaId, fromParentId, pos }
+// transient pending idea detach: { ideaId, fromDomainId, pos }
 let pendingIdeaDetach = null;
-// transient pending note move: { noteId, fromParentId, toParentId, pos }
+// transient pending note move: { noteId, fromDomainId, toDomainId, pos }
 let pendingNoteMove = null;
-// transient pending note detach: { noteId, fromParentId, pos }
+// transient pending note detach: { noteId, fromDomainId, pos }
 let pendingNoteDetach = null;
 // transient pending checklist move: { checklistId, fromProjectId, fromDomainId, toParentId, targetType, pos }
 let pendingChecklistMove = null;
@@ -5452,7 +5452,7 @@ function handleIdeaDrop(ideaNode, dropTarget) {
   const idea = state.ideas.find(i => i.id === ideaNode.id);
   if (!idea) return;
   
-  console.log("Idea drop - target:", dropTarget, "current parent:", idea.parentId);
+  console.log("Idea drop - target:", dropTarget, "current domain:", idea.domainId);
   
   // Update position
   idea.x = ideaNode.x;
@@ -5461,25 +5461,22 @@ function handleIdeaDrop(ideaNode, dropTarget) {
   
   // Handle different drop targets
   if (dropTarget) {
-    const fromParentId = idea.parentId || null;
     const toParentId = dropTarget.id;
     
     if (dropTarget.type === 'domain') {
       // Moving to domain
-      if (idea.parentId !== toParentId) {
-        showIdeaMoveConfirmation(idea, fromParentId, toParentId);
+      if (idea.domainId !== toParentId) {
+        showIdeaMoveConfirmation(idea, idea.domainId, toParentId);
         return; // Wait for confirmation
       }
     } else if (dropTarget.type === 'project') {
-      // Moving to project
-      if (idea.parentId !== toParentId) {
-        showIdeaMoveConfirmation(idea, fromParentId, toParentId);
-        return; // Wait for confirmation
-      }
+      // Moving to project (not supported for ideas, but keeping for consistency)
+      showToast("Идеи нельзя привязывать к проектам", "warn");
+      return;
     }
   } else {
     // Moving to independent (outside any parent)
-    if (idea.parentId !== null) {
+    if (idea.domainId !== null) {
       showIdeaDetachConfirmation(idea);
       return; // Wait for confirmation
     }
@@ -5494,7 +5491,7 @@ function handleNoteDrop(noteNode, dropTarget) {
   const note = state.notes.find(n => n.id === noteNode.id);
   if (!note) return;
   
-  console.log("Note drop - target:", dropTarget, "current parent:", note.parentId);
+  console.log("Note drop - target:", dropTarget, "current domain:", note.domainId);
   
   // Update position
   note.x = noteNode.x;
@@ -5503,31 +5500,26 @@ function handleNoteDrop(noteNode, dropTarget) {
   
   // Handle different drop targets
   if (dropTarget) {
-    const fromParentId = note.parentId || null;
     const toParentId = dropTarget.id;
     
     if (dropTarget.type === 'domain') {
       // Moving to domain
-      if (note.parentId !== toParentId) {
-        showNoteMoveConfirmation(note, fromParentId, toParentId);
+      if (note.domainId !== toParentId) {
+        showNoteMoveConfirmation(note, note.domainId, toParentId);
         return; // Wait for confirmation
       }
     } else if (dropTarget.type === 'project') {
-      // Moving to project
-      if (note.parentId !== toParentId) {
-        showNoteMoveConfirmation(note, fromParentId, toParentId);
-        return; // Wait for confirmation
-      }
+      // Moving to project (not supported for notes, but keeping for consistency)
+      showToast("Заметки нельзя привязывать к проектам", "warn");
+      return;
     } else if (dropTarget.type === 'task') {
-      // Moving to task
-      if (note.parentId !== toParentId) {
-        showNoteMoveConfirmation(note, fromParentId, toParentId);
-        return; // Wait for confirmation
-      }
+      // Moving to task (not supported for notes, but keeping for consistency)
+      showToast("Заметки нельзя привязывать к задачам", "warn");
+      return;
     }
   } else {
     // Moving to independent (outside any parent)
-    if (note.parentId !== null) {
+    if (note.domainId !== null) {
       showNoteDetachConfirmation(note);
       return; // Wait for confirmation
     }
@@ -5832,22 +5824,22 @@ function confirmTaskDetach() {
 }
 
 // Idea move confirmation functions
-function showIdeaMoveConfirmation(idea, fromParentId, toParentId) {
-  const fromParent = fromParentId ? getParentTitle(fromParentId) : "независимая";
-  const toParent = getParentTitle(toParentId);
+function showIdeaMoveConfirmation(idea, fromDomainId, toDomainId) {
+  const fromParent = fromDomainId ? getParentTitle(fromDomainId) : "независимая";
+  const toParent = getParentTitle(toDomainId);
   
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
     toast.className = "toast attach show";
-    toast.innerHTML = `Переместить идею "${idea.title}"${fromParentId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="ideaMoveOk">Переместить</button> <button id="ideaMoveCancel">Отменить</button>`;
+    toast.innerHTML = `Переместить идею "${idea.title}"${fromDomainId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="ideaMoveOk">Переместить</button> <button id="ideaMoveCancel">Отменить</button>`;
     isModalOpen = true;
     
     // Set up pending move
     pendingIdeaMove = {
       ideaId: idea.id,
-      fromParentId: fromParentId,
-      toParentId: toParentId,
+      fromDomainId: fromDomainId,
+      toDomainId: toDomainId,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
     
@@ -5872,7 +5864,7 @@ function showIdeaMoveConfirmation(idea, fromParentId, toParentId) {
 }
 
 function showIdeaDetachConfirmation(idea) {
-  const currentParent = getParentTitle(idea.parentId);
+  const currentParent = getParentTitle(idea.domainId);
   
   const toast = document.getElementById("toast");
   if (toast) {
@@ -5884,7 +5876,7 @@ function showIdeaDetachConfirmation(idea) {
     // Set up pending detach
     pendingIdeaDetach = {
       ideaId: idea.id,
-      fromParentId: idea.parentId,
+      fromDomainId: idea.domainId,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
     
@@ -5909,22 +5901,22 @@ function showIdeaDetachConfirmation(idea) {
 }
 
 // Note move confirmation functions
-function showNoteMoveConfirmation(note, fromParentId, toParentId) {
-  const fromParent = fromParentId ? getParentTitle(fromParentId) : "независимая";
-  const toParent = getParentTitle(toParentId);
+function showNoteMoveConfirmation(note, fromDomainId, toDomainId) {
+  const fromParent = fromDomainId ? getParentTitle(fromDomainId) : "независимая";
+  const toParent = getParentTitle(toDomainId);
   
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
     toast.className = "toast attach show";
-    toast.innerHTML = `Переместить заметку "${note.title}"${fromParentId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="noteMoveOk">Переместить</button> <button id="noteMoveCancel">Отменить</button>`;
+    toast.innerHTML = `Переместить заметку "${note.title}"${fromDomainId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="noteMoveOk">Переместить</button> <button id="noteMoveCancel">Отменить</button>`;
     isModalOpen = true;
     
     // Set up pending move
     pendingNoteMove = {
       noteId: note.id,
-      fromParentId: fromParentId,
-      toParentId: toParentId,
+      fromDomainId: fromDomainId,
+      toDomainId: toDomainId,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
     
@@ -5949,7 +5941,7 @@ function showNoteMoveConfirmation(note, fromParentId, toParentId) {
 }
 
 function showNoteDetachConfirmation(note) {
-  const currentParent = getParentTitle(note.parentId);
+  const currentParent = getParentTitle(note.domainId);
   
   const toast = document.getElementById("toast");
   if (toast) {
@@ -5961,7 +5953,7 @@ function showNoteDetachConfirmation(note) {
     // Set up pending detach
     pendingNoteDetach = {
       noteId: note.id,
-      fromParentId: note.parentId,
+      fromDomainId: note.domainId,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
     
@@ -6046,37 +6038,12 @@ function confirmIdeaMove() {
     return;
   }
   
-  const fromParentId = pendingIdeaMove.fromParentId;
-  const toParentId = pendingIdeaMove.toParentId;
+  const fromDomainId = pendingIdeaMove.fromDomainId;
+  const toDomainId = pendingIdeaMove.toDomainId;
   
-  // Update idea parent
-  idea.parentId = toParentId;
+  // Update idea domain
+  idea.domainId = toDomainId;
   idea.updatedAt = Date.now();
-  
-  // Sync hierarchy
-  try {
-    ensureHierarchyFieldsLocal(idea, 'idea');
-    
-    // Remove from old parent
-    if (fromParentId) {
-      const fromParent = findObjectById(fromParentId);
-      if (fromParent) {
-        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
-        arrayRemove(fromParent.children.ideas, idea.id);
-      }
-    }
-    
-    // Add to new parent
-    if (toParentId) {
-      const toParent = findObjectById(toParentId);
-      if (toParent) {
-        ensureHierarchyFieldsLocal(toParent, getObjectType(toParent));
-        arrayAddUnique(toParent.children.ideas, idea.id);
-      }
-    }
-  } catch (error) {
-    console.error("Error syncing idea hierarchy:", error);
-  }
   
   // Update position
   if (pendingIdeaMove.pos) {
@@ -6098,24 +6065,9 @@ function confirmIdeaDetach() {
     return;
   }
   
-  const fromParentId = idea.parentId;
-  
-  // Remove from parent
-  idea.parentId = null;
+  // Remove from domain
+  idea.domainId = null;
   idea.updatedAt = Date.now();
-  
-  // Sync hierarchy
-  try {
-    if (fromParentId) {
-      const fromParent = findObjectById(fromParentId);
-      if (fromParent) {
-        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
-        arrayRemove(fromParent.children.ideas, idea.id);
-      }
-    }
-  } catch (error) {
-    console.error("Error syncing idea detach:", error);
-  }
   
   // Update position
   if (pendingIdeaDetach.pos) {
@@ -6138,37 +6090,12 @@ function confirmNoteMove() {
     return;
   }
   
-  const fromParentId = pendingNoteMove.fromParentId;
-  const toParentId = pendingNoteMove.toParentId;
+  const fromDomainId = pendingNoteMove.fromDomainId;
+  const toDomainId = pendingNoteMove.toDomainId;
   
-  // Update note parent
-  note.parentId = toParentId;
+  // Update note domain
+  note.domainId = toDomainId;
   note.updatedAt = Date.now();
-  
-  // Sync hierarchy
-  try {
-    ensureHierarchyFieldsLocal(note, 'note');
-    
-    // Remove from old parent
-    if (fromParentId) {
-      const fromParent = findObjectById(fromParentId);
-      if (fromParent) {
-        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
-        arrayRemove(fromParent.children.notes, note.id);
-      }
-    }
-    
-    // Add to new parent
-    if (toParentId) {
-      const toParent = findObjectById(toParentId);
-      if (toParent) {
-        ensureHierarchyFieldsLocal(toParent, getObjectType(toParent));
-        arrayAddUnique(toParent.children.notes, note.id);
-      }
-    }
-  } catch (error) {
-    console.error("Error syncing note hierarchy:", error);
-  }
   
   // Update position
   if (pendingNoteMove.pos) {
@@ -6190,24 +6117,9 @@ function confirmNoteDetach() {
     return;
   }
   
-  const fromParentId = note.parentId;
-  
-  // Remove from parent
-  note.parentId = null;
+  // Remove from domain
+  note.domainId = null;
   note.updatedAt = Date.now();
-  
-  // Sync hierarchy
-  try {
-    if (fromParentId) {
-      const fromParent = findObjectById(fromParentId);
-      if (fromParent) {
-        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
-        arrayRemove(fromParent.children.notes, note.id);
-      }
-    }
-  } catch (error) {
-    console.error("Error syncing note detach:", error);
-  }
   
   // Update position
   if (pendingNoteDetach.pos) {
