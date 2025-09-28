@@ -1208,6 +1208,12 @@ function showColorPicker(project) {
   // Обработка идей
   if (type === "idea") {
     console.log("🔍 Inspector: Processing idea", obj);
+    console.log("🔍 Inspector: Idea fields:", {
+      title: obj.title,
+      content: obj.content,
+      domainId: obj.domainId,
+      createdAt: obj.createdAt
+    });
     
     // Определяем родителя на основе существующих полей
     let parent = null;
