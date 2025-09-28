@@ -1335,6 +1335,14 @@ let pendingAttach = null;
 let pendingDetach = null;
 // transient pending project move: { projectId, fromDomainId, toDomainId, pos }
 let pendingProjectMove = null;
+// transient pending idea move: { ideaId, fromParentId, toParentId, pos }
+let pendingIdeaMove = null;
+// transient pending idea detach: { ideaId, fromParentId, pos }
+let pendingIdeaDetach = null;
+// transient pending note move: { noteId, fromParentId, toParentId, pos }
+let pendingNoteMove = null;
+// transient pending note detach: { noteId, fromParentId, pos }
+let pendingNoteDetach = null;
 let isModalOpen = false; // Flag to block canvas events when toast is shown
 
 // ===== Hierarchy sync helpers (safe, local) =====
@@ -5166,6 +5174,80 @@ function findDropTarget(worldX, worldY) {
     }
   }
 
+  // Для идей ищем домены и проекты
+  if (draggedNode && draggedNode._type === 'idea') {
+    // Сначала ищем проекты
+    for (const project of state.projects) {
+      const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+      if (projectNode) {
+        const dx = worldX - projectNode.x;
+        const dy = worldY - projectNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitR = projectNode.r * 1.4;
+        if (distance <= hitR) {
+          return { type: 'project', id: project.id, node: projectNode };
+        }
+      }
+    }
+    
+    // Затем ищем домены
+    for (const domain of state.domains) {
+      const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
+      if (domainNode) {
+        const dx = worldX - domainNode.x;
+        const dy = worldY - domainNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= domainNode.r) {
+          return { type: 'domain', id: domain.id, node: domainNode };
+        }
+      }
+    }
+  }
+
+  // Для заметок ищем домены, проекты и задачи
+  if (draggedNode && draggedNode._type === 'note') {
+    // Сначала ищем задачи
+    for (const task of state.tasks) {
+      const taskNode = nodes.find(n => n._type === "task" && n.id === task.id);
+      if (taskNode) {
+        const dx = worldX - taskNode.x;
+        const dy = worldY - taskNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitR = taskNode.r * 1.4;
+        if (distance <= hitR) {
+          return { type: 'task', id: task.id, node: taskNode };
+        }
+      }
+    }
+    
+    // Затем ищем проекты
+    for (const project of state.projects) {
+      const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+      if (projectNode) {
+        const dx = worldX - projectNode.x;
+        const dy = worldY - projectNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitR = projectNode.r * 1.4;
+        if (distance <= hitR) {
+          return { type: 'project', id: project.id, node: projectNode };
+        }
+      }
+    }
+    
+    // Затем ищем домены
+    for (const domain of state.domains) {
+      const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
+      if (domainNode) {
+        const dx = worldX - domainNode.x;
+        const dy = worldY - domainNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= domainNode.r) {
+          return { type: 'domain', id: domain.id, node: domainNode };
+        }
+      }
+    }
+  }
+
   // Общий резервный поиск (если тип не определен)
   for (const project of state.projects) {
     const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
@@ -5288,29 +5370,40 @@ function handleIdeaDrop(ideaNode, dropTarget) {
   const idea = state.ideas.find(i => i.id === ideaNode.id);
   if (!idea) return;
   
-  console.log("Idea drop - target:", dropTarget, "current domain:", idea.domainId);
+  console.log("Idea drop - target:", dropTarget, "current parent:", idea.parentId);
   
   // Update position
   idea.x = ideaNode.x;
   idea.y = ideaNode.y;
   idea.updatedAt = Date.now();
   
-  // Update domain if dropped on a domain
-  if (dropTarget && dropTarget.type === 'domain') {
-    const fromDomainId = idea.domainId || null;
-    const toDomainId = dropTarget.id;
-    idea.domainId = toDomainId;
-    // Иерархия: ensure fields and sync children
-    try {
-      ensureHierarchyFieldsLocal(idea, 'idea');
-      const fromDomain = fromDomainId ? state.domains.find(d => d.id === fromDomainId) : null;
-      const toDomain = state.domains.find(d => d.id === toDomainId);
-      if (fromDomain) { ensureHierarchyFieldsLocal(fromDomain, 'domain'); arrayRemove(fromDomain.children.ideas, idea.id); }
-      if (toDomain) { ensureHierarchyFieldsLocal(toDomain, 'domain'); arrayAddUnique(toDomain.children.ideas, idea.id); }
-      idea.parentId = toDomainId;
-    } catch (_) {}
+  // Handle different drop targets
+  if (dropTarget) {
+    const fromParentId = idea.parentId || null;
+    const toParentId = dropTarget.id;
+    
+    if (dropTarget.type === 'domain') {
+      // Moving to domain
+      if (idea.parentId !== toParentId) {
+        showIdeaMoveConfirmation(idea, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    } else if (dropTarget.type === 'project') {
+      // Moving to project
+      if (idea.parentId !== toParentId) {
+        showIdeaMoveConfirmation(idea, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    }
+  } else {
+    // Moving to independent (outside any parent)
+    if (idea.parentId !== null) {
+      showIdeaDetachConfirmation(idea);
+      return; // Wait for confirmation
+    }
   }
   
+  // If no confirmation needed, just update position
   saveState();
   showToast("Позиция идеи обновлена", "ok");
 }
@@ -5319,29 +5412,46 @@ function handleNoteDrop(noteNode, dropTarget) {
   const note = state.notes.find(n => n.id === noteNode.id);
   if (!note) return;
   
-  console.log("Note drop - target:", dropTarget, "current domain:", note.domainId);
+  console.log("Note drop - target:", dropTarget, "current parent:", note.parentId);
   
   // Update position
   note.x = noteNode.x;
   note.y = noteNode.y;
   note.updatedAt = Date.now();
   
-  // Update domain if dropped on a domain
-  if (dropTarget && dropTarget.type === 'domain') {
-    const fromDomainId = note.domainId || null;
-    const toDomainId = dropTarget.id;
-    note.domainId = toDomainId;
-    // Иерархия: ensure fields and sync children
-    try {
-      ensureHierarchyFieldsLocal(note, 'note');
-      const fromDomain = fromDomainId ? state.domains.find(d => d.id === fromDomainId) : null;
-      const toDomain = state.domains.find(d => d.id === toDomainId);
-      if (fromDomain) { ensureHierarchyFieldsLocal(fromDomain, 'domain'); arrayRemove(fromDomain.children.notes, note.id); }
-      if (toDomain) { ensureHierarchyFieldsLocal(toDomain, 'domain'); arrayAddUnique(toDomain.children.notes, note.id); }
-      note.parentId = toDomainId;
-    } catch (_) {}
+  // Handle different drop targets
+  if (dropTarget) {
+    const fromParentId = note.parentId || null;
+    const toParentId = dropTarget.id;
+    
+    if (dropTarget.type === 'domain') {
+      // Moving to domain
+      if (note.parentId !== toParentId) {
+        showNoteMoveConfirmation(note, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    } else if (dropTarget.type === 'project') {
+      // Moving to project
+      if (note.parentId !== toParentId) {
+        showNoteMoveConfirmation(note, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    } else if (dropTarget.type === 'task') {
+      // Moving to task
+      if (note.parentId !== toParentId) {
+        showNoteMoveConfirmation(note, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    }
+  } else {
+    // Moving to independent (outside any parent)
+    if (note.parentId !== null) {
+      showNoteDetachConfirmation(note);
+      return; // Wait for confirmation
+    }
   }
   
+  // If no confirmation needed, just update position
   saveState();
   showToast("Позиция заметки обновлена", "ok");
 }
@@ -5592,6 +5702,395 @@ function confirmTaskDetach() {
   }
   
   pendingDetach = null;
+}
+
+// Idea move confirmation functions
+function showIdeaMoveConfirmation(idea, fromParentId, toParentId) {
+  const fromParent = fromParentId ? getParentTitle(fromParentId) : "независимая";
+  const toParent = getParentTitle(toParentId);
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast attach show";
+    toast.innerHTML = `Переместить идею "${idea.title}"${fromParentId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="ideaMoveOk">Переместить</button> <button id="ideaMoveCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending move
+    pendingIdeaMove = {
+      ideaId: idea.id,
+      fromParentId: fromParentId,
+      toParentId: toParentId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("ideaMoveOk");
+      const cancel = document.getElementById("ideaMoveCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmIdeaMove();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingIdeaMove = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+function showIdeaDetachConfirmation(idea) {
+  const currentParent = getParentTitle(idea.parentId);
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast detach show";
+    toast.innerHTML = `Отвязать идею "${idea.title}" от "${currentParent}" (сделать независимой)? <button id="ideaDetachOk">Отвязать</button> <button id="ideaDetachCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending detach
+    pendingIdeaDetach = {
+      ideaId: idea.id,
+      fromParentId: idea.parentId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("ideaDetachOk");
+      const cancel = document.getElementById("ideaDetachCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmIdeaDetach();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingIdeaDetach = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+// Note move confirmation functions
+function showNoteMoveConfirmation(note, fromParentId, toParentId) {
+  const fromParent = fromParentId ? getParentTitle(fromParentId) : "независимая";
+  const toParent = getParentTitle(toParentId);
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast attach show";
+    toast.innerHTML = `Переместить заметку "${note.title}"${fromParentId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="noteMoveOk">Переместить</button> <button id="noteMoveCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending move
+    pendingNoteMove = {
+      noteId: note.id,
+      fromParentId: fromParentId,
+      toParentId: toParentId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("noteMoveOk");
+      const cancel = document.getElementById("noteMoveCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmNoteMove();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingNoteMove = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+function showNoteDetachConfirmation(note) {
+  const currentParent = getParentTitle(note.parentId);
+  
+  const toast = document.getElementById("toast");
+  if (toast) {
+    hideToast();
+    toast.className = "toast detach show";
+    toast.innerHTML = `Отвязать заметку "${note.title}" от "${currentParent}" (сделать независимой)? <button id="noteDetachOk">Отвязать</button> <button id="noteDetachCancel">Отменить</button>`;
+    isModalOpen = true;
+    
+    // Set up pending detach
+    pendingNoteDetach = {
+      noteId: note.id,
+      fromParentId: note.parentId,
+      pos: { x: draggedNode.x, y: draggedNode.y }
+    };
+    
+    // Set up handlers
+    setTimeout(() => {
+      const ok = document.getElementById("noteDetachOk");
+      const cancel = document.getElementById("noteDetachCancel");
+      if (ok) {
+        ok.onclick = () => {
+          confirmNoteDetach();
+          hideToast();
+        };
+      }
+      if (cancel) {
+        cancel.onclick = () => {
+          pendingNoteDetach = null;
+          hideToast();
+        };
+      }
+    }, 20);
+  }
+}
+
+// Helper function to get parent title
+function getParentTitle(parentId) {
+  if (!parentId) return "независимый";
+  
+  const domain = state.domains.find(d => d.id === parentId);
+  if (domain) return domain.title;
+  
+  const project = state.projects.find(p => p.id === parentId);
+  if (project) return project.title;
+  
+  const task = state.tasks.find(t => t.id === parentId);
+  if (task) return task.title;
+  
+  return "неизвестный";
+}
+
+// Helper functions for object management
+function findObjectById(id) {
+  if (!id) return null;
+  
+  // Search in all collections
+  const domain = state.domains.find(d => d.id === id);
+  if (domain) return domain;
+  
+  const project = state.projects.find(p => p.id === id);
+  if (project) return project;
+  
+  const task = state.tasks.find(t => t.id === id);
+  if (task) return task;
+  
+  const idea = state.ideas.find(i => i.id === id);
+  if (idea) return idea;
+  
+  const note = state.notes.find(n => n.id === id);
+  if (note) return note;
+  
+  return null;
+}
+
+function getObjectType(obj) {
+  if (!obj) return null;
+  
+  if (state.domains.includes(obj)) return 'domain';
+  if (state.projects.includes(obj)) return 'project';
+  if (state.tasks.includes(obj)) return 'task';
+  if (state.ideas.includes(obj)) return 'idea';
+  if (state.notes.includes(obj)) return 'note';
+  
+  return null;
+}
+
+// Confirmation action functions for ideas
+function confirmIdeaMove() {
+  if (!pendingIdeaMove) return;
+  
+  const idea = state.ideas.find(i => i.id === pendingIdeaMove.ideaId);
+  if (!idea) {
+    pendingIdeaMove = null;
+    return;
+  }
+  
+  const fromParentId = pendingIdeaMove.fromParentId;
+  const toParentId = pendingIdeaMove.toParentId;
+  
+  // Update idea parent
+  idea.parentId = toParentId;
+  idea.updatedAt = Date.now();
+  
+  // Sync hierarchy
+  try {
+    ensureHierarchyFieldsLocal(idea, 'idea');
+    
+    // Remove from old parent
+    if (fromParentId) {
+      const fromParent = findObjectById(fromParentId);
+      if (fromParent) {
+        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
+        arrayRemove(fromParent.children.ideas, idea.id);
+      }
+    }
+    
+    // Add to new parent
+    if (toParentId) {
+      const toParent = findObjectById(toParentId);
+      if (toParent) {
+        ensureHierarchyFieldsLocal(toParent, getObjectType(toParent));
+        arrayAddUnique(toParent.children.ideas, idea.id);
+      }
+    }
+  } catch (error) {
+    console.error("Error syncing idea hierarchy:", error);
+  }
+  
+  // Update position
+  if (pendingIdeaMove.pos) {
+    idea.x = pendingIdeaMove.pos.x;
+    idea.y = pendingIdeaMove.pos.y;
+  }
+  
+  saveState();
+  showToast("Идея перемещена", "ok");
+  pendingIdeaMove = null;
+}
+
+function confirmIdeaDetach() {
+  if (!pendingIdeaDetach) return;
+  
+  const idea = state.ideas.find(i => i.id === pendingIdeaDetach.ideaId);
+  if (!idea) {
+    pendingIdeaDetach = null;
+    return;
+  }
+  
+  const fromParentId = idea.parentId;
+  
+  // Remove from parent
+  idea.parentId = null;
+  idea.updatedAt = Date.now();
+  
+  // Sync hierarchy
+  try {
+    if (fromParentId) {
+      const fromParent = findObjectById(fromParentId);
+      if (fromParent) {
+        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
+        arrayRemove(fromParent.children.ideas, idea.id);
+      }
+    }
+  } catch (error) {
+    console.error("Error syncing idea detach:", error);
+  }
+  
+  // Update position
+  if (pendingIdeaDetach.pos) {
+    idea.x = pendingIdeaDetach.pos.x;
+    idea.y = pendingIdeaDetach.pos.y;
+  }
+  
+  saveState();
+  showToast("Идея отвязана", "ok");
+  pendingIdeaDetach = null;
+}
+
+// Confirmation action functions for notes
+function confirmNoteMove() {
+  if (!pendingNoteMove) return;
+  
+  const note = state.notes.find(n => n.id === pendingNoteMove.noteId);
+  if (!note) {
+    pendingNoteMove = null;
+    return;
+  }
+  
+  const fromParentId = pendingNoteMove.fromParentId;
+  const toParentId = pendingNoteMove.toParentId;
+  
+  // Update note parent
+  note.parentId = toParentId;
+  note.updatedAt = Date.now();
+  
+  // Sync hierarchy
+  try {
+    ensureHierarchyFieldsLocal(note, 'note');
+    
+    // Remove from old parent
+    if (fromParentId) {
+      const fromParent = findObjectById(fromParentId);
+      if (fromParent) {
+        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
+        arrayRemove(fromParent.children.notes, note.id);
+      }
+    }
+    
+    // Add to new parent
+    if (toParentId) {
+      const toParent = findObjectById(toParentId);
+      if (toParent) {
+        ensureHierarchyFieldsLocal(toParent, getObjectType(toParent));
+        arrayAddUnique(toParent.children.notes, note.id);
+      }
+    }
+  } catch (error) {
+    console.error("Error syncing note hierarchy:", error);
+  }
+  
+  // Update position
+  if (pendingNoteMove.pos) {
+    note.x = pendingNoteMove.pos.x;
+    note.y = pendingNoteMove.pos.y;
+  }
+  
+  saveState();
+  showToast("Заметка перемещена", "ok");
+  pendingNoteMove = null;
+}
+
+function confirmNoteDetach() {
+  if (!pendingNoteDetach) return;
+  
+  const note = state.notes.find(n => n.id === pendingNoteDetach.noteId);
+  if (!note) {
+    pendingNoteDetach = null;
+    return;
+  }
+  
+  const fromParentId = note.parentId;
+  
+  // Remove from parent
+  note.parentId = null;
+  note.updatedAt = Date.now();
+  
+  // Sync hierarchy
+  try {
+    if (fromParentId) {
+      const fromParent = findObjectById(fromParentId);
+      if (fromParent) {
+        ensureHierarchyFieldsLocal(fromParent, getObjectType(fromParent));
+        arrayRemove(fromParent.children.notes, note.id);
+      }
+    }
+  } catch (error) {
+    console.error("Error syncing note detach:", error);
+  }
+  
+  // Update position
+  if (pendingNoteDetach.pos) {
+    note.x = pendingNoteDetach.pos.x;
+    note.y = pendingNoteDetach.pos.y;
+  }
+  
+  saveState();
+  showToast("Заметка отвязана", "ok");
+  pendingNoteDetach = null;
 }
 
 // Export requestDraw and requestLayout functions
