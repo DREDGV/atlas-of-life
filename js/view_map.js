@@ -201,6 +201,18 @@ import { createRenderLayers, renderLayers } from './view_map/layers/index.js';
 
 // showToast is defined globally in app.js
 
+// Performance counters for drag diagnostics
+let evtMove = 0, emits = 0, sgb = 0;
+if (window.eventBus) {
+  const originalEmit = window.eventBus.emit;
+  window.eventBus.emit = function(event, data) {
+    if (event.startsWith('object:moved') || event.startsWith('task:') || event.startsWith('project:')) {
+      emits++;
+    }
+    return originalEmit.call(this, event, data);
+  };
+}
+
 let canvas,
   tooltip,
   ctx,
@@ -691,8 +703,8 @@ function handlePointerHover(evt) {
   updatePointerFromEvent(evt);
   if (!canvas) return;
   
-  // Skip hover during drag to prevent visual glitches
-  if (__isDragging || draggedNode) {
+  // Skip hover during drag to prevent visual glitches and performance issues
+  if (__isDragging || draggedNode || dragCtx.active) {
     return;
   }
   
@@ -2050,13 +2062,28 @@ export function initMap(canvasEl, tooltipEl) {
     onHover: handlePointerHover,
   });
   canvas.addEventListener("pointerdown", inputFSM.pointerDown);
-  canvas.addEventListener("pointermove", inputFSM.pointerMove, { passive: true });
+  canvas.addEventListener("pointermove", (e) => {
+    evtMove++;
+    inputFSM.pointerMove(e);
+  }, { passive: true });
   canvas.addEventListener("pointerup", inputFSM.pointerUp);
   canvas.addEventListener("pointerleave", inputFSM.pointerLeave);
   canvas.addEventListener("pointercancel", inputFSM.pointerCancel);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("click", handlePointerClick);
   canvas.addEventListener("dblclick", onDblClick);
+  
+  // Performance monitoring
+  setInterval(() => {
+    console.log('[drag-stats]', { 
+      perSecMoves: evtMove, 
+      perSecTaskEvents: emits, 
+      scenegraphRebuilds: sgb,
+      dragActive: dragCtx.active,
+      draggedId: dragCtx.id
+    });
+    evtMove = emits = sgb = 0;
+  }, 1000);
   canvas.addEventListener("contextmenu", onContextMenu);
   
   // Контекстное меню браузера блокируем внутри обработчика onContextMenu
