@@ -563,13 +563,14 @@ function handleDragMove(target, worldX, worldY, evt) {
   }
   resolveDropTargets(draggedNode);
   
-  // Improved throttling for smoother drag experience
+  // Fixed throttling - flag is reset after drawing completes
   if (!__dragRedrawScheduled) {
     __dragRedrawScheduled = true;
     requestAnimationFrame(() => {
-      __dragRedrawScheduled = false;
       // Use direct requestDraw instead of throttled version during drag
       requestDraw();
+      // Reset flag AFTER drawing is complete
+      __dragRedrawScheduled = false;
     });
   }
 }
@@ -577,6 +578,11 @@ function handleDragMove(target, worldX, worldY, evt) {
 function handleDragEnd(target, evt) {
   updatePointerFromEvent(evt);
   if (!target || draggedNode !== target) {
+    // Drag was cancelled - still save coordinates if draggedNode exists
+    if (draggedNode) {
+      // Save coordinates even for cancelled drag
+      saveState();
+    }
     draggedNode = null;
     dragOffset.x = dragOffset.y = 0;
     canvas.style.cursor = "";
@@ -607,6 +613,7 @@ function handleDrop() {
   if (!draggedNode) return;
 
   const node = draggedNode;
+  let hasChanges = false;
 
   if (node._type === "task") {
     const task = state.tasks.find((t) => t.id === node.id);
@@ -614,12 +621,14 @@ function handleDrop() {
       if (dropTargetProjectId) {
         // Show confirmation dialog for task attachment
         showTaskMoveConfirmation(task, task.projectId, dropTargetProjectId);
+        hasChanges = true;
       } else if (dropTargetDomainId) {
         task.domainId = dropTargetDomainId;
         showToast(`Задача прикреплена к домену`, "ok");
-        saveState();
+        hasChanges = true;
       }
-      // Coordinates already updated in handleDragMove
+      // Always save coordinates even if no drop target
+      saveState();
     }
   } else if (node._type === "project") {
     const project = state.projects.find((p) => p.id === node.id);
@@ -627,19 +636,21 @@ function handleDrop() {
       if (dropTargetDomainId) {
         // Show confirmation dialog for project move
         showProjectMoveConfirmation(project, project.domainId, dropTargetDomainId);
+        hasChanges = true;
       }
-      // Coordinates already updated in handleDragMove
+      // Always save coordinates even if no drop target
+      saveState();
     }
   } else if (node._type === "idea") {
     const idea = state.ideas.find((i) => i.id === node.id);
     if (idea) {
-      // Coordinates already updated in handleDragMove
+      // Always save coordinates even if no drop target
       saveState();
     }
   } else if (node._type === "note") {
     const note = state.notes.find((n) => n.id === node.id);
     if (note) {
-      // Coordinates already updated in handleDragMove
+      // Always save coordinates even if no drop target
       saveState();
     }
   }
