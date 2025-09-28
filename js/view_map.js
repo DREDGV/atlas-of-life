@@ -7539,6 +7539,10 @@ function drawIdeas() {
     const pulse = 1 + Math.sin(time + idea.x * 0.01) * 0.08; // Очень слабая пульсация
     const pulseRadius = r * pulse;
     
+    // Проверяем hover и click состояния
+    const isHovered = hoverNodeId === idea.id;
+    const isClicked = clickedNodeId === idea.id;
+    
     // Рисуем идею - упрощенный и надежный дизайн
     ctx.save();
     
@@ -7575,6 +7579,24 @@ function drawIdeas() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('💡', x, y);
+    
+    // Hover effect - белое кольцо
+    if (isHovered) {
+      ctx.beginPath();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2 * DPR;
+      ctx.arc(x, y, pulseRadius + 6 * DPR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Click effect - яркое кольцо
+    if (isClicked) {
+      ctx.beginPath();
+      ctx.strokeStyle = "#ffff00";
+      ctx.lineWidth = 3 * DPR;
+      ctx.arc(x, y, pulseRadius + 8 * DPR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     
     ctx.restore();
   });
@@ -7629,6 +7651,10 @@ function drawNotes() {
     const rotation = time + note.x * 0.005; // Медленное вращение
     const pulse = 1 + Math.sin(time + note.y * 0.01) * 0.05; // Очень слабая пульсация
     const pulseRadius = r * pulse;
+    
+    // Проверяем hover и click состояния
+    const isHovered = hoverNodeId === note.id;
+    const isClicked = clickedNodeId === note.id;
     
     // Рисуем заметку - современный дизайн с эффектами
     ctx.save();
@@ -7721,6 +7747,26 @@ function drawNotes() {
     ctx.lineTo(x + width/2 - 2 * DPR, y - height/2 + 8 * DPR);
     ctx.closePath();
     ctx.fill();
+    
+    // Hover effect - белое кольцо вокруг заметки
+    if (isHovered) {
+      ctx.globalAlpha = 1.0;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2 * DPR;
+      ctx.beginPath();
+      drawRoundedRect(ctx, x - width/2 - 6 * DPR, y - height/2 - 6 * DPR, width + 12 * DPR, height + 12 * DPR, cornerRadius + 6 * DPR);
+      ctx.stroke();
+    }
+    
+    // Click effect - яркое кольцо
+    if (isClicked) {
+      ctx.globalAlpha = 1.0;
+      ctx.strokeStyle = "#ffff00";
+      ctx.lineWidth = 3 * DPR;
+      ctx.beginPath();
+      drawRoundedRect(ctx, x - width/2 - 8 * DPR, y - height/2 - 8 * DPR, width + 16 * DPR, height + 16 * DPR, cornerRadius + 8 * DPR);
+      ctx.stroke();
+    }
     
     ctx.restore();
   });
