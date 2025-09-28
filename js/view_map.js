@@ -3117,9 +3117,9 @@ export function drawMap() {
       }
     });
 
-  // projects as planets
+  // projects as planets - exclude dragged node to prevent double rendering
   nodes
-    .filter((n) => n._type === "project")
+    .filter((n) => n._type === "project" && n.id !== draggedNode?.id)
     .forEach((n) => {
       const __skipCull2 = window.DEBUG_EDGE_TASKS === true;
       if (!__skipCull2 && !inView(n.x, n.y, n.r + 30 * DPR)) return;
@@ -3491,8 +3491,8 @@ export function drawMap() {
     } catch (_) {}
   }
 
-  // tasks as stars/asteroids
-  const taskNodes = nodes.filter((n) => n._type === "task");
+  // tasks as stars/asteroids - exclude dragged node to prevent double rendering
+  const taskNodes = nodes.filter((n) => n._type === "task" && n.id !== draggedNode?.id);
   
   // Отладка для Edge - показываем количество задач
   if (window.DEBUG_EDGE_TASKS) {
