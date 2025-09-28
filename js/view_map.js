@@ -5280,6 +5280,50 @@ function findDropTarget(worldX, worldY) {
     }
   }
 
+  // Для чек-листов ищем домены, проекты и задачи
+  if (draggedNode && draggedNode._type === 'checklist') {
+    // Сначала ищем задачи
+    for (const task of state.tasks) {
+      const taskNode = nodes.find(n => n._type === "task" && n.id === task.id);
+      if (taskNode) {
+        const dx = worldX - taskNode.x;
+        const dy = worldY - taskNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitR = taskNode.r * 1.4;
+        if (distance <= hitR) {
+          return { type: 'task', id: task.id, node: taskNode };
+        }
+      }
+    }
+    
+    // Затем ищем проекты
+    for (const project of state.projects) {
+      const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
+      if (projectNode) {
+        const dx = worldX - projectNode.x;
+        const dy = worldY - projectNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitR = projectNode.r * 1.4;
+        if (distance <= hitR) {
+          return { type: 'project', id: project.id, node: projectNode };
+        }
+      }
+    }
+    
+    // Затем ищем домены
+    for (const domain of state.domains) {
+      const domainNode = nodes.find(n => n._type === "domain" && n.id === domain.id);
+      if (domainNode) {
+        const dx = worldX - domainNode.x;
+        const dy = worldY - domainNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= domainNode.r) {
+          return { type: 'domain', id: domain.id, node: domainNode };
+        }
+      }
+    }
+  }
+
   // Общий резервный поиск (если тип не определен)
   for (const project of state.projects) {
     const projectNode = nodes.find(n => n._type === "project" && n.id === project.id);
@@ -5329,6 +5373,8 @@ function handleDrop() {
     handleIdeaDrop(draggedNode, dropTarget);
   } else if (draggedNode._type === "note") {
     handleNoteDrop(draggedNode, dropTarget);
+  } else if (draggedNode._type === "checklist") {
+    handleChecklistDrop(draggedNode, dropTarget);
   }
 }
 
@@ -5486,6 +5532,54 @@ function handleNoteDrop(noteNode, dropTarget) {
   // If no confirmation needed, just update position
   saveState();
   showToast("Позиция заметки обновлена", "ok");
+}
+
+function handleChecklistDrop(checklistNode, dropTarget) {
+  const checklist = state.checklists.find(c => c.id === checklistNode.id);
+  if (!checklist) return;
+  
+  console.log("Checklist drop - target:", dropTarget, "current parent:", checklist.parentId);
+  
+  // Update position
+  checklist.x = checklistNode.x;
+  checklist.y = checklistNode.y;
+  checklist.updatedAt = Date.now();
+  
+  // Handle different drop targets
+  if (dropTarget) {
+    const fromParentId = checklist.parentId || null;
+    const toParentId = dropTarget.id;
+    
+    if (dropTarget.type === 'domain') {
+      // Moving to domain
+      if (checklist.parentId !== toParentId) {
+        showChecklistMoveConfirmation(checklist, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    } else if (dropTarget.type === 'project') {
+      // Moving to project
+      if (checklist.parentId !== toParentId) {
+        showChecklistMoveConfirmation(checklist, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    } else if (dropTarget.type === 'task') {
+      // Moving to task
+      if (checklist.parentId !== toParentId) {
+        showChecklistMoveConfirmation(checklist, fromParentId, toParentId);
+        return; // Wait for confirmation
+      }
+    }
+  } else {
+    // Moving to independent (outside any parent)
+    if (checklist.parentId !== null) {
+      showChecklistDetachConfirmation(checklist);
+      return; // Wait for confirmation
+    }
+  }
+  
+  // If no confirmation needed, just update position
+  saveState();
+  showToast("Позиция чек-листа обновлена", "ok");
 }
 
 // Toast helper function
@@ -8209,6 +8303,30 @@ function drawChecklists() {
     checklist._hover = false;
     checklist._hoverTime = 0;
     checklist._hoverTimeout = null;
+    
+    // Проверяем hover и click состояния
+    const isHovered = hoverNodeId === checklist.id;
+    const isClicked = clickedNodeId === checklist.id;
+    
+    // Hover effect - белое кольцо вокруг чек-листа
+    if (isHovered) {
+      ctx.globalAlpha = 1.0;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2 * DPR;
+      ctx.beginPath();
+      drawRoundedRect(ctx, x - width/2 - 6 * DPR, y - height/2 - 6 * DPR, width + 12 * DPR, height + 12 * DPR, cornerRadius + 6 * DPR);
+      ctx.stroke();
+    }
+    
+    // Click effect - яркое кольцо
+    if (isClicked) {
+      ctx.globalAlpha = 1.0;
+      ctx.strokeStyle = "#ffff00";
+      ctx.lineWidth = 3 * DPR;
+      ctx.beginPath();
+      drawRoundedRect(ctx, x - width/2 - 8 * DPR, y - height/2 - 8 * DPR, width + 16 * DPR, height + 16 * DPR, cornerRadius + 8 * DPR);
+      ctx.stroke();
+    }
     
     ctx.restore();
   });
