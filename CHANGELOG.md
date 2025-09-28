@@ -1,4 +1,4 @@
-﻿## Atlas_of_life_v0.7.1.0 (25.09.2025)
+﻿## Atlas_of_life_v0.7.1.0 (28.09.2025)
 
 ### ✅ Критические исправления стабильности
 - 🚀 **Полностью исправлены фризы при перетаскивании задач**
@@ -719,6 +719,8 @@ I18N/UX
 
 ## [Unreleased]
 
+- fix: update version to v0.7.1.0 in UI (66340af)
+- feat: v0.7.1.0 - Complete stability fixes and performance improvements (d5c2a3e)
 - fix: improve map stability with error handling (b853c5c)
 - fix: add requestLayout() calls for new objects (8ea858c)
 - fix: complete drag functionality restoration (4805851)
