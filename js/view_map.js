@@ -15,15 +15,11 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
-// Compute stable checklist rect from center and base radius (with pulse for hit-test)
+// Compute stable checklist rect from center and base radius (without pulse for hit-test)
 function getChecklistRectFromBase(x, y, r) {
-  // Используем пульсирующий радиус для хит-теста, как в рендере
-  const time = performance.now() * 0.002;
-  const pulse = 1 + Math.sin(time + x * 0.01) * 0.1;
-  const pulseRadius = r * pulse;
-  
-  const width = pulseRadius * 3.8;
-  const height = pulseRadius * 2.4;
+  // Используем стабильный радиус для хит-теста (без пульсации)
+  const width = r * 3.8;
+  const height = r * 2.4;
   return { x1: x - width / 2, y1: y - height / 2, x2: x + width / 2, y2: y + height / 2, w: width, h: height };
 }
 
