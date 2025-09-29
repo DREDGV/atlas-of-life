@@ -4380,6 +4380,7 @@ function onMouseMove(e) {
   if (!n) {
     hoverNodeId = null;
     tooltip.style.opacity = 0;
+  tooltip.classList.remove('show');
     // clear drop targets when not dragging
     dropTargetProjectId = null;
     dropTargetDomainId = null;
@@ -4487,6 +4488,7 @@ function onMouseLeave() {
   currentHoveredObject = null;
   hoverNodeId = null;
   tooltip.style.opacity = 0;
+  tooltip.classList.remove('show');
   
   // Скрываем информационную панель
   if (window.hideInfoPanel) {
@@ -4744,6 +4746,7 @@ function handleObjectHover(screenX, screenY, worldPos) {
       requestDraw(); // Перерисовываем карту для удаления hover эффектов
     }
     tooltip.style.opacity = 0;
+  tooltip.classList.remove('show');
     currentHoveredObject = null;
     // Скрываем информационную панель
     if (window.hideInfoPanel) {
@@ -4805,6 +4808,7 @@ function showTooltipForObject(n, screenX, screenY) {
   
   // Показываем tooltip для измерения размеров
   tooltip.style.opacity = 1;
+  tooltip.classList.add('show');
   
   // Измеряем размеры tooltip после установки содержимого
   const tooltipRect = tooltip.getBoundingClientRect();
@@ -5263,6 +5267,7 @@ function onPointerLeave(e) {
     requestDraw(); // Перерисовываем карту для удаления hover эффектов
   }
   tooltip.style.opacity = 0;
+  tooltip.classList.remove('show');
   currentHoveredObject = null;
   
   // Скрываем информационную панель
