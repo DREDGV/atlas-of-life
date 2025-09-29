@@ -4063,10 +4063,12 @@ function screenToWorld(x, y) {
   const cx = x * dpr,
     cy = y * dpr;
   const invScale = 1 / viewState.scale;
-  return {
+  const result = {
     x: (cx - viewState.tx) * invScale,
     y: (cy - viewState.ty) * invScale,
   };
+  console.log("🔍 screenToWorld:", { input: { x, y }, dpr, scale: viewState.scale, tx: viewState.tx, ty: viewState.ty, result });
+  return result;
 }
 function hit(x, y) {
   console.log("🔍 hit() called with:", x, y, "nodes.length:", nodes.length);
@@ -7253,6 +7255,7 @@ function onClick(e) {
   try {
     if (performance.now() < suppressClickUntil) return;
   } catch (_) {}
+  console.log("🔍 onClick: event coordinates", { offsetX: e.offsetX, offsetY: e.offsetY, clientX: e.clientX, clientY: e.clientY });
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
   console.log("🔍 Click: hit result", n);
