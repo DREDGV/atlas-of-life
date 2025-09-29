@@ -463,13 +463,7 @@ function showParentSelectionModal(obj) {
 }
 
 export function openInspectorFor(obj) {
-  console.log("🔍 Inspector: openInspectorFor called with", obj);
-  console.log("🔍 Inspector: Object type:", obj?._type);
-  console.log("🔍 Inspector: state available?", !!state);
-  console.log("🔍 Inspector: state.domains?", state?.domains?.length);
-  console.log("🔍 Inspector: state.ideas?", state?.ideas?.length);
-  console.log("🔍 Inspector: state.notes?", state?.notes?.length);
-  console.log("🔍 Inspector: state.checklists?", state?.checklists?.length);
+  console.log("🔍 Inspector: openInspectorFor called with", obj?._type, obj?.id);
   
   const ins = document.getElementById("inspector");
   if (!obj) {
@@ -477,8 +471,6 @@ export function openInspectorFor(obj) {
     return;
   }
   const type = obj._type;
-  console.log("🔍 Inspector: Object type", type);
-  console.log("🔍 Inspector: All object keys", Object.keys(obj));
   
   if (type === "domain") {
     const prjs = state.projects.filter((p) => p.domainId === obj.id);
@@ -1328,24 +1320,15 @@ function showColorPicker(project) {
   
   // Обработка чек-листов
   if (type === "checklist") {
-    console.log("🔍 Inspector: Processing checklist", obj);
-    console.log("🔍 Inspector: Checklist parentId:", obj.parentId);
-    console.log("🔍 Inspector: Checklist projectId:", obj.projectId);
-    console.log("🔍 Inspector: Checklist domainId:", obj.domainId);
+    console.log("🔍 Inspector: Processing checklist", obj.id);
     
     const parent = getParentObjectFallback(obj);
-    console.log("🔍 Inspector: Found parent:", parent);
-    
     const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимый';
     
     // Подсчитываем прогресс
     const totalItems = obj.items?.length || 0;
     const completedItems = obj.items?.filter(item => item.completed) || [];
     const progress = totalItems > 0 ? Math.round((completedItems.length / totalItems) * 100) : 0;
-    
-    console.log("🔍 Inspector: Setting innerHTML for checklist");
-    console.log("🔍 Inspector: Checklist title:", obj.title);
-    console.log("🔍 Inspector: Checklist progress:", progress);
     
     ins.innerHTML = `
       <h2>Чек-лист: ${obj.title || 'Без названия'}</h2>
@@ -1359,9 +1342,7 @@ function showColorPicker(project) {
       </div>
     `;
     
-    console.log("🔍 Inspector: innerHTML set, checking if element exists");
-    console.log("🔍 Inspector: inspector element:", ins);
-    console.log("🔍 Inspector: inspector innerHTML length:", ins.innerHTML.length);
+    console.log("🔍 Inspector: Checklist inspector set successfully");
     
     document.getElementById("editChecklist").onclick = () => {
       // Закрываем возможные всплывающие окна, затем открываем редактор

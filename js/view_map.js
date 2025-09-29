@@ -4071,16 +4071,12 @@ function screenToWorld(x, y) {
   const cx = x * dpr,
     cy = y * dpr;
   const invScale = 1 / viewState.scale;
-  const result = {
+  return {
     x: (cx - viewState.tx) * invScale,
     y: (cy - viewState.ty) * invScale,
   };
-  console.log("🔍 screenToWorld:", { input: { x, y }, dpr, scale: viewState.scale, tx: viewState.tx, ty: viewState.ty, result });
-  return result;
 }
 function hit(x, y) {
-  console.log("🔍 hit() called with:", x, y, "nodes.length:", nodes.length);
-  
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
     
@@ -4088,10 +4084,8 @@ function hit(x, y) {
     if (n._type === "checklist") {
       const rect = getChecklistRectFromBase(n.x, n.y, n.r);
       const isInside = x >= rect.x1 && x <= rect.x2 && y >= rect.y1 && y <= rect.y2;
-      console.log(`🔍 Checking checklist ${n.id}: rect(${rect.x1.toFixed(1)}, ${rect.y1.toFixed(1)}, ${rect.x2.toFixed(1)}, ${rect.y2.toFixed(1)}), point(${x.toFixed(1)}, ${y.toFixed(1)}), hit=${isInside}`);
       
       if (isInside) {
-        console.log("🔍 Hit found: checklist", n.id);
         return n;
       }
       continue;
@@ -4111,16 +4105,11 @@ function hit(x, y) {
           ? n.r + 8 * DPR
           : n.r;
     
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    console.log(`🔍 Checking ${n._type} ${n.id}: distance=${distance.toFixed(2)}, radius=${rr.toFixed(2)}, hit=${distance <= rr}`);
-    
     if (dx * dx + dy * dy <= rr * rr) {
-      console.log("🔍 Hit found:", n._type, n.id);
       return n;
     }
   }
   
-  console.log("🔍 No hit found");
   return null;
 }
 
@@ -7263,7 +7252,6 @@ function onClick(e) {
   try {
     if (performance.now() < suppressClickUntil) return;
   } catch (_) {}
-  console.log("🔍 onClick: event coordinates", { offsetX: e.offsetX, offsetY: e.offsetY, clientX: e.clientX, clientY: e.clientY });
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
   console.log("🔍 Click: hit result", n);
