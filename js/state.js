@@ -1032,9 +1032,11 @@ export function getChecklistsOfProject(projectId) {
 // Миграция: добавляем parentId к существующим объектам
 function migrateObjectsToParentId() {
   console.log("🔄 Migrating objects to use parentId...");
+  console.log("🔄 Before migration - ideas:", state.ideas.length, "notes:", state.notes.length, "checklists:", state.checklists.length);
   
   // Миграция идей
   state.ideas.forEach(idea => {
+    console.log("🔄 Checking idea:", idea.id, "parentId:", idea.parentId, "domainId:", idea.domainId);
     if (!idea.parentId && idea.domainId) {
       idea.parentId = idea.domainId;
       console.log("✅ Migrated idea:", idea.title, "parentId:", idea.parentId);
@@ -1043,6 +1045,7 @@ function migrateObjectsToParentId() {
   
   // Миграция заметок
   state.notes.forEach(note => {
+    console.log("🔄 Checking note:", note.id, "parentId:", note.parentId, "domainId:", note.domainId);
     if (!note.parentId && note.domainId) {
       note.parentId = note.domainId;
       console.log("✅ Migrated note:", note.title, "parentId:", note.parentId);
@@ -1051,6 +1054,7 @@ function migrateObjectsToParentId() {
   
   // Миграция чек-листов
   state.checklists.forEach(checklist => {
+    console.log("🔄 Checking checklist:", checklist.id, "parentId:", checklist.parentId, "projectId:", checklist.projectId, "domainId:", checklist.domainId);
     if (!checklist.parentId) {
       checklist.parentId = checklist.projectId || checklist.domainId;
       console.log("✅ Migrated checklist:", checklist.title, "parentId:", checklist.parentId);

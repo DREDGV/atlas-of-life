@@ -90,6 +90,25 @@ function getParentObjectFallback(obj) {
     return project ? {...project, _type: 'project'} : null;
   }
   
+  if (obj._type === 'checklist' && obj.projectId) {
+    const project = state.projects.find(p => p.id === obj.projectId);
+    return project ? {...project, _type: 'project'} : null;
+  }
+  
+  if (obj._type === 'checklist' && obj.domainId) {
+    const domain = state.domains.find(d => d.id === obj.domainId);
+    return domain ? {...domain, _type: 'domain'} : null;
+  }
+  
+  // Fallback на parentId для всех типов
+  if (obj.parentId) {
+    const domain = state.domains.find(d => d.id === obj.parentId);
+    if (domain) return {...domain, _type: 'domain'};
+    
+    const project = state.projects.find(p => p.id === obj.parentId);
+    if (project) return {...project, _type: 'project'};
+  }
+  
   return null;
 }
 
