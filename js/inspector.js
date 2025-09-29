@@ -55,6 +55,15 @@ import { renderToday } from "./view_today.js";
 function getParentObjectFallback(obj) {
   if (!obj) return null;
   
+  // Приоритет: parentId для всех типов объектов
+  if (obj.parentId) {
+    const parent = findObjectById(obj.parentId);
+    if (parent) {
+      return { ...parent, _type: getObjectType(parent) };
+    }
+  }
+  
+  // Запасной путь: старые поля для обратной совместимости
   if (obj._type === 'project' && obj.domainId) {
     const domain = state.domains.find(d => d.id === obj.domainId);
     return domain ? {...domain, _type: 'domain'} : null;
@@ -98,15 +107,6 @@ function getParentObjectFallback(obj) {
   if (obj._type === 'checklist' && obj.domainId) {
     const domain = state.domains.find(d => d.id === obj.domainId);
     return domain ? {...domain, _type: 'domain'} : null;
-  }
-  
-  // Fallback на parentId для всех типов
-  if (obj.parentId) {
-    const domain = state.domains.find(d => d.id === obj.parentId);
-    if (domain) return {...domain, _type: 'domain'};
-    
-    const project = state.projects.find(p => p.id === obj.parentId);
-    if (project) return {...project, _type: 'project'};
   }
   
   return null;

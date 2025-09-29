@@ -392,7 +392,8 @@ export function findObjectById(id) {
     ...state.projects,
     ...state.tasks,
     ...state.ideas,
-    ...state.notes
+    ...state.notes,
+    ...state.checklists            // добавить чек-листы
   ];
   return allObjects.find(obj => obj.id === id) || null;
 }
