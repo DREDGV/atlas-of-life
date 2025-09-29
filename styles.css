@@ -443,9 +443,9 @@ header .nav-hint {
   margin-top: 8px;
 }
 
-/* Информационная панель внизу */
+/* Информационная панель внизу карты */
 .info-panel {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
@@ -857,7 +857,7 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
   margin-left: 8px;
 }
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
-.tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--panel-2);padding:6px 8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);color:var(--text);font-size:12px;opacity:0;transform:translate(-50%,-130%);white-space:nowrap}
+.tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--panel-2);padding:6px 8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);color:var(--text);font-size:12px;opacity:0;transform:translate(-50%,-130%);white-space:nowrap;max-width:300px;word-wrap:break-word;z-index:1001}
 .inspector{padding:12px;overflow:auto;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word}
 .inspector h2{margin:0 0 6px 0;font-size:16px;word-wrap:break-word;word-break:break-word}
 .kv{color:var(--muted);font-size:12px;margin:4px 0;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word}

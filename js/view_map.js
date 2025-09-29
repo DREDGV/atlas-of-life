@@ -4775,11 +4775,11 @@ function handleObjectHover(screenX, screenY, worldPos) {
 }
 
 function showTooltipForObject(n, screenX, screenY) {
-  tooltip.style.left = screenX + "px";
-  tooltip.style.top = screenY + "px";
-  tooltip.style.opacity = 1;
+  // Получаем контейнер карты для ограничения позиции
+  const mapContainer = document.getElementById('canvasWrap');
+  const containerRect = mapContainer.getBoundingClientRect();
   
-  // Краткая информация для всплывающей подсказки
+  // Устанавливаем содержимое tooltip
   if (n._type === "task") {
     const t = state.tasks.find((x) => x.id === n.id);
     const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
@@ -4802,6 +4802,33 @@ function showTooltipForObject(n, screenX, screenY) {
     const d = state.domains.find((x) => x.id === n.id);
     tooltip.innerHTML = `🌍 <b>${d.title}</b><br/><span class="hint">Домен</span>`;
   }
+  
+  // Показываем tooltip для измерения размеров
+  tooltip.style.opacity = 1;
+  
+  // Измеряем размеры tooltip после установки содержимого
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const tooltipWidth = tooltipRect.width;
+  const tooltipHeight = tooltipRect.height;
+  
+  // Вычисляем позицию относительно контейнера карты
+  const relativeX = screenX - containerRect.left;
+  const relativeY = screenY - containerRect.top;
+  
+  // Ограничиваем X позицию в пределах контейнера
+  let left = relativeX - tooltipWidth / 2;
+  left = Math.max(16, Math.min(left, containerRect.width - tooltipWidth - 16));
+  
+  // Ограничиваем Y позицию (tooltip выше курсора)
+  let top = relativeY - tooltipHeight - 16;
+  if (top < 16) {
+    // Если не помещается сверху, показываем снизу
+    top = relativeY + 16;
+  }
+  
+  // Устанавливаем позицию относительно контейнера
+  tooltip.style.left = left + "px";
+  tooltip.style.top = top + "px";
 }
 
 function showDetailedInfoForObject(n) {
