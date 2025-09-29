@@ -2728,7 +2728,15 @@ export function layoutMap() {
   // Добавляем чек-листы в nodes
   if (state.checklists && state.checklists.length > 0) {
     console.log('✓ Adding checklists to nodes:', state.checklists.length);
-    state.checklists.forEach(checklist => {
+    state.checklists.forEach((checklist, index) => {
+      // Если координаты не установлены или равны (0,0), устанавливаем их
+      if (!checklist.x || !checklist.y || (checklist.x === 0 && checklist.y === 0)) {
+        // Размещаем чек-листы в верхней части экрана
+        checklist.x = -400 + (index * 200); // Горизонтальное распределение
+        checklist.y = -300 + (index * 50);   // Вертикальное смещение
+        console.log('✓ Updated checklist coordinates:', checklist.id, 'to', checklist.x, checklist.y);
+      }
+      
       if (checklist.x !== undefined && checklist.y !== undefined && checklist.r !== undefined) {
         const checklistNode = {
           _type: "checklist",
