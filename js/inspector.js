@@ -24,9 +24,9 @@ import {
   getChecklistsOfProject,
   getChecklistProgress,
   createProject,
-  createTask,
-  saveState
+  createTask
 } from "./state.js";
+import { saveState } from "./storage.js";
 import { normalizeType, normalizeId } from "./utils/normalize.js";
 import { getParentObjectFallback } from "./inspector/utils.js";
 
