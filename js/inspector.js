@@ -1210,8 +1210,12 @@ function showColorPicker(project) {
   // Обработка идей
   if (type === "idea") {
     console.log("🔍 Inspector: Processing idea", obj);
+    console.log("🔍 Inspector: Idea parentId:", obj.parentId);
+    console.log("🔍 Inspector: Idea domainId:", obj.domainId);
     
     const parent = getParentObjectFallback(obj);
+    console.log("🔍 Inspector: Found parent:", parent);
+    
     const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : 'Объект'}: ${parent.title}` : 'Независимая';
     
     ins.innerHTML = `
@@ -1255,8 +1259,12 @@ function showColorPicker(project) {
   // Обработка заметок
   if (type === "note") {
     console.log("🔍 Inspector: Processing note", obj);
+    console.log("🔍 Inspector: Note parentId:", obj.parentId);
+    console.log("🔍 Inspector: Note domainId:", obj.domainId);
     
     const parent = getParentObjectFallback(obj);
+    console.log("🔍 Inspector: Found parent:", parent);
+    
     const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимая';
     
     ins.innerHTML = `
@@ -1300,8 +1308,13 @@ function showColorPicker(project) {
   // Обработка чек-листов
   if (type === "checklist") {
     console.log("🔍 Inspector: Processing checklist", obj);
+    console.log("🔍 Inspector: Checklist parentId:", obj.parentId);
+    console.log("🔍 Inspector: Checklist projectId:", obj.projectId);
+    console.log("🔍 Inspector: Checklist domainId:", obj.domainId);
     
     const parent = getParentObjectFallback(obj);
+    console.log("🔍 Inspector: Found parent:", parent);
+    
     const parentInfo = parent ? `${parent._type === 'domain' ? 'Домен' : parent._type === 'project' ? 'Проект' : parent._type === 'task' ? 'Задача' : 'Объект'}: ${parent.title}` : 'Независимый';
     
     // Подсчитываем прогресс

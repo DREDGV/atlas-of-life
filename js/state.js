@@ -1029,6 +1029,40 @@ export function getChecklistsOfProject(projectId) {
   return state.checklists.filter(c => c.projectId === projectId);
 }
 
+// Миграция: добавляем parentId к существующим объектам
+function migrateObjectsToParentId() {
+  console.log("🔄 Migrating objects to use parentId...");
+  
+  // Миграция идей
+  state.ideas.forEach(idea => {
+    if (!idea.parentId && idea.domainId) {
+      idea.parentId = idea.domainId;
+      console.log("✅ Migrated idea:", idea.title, "parentId:", idea.parentId);
+    }
+  });
+  
+  // Миграция заметок
+  state.notes.forEach(note => {
+    if (!note.parentId && note.domainId) {
+      note.parentId = note.domainId;
+      console.log("✅ Migrated note:", note.title, "parentId:", note.parentId);
+    }
+  });
+  
+  // Миграция чек-листов
+  state.checklists.forEach(checklist => {
+    if (!checklist.parentId) {
+      checklist.parentId = checklist.projectId || checklist.domainId;
+      console.log("✅ Migrated checklist:", checklist.title, "parentId:", checklist.parentId);
+    }
+  });
+  
+  console.log("🔄 Migration completed");
+}
+
+// Вызываем миграцию при загрузке
+migrateObjectsToParentId();
+
 // Lightweight event bus for inter-module communication
 const eventBus = {
   listeners: new Map(),
