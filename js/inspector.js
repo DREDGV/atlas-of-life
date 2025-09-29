@@ -880,16 +880,39 @@ function showIdeaInspector(obj, ins) {
     preset.addEventListener('click', () => {
       const color = preset.dataset.color;
       document.getElementById('ideaColor').value = color;
+      // Применяем изменения сразу
+      obj.color = color;
+      obj.updatedAt = Date.now();
+      saveState();
+      drawMap();
     });
   });
   
-  // Обработчики слайдеров
+  // Обработчики слайдеров с автоматическим применением
   document.getElementById('ideaSize').addEventListener('input', (e) => {
     document.getElementById('ideaSizeValue').textContent = e.target.value + 'px';
+    // Применяем изменения сразу
+    obj.r = parseInt(e.target.value);
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
   });
   
   document.getElementById('ideaOpacity').addEventListener('input', (e) => {
     document.getElementById('ideaOpacityValue').textContent = Math.round(e.target.value * 100) + '%';
+    // Применяем изменения сразу
+    obj.opacity = parseFloat(e.target.value);
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
+  });
+  
+  // Обработчик изменения цвета через color picker
+  document.getElementById('ideaColor').addEventListener('change', (e) => {
+    obj.color = e.target.value;
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
   });
   
   setupHierarchyActionHandlers(obj);
@@ -993,16 +1016,39 @@ function showNoteInspector(obj, ins) {
     preset.addEventListener('click', () => {
       const color = preset.dataset.color;
       document.getElementById('noteColor').value = color;
+      // Применяем изменения сразу
+      obj.color = color;
+      obj.updatedAt = Date.now();
+      saveState();
+      drawMap();
     });
   });
   
-  // Обработчики слайдеров
+  // Обработчики слайдеров с автоматическим применением
   document.getElementById('noteSize').addEventListener('input', (e) => {
     document.getElementById('noteSizeValue').textContent = e.target.value + 'px';
+    // Применяем изменения сразу
+    obj.r = parseInt(e.target.value);
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
   });
   
   document.getElementById('noteOpacity').addEventListener('input', (e) => {
     document.getElementById('noteOpacityValue').textContent = Math.round(e.target.value * 100) + '%';
+    // Применяем изменения сразу
+    obj.opacity = parseFloat(e.target.value);
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
+  });
+  
+  // Обработчик изменения цвета через color picker
+  document.getElementById('noteColor').addEventListener('change', (e) => {
+    obj.color = e.target.value;
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
   });
   
   setupHierarchyActionHandlers(obj);
@@ -1133,16 +1179,39 @@ function showChecklistInspector(obj, ins) {
     preset.addEventListener('click', () => {
       const color = preset.dataset.color;
       document.getElementById('checklistColor').value = color;
+      // Применяем изменения сразу
+      obj.color = color;
+      obj.updatedAt = Date.now();
+      saveState();
+      drawMap();
     });
   });
   
-  // Обработчики слайдеров
+  // Обработчики слайдеров с автоматическим применением
   document.getElementById('checklistSize').addEventListener('input', (e) => {
     document.getElementById('checklistSizeValue').textContent = e.target.value + 'px';
+    // Применяем изменения сразу
+    obj.r = parseInt(e.target.value);
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
   });
   
   document.getElementById('checklistOpacity').addEventListener('input', (e) => {
     document.getElementById('checklistOpacityValue').textContent = Math.round(e.target.value * 100) + '%';
+    // Применяем изменения сразу
+    obj.opacity = parseFloat(e.target.value);
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
+  });
+  
+  // Обработчик изменения цвета через color picker
+  document.getElementById('checklistColor').addEventListener('change', (e) => {
+    obj.color = e.target.value;
+    obj.updatedAt = Date.now();
+    saveState();
+    drawMap();
   });
   
   setupHierarchyActionHandlers(obj);
