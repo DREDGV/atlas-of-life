@@ -788,27 +788,81 @@ function showIdeaInspector(obj, ins) {
   
   ins.innerHTML = `
     <h2>Идея: ${obj.title || 'Без названия'}</h2>
-    <div class="kv">Содержание: ${obj.content || 'Нет описания'}</div>
+    
+    <!-- Content editing -->
+    <div class="kv">
+      <label>Описание:</label>
+      <div class="content-edit-container" style="margin-top: 4px;">
+        <textarea id="ideaContent" placeholder="Опишите вашу идею подробнее..." style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel-1); color: var(--text); resize: vertical;">${obj.content || ''}</textarea>
+      </div>
+    </div>
+    
+    <!-- Visual properties -->
+    <div class="kv">
+      <label>Цвет:</label>
+      <div class="color-picker" style="margin-top: 4px;">
+        <input type="color" id="ideaColor" value="${obj.color}" style="width: 40px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+        <div class="color-presets" style="display: flex; gap: 4px; margin-left: 8px;">
+          <div class="color-preset" data-color="#ff6b6b" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Красный"></div>
+          <div class="color-preset" data-color="#4ecdc4" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Бирюзовый"></div>
+          <div class="color-preset" data-color="#45b7d1" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Синий"></div>
+          <div class="color-preset" data-color="#96ceb4" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Зеленый"></div>
+          <div class="color-preset" data-color="#feca57" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Желтый"></div>
+          <div class="color-preset" data-color="#ff9ff3" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Розовый"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="kv">
+      <label>Размер:</label>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <input type="range" id="ideaSize" min="10" max="40" value="${obj.r}" style="flex: 1;">
+        <span id="ideaSizeValue" style="min-width: 40px; font-size: 12px;">${obj.r}px</span>
+      </div>
+    </div>
+    
+    <div class="kv">
+      <label>Прозрачность:</label>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <input type="range" id="ideaOpacity" min="0.1" max="1" step="0.1" value="${obj.opacity}" style="flex: 1;">
+        <span id="ideaOpacityValue" style="min-width: 40px; font-size: 12px;">${Math.round(obj.opacity * 100)}%</span>
+      </div>
+    </div>
+    
     <div class="kv">Родитель: ${parentInfo}</div>
     <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
+    <div class="kv">Обновлено: ${daysSince(obj.updatedAt)} дн. назад</div>
     
     ${renderHierarchySection(obj)}
     
     <div class="btns">
-      <button class="btn primary" id="editIdea">✏️ Редактировать</button>
+      <button class="btn primary" id="saveIdea">💾 Сохранить</button>
+      <button class="btn" id="editIdeaAdvanced">✏️ Расширенное редактирование</button>
       <button class="btn danger" id="delIdea">🗑️ Удалить</button>
     </div>
   `;
   
   // Обработчики событий
-  document.getElementById("editIdea").onclick = () => {
-    const newTitle = prompt("Название идеи:", obj.title);
-    if (newTitle && newTitle !== obj.title) {
-      obj.title = newTitle;
-      obj.updatedAt = Date.now();
-      saveState();
-      drawMap();
-      openInspectorFor(obj);
+  document.getElementById("saveIdea").onclick = () => {
+    const content = document.getElementById("ideaContent").value.trim();
+    const color = document.getElementById("ideaColor").value;
+    const size = parseInt(document.getElementById("ideaSize").value);
+    const opacity = parseFloat(document.getElementById("ideaOpacity").value);
+    
+    obj.content = content;
+    obj.color = color;
+    obj.r = size;
+    obj.opacity = opacity;
+    obj.updatedAt = Date.now();
+    
+    saveState();
+    drawMap();
+    openInspectorFor(obj);
+  };
+  
+  document.getElementById("editIdeaAdvanced").onclick = () => {
+    if (window.showIdeaEditor) {
+      window.showIdeaEditor(obj);
     }
   };
   
@@ -821,6 +875,23 @@ function showIdeaInspector(obj, ins) {
     }
   };
   
+  // Обработчики цветовых пресетов
+  document.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      document.getElementById('ideaColor').value = color;
+    });
+  });
+  
+  // Обработчики слайдеров
+  document.getElementById('ideaSize').addEventListener('input', (e) => {
+    document.getElementById('ideaSizeValue').textContent = e.target.value + 'px';
+  });
+  
+  document.getElementById('ideaOpacity').addEventListener('input', (e) => {
+    document.getElementById('ideaOpacityValue').textContent = Math.round(e.target.value * 100) + '%';
+  });
+  
   setupHierarchyActionHandlers(obj);
 }
 
@@ -830,27 +901,81 @@ function showNoteInspector(obj, ins) {
   
   ins.innerHTML = `
     <h2>Заметка: ${obj.title || 'Без названия'}</h2>
-    <div class="kv">Содержание: ${obj.text || 'Нет описания'}</div>
+    
+    <!-- Content editing -->
+    <div class="kv">
+      <label>Содержание:</label>
+      <div class="content-edit-container" style="margin-top: 4px;">
+        <textarea id="noteText" placeholder="Введите текст заметки..." style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid var(--panel-2); border-radius: 4px; background: var(--panel-1); color: var(--text); resize: vertical;">${obj.text || ''}</textarea>
+      </div>
+    </div>
+    
+    <!-- Visual properties -->
+    <div class="kv">
+      <label>Цвет:</label>
+      <div class="color-picker" style="margin-top: 4px;">
+        <input type="color" id="noteColor" value="${obj.color}" style="width: 40px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+        <div class="color-presets" style="display: flex; gap: 4px; margin-left: 8px;">
+          <div class="color-preset" data-color="#6b7280" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Серый"></div>
+          <div class="color-preset" data-color="#4b5563" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Темно-серый"></div>
+          <div class="color-preset" data-color="#374151" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Очень темно-серый"></div>
+          <div class="color-preset" data-color="#1f2937" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Почти черный"></div>
+          <div class="color-preset" data-color="#059669" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Зеленый"></div>
+          <div class="color-preset" data-color="#dc2626" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Красный"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="kv">
+      <label>Размер:</label>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <input type="range" id="noteSize" min="8" max="30" value="${obj.r}" style="flex: 1;">
+        <span id="noteSizeValue" style="min-width: 40px; font-size: 12px;">${obj.r}px</span>
+      </div>
+    </div>
+    
+    <div class="kv">
+      <label>Прозрачность:</label>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <input type="range" id="noteOpacity" min="0.1" max="1" step="0.1" value="${obj.opacity}" style="flex: 1;">
+        <span id="noteOpacityValue" style="min-width: 40px; font-size: 12px;">${Math.round(obj.opacity * 100)}%</span>
+      </div>
+    </div>
+    
     <div class="kv">Родитель: ${parentInfo}</div>
     <div class="kv">Создано: ${daysSince(obj.createdAt)} дн. назад</div>
+    <div class="kv">Обновлено: ${daysSince(obj.updatedAt)} дн. назад</div>
     
     ${renderHierarchySection(obj)}
     
     <div class="btns">
-      <button class="btn primary" id="editNote">✏️ Редактировать</button>
+      <button class="btn primary" id="saveNote">💾 Сохранить</button>
+      <button class="btn" id="editNoteAdvanced">✏️ Расширенное редактирование</button>
       <button class="btn danger" id="delNote">🗑️ Удалить</button>
     </div>
   `;
   
   // Обработчики событий
-  document.getElementById("editNote").onclick = () => {
-    const newTitle = prompt("Название заметки:", obj.title);
-    if (newTitle && newTitle !== obj.title) {
-      obj.title = newTitle;
-      obj.updatedAt = Date.now();
-      saveState();
-      drawMap();
-      openInspectorFor(obj);
+  document.getElementById("saveNote").onclick = () => {
+    const text = document.getElementById("noteText").value.trim();
+    const color = document.getElementById("noteColor").value;
+    const size = parseInt(document.getElementById("noteSize").value);
+    const opacity = parseFloat(document.getElementById("noteOpacity").value);
+    
+    obj.text = text;
+    obj.color = color;
+    obj.r = size;
+    obj.opacity = opacity;
+    obj.updatedAt = Date.now();
+    
+    saveState();
+    drawMap();
+    openInspectorFor(obj);
+  };
+  
+  document.getElementById("editNoteAdvanced").onclick = () => {
+    if (window.showNoteEditor) {
+      window.showNoteEditor(obj);
     }
   };
   
@@ -862,6 +987,23 @@ function showNoteInspector(obj, ins) {
       showPlaceholder();
     }
   };
+  
+  // Обработчики цветовых пресетов
+  document.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      document.getElementById('noteColor').value = color;
+    });
+  });
+  
+  // Обработчики слайдеров
+  document.getElementById('noteSize').addEventListener('input', (e) => {
+    document.getElementById('noteSizeValue').textContent = e.target.value + 'px';
+  });
+  
+  document.getElementById('noteOpacity').addEventListener('input', (e) => {
+    document.getElementById('noteOpacityValue').textContent = Math.round(e.target.value * 100) + '%';
+  });
   
   setupHierarchyActionHandlers(obj);
 }
@@ -875,22 +1017,103 @@ function showChecklistInspector(obj, ins) {
   const completedItems = obj.items?.filter(item => item.completed) || [];
   const progress = totalItems > 0 ? Math.round((completedItems.length / totalItems) * 100) : 0;
   
+  // Показываем элементы чек-листа
+  const itemsHtml = obj.items && obj.items.length > 0 ? 
+    obj.items.map(item => `
+      <div class="checklist-item-preview" style="display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--panel-2);">
+        <input type="checkbox" ${item.completed ? 'checked' : ''} disabled style="margin: 0;">
+        <span style="flex: 1; ${item.completed ? 'text-decoration: line-through; opacity: 0.6;' : ''}">${item.text || 'Пустой элемент'}</span>
+      </div>
+    `).join('') : 
+    '<div style="color: var(--muted); font-style: italic; padding: 8px 0;">Нет элементов</div>';
+  
   ins.innerHTML = `
     <h2>Чек-лист: ${obj.title || 'Без названия'}</h2>
-    <div class="kv">Прогресс: ${progress}% (${completedItems.length}/${totalItems})</div>
+    
+    <!-- Progress -->
+    <div class="kv">
+      <label>Прогресс:</label>
+      <div style="margin-top: 4px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="flex: 1; height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden;">
+            <div style="height: 100%; background: var(--ok); width: ${progress}%; transition: width 0.3s ease;"></div>
+          </div>
+          <span style="min-width: 60px; font-size: 12px; font-weight: bold;">${progress}%</span>
+        </div>
+        <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">${completedItems.length} из ${totalItems} выполнено</div>
+      </div>
+    </div>
+    
+    <!-- Items preview -->
+    <div class="kv">
+      <label>Элементы:</label>
+      <div class="checklist-items-preview" style="margin-top: 4px; max-height: 120px; overflow-y: auto; border: 1px solid var(--panel-2); border-radius: 4px; padding: 8px;">
+        ${itemsHtml}
+      </div>
+    </div>
+    
+    <!-- Visual properties -->
+    <div class="kv">
+      <label>Цвет:</label>
+      <div class="color-picker" style="margin-top: 4px;">
+        <input type="color" id="checklistColor" value="${obj.color}" style="width: 40px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+        <div class="color-presets" style="display: flex; gap: 4px; margin-left: 8px;">
+          <div class="color-preset" data-color="#3b82f6" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Синий"></div>
+          <div class="color-preset" data-color="#10b981" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Зеленый"></div>
+          <div class="color-preset" data-color="#f59e0b" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Оранжевый"></div>
+          <div class="color-preset" data-color="#ef4444" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Красный"></div>
+          <div class="color-preset" data-color="#8b5cf6" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Фиолетовый"></div>
+          <div class="color-preset" data-color="#06b6d4" style="width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;" title="Голубой"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="kv">
+      <label>Размер:</label>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <input type="range" id="checklistSize" min="15" max="35" value="${obj.r}" style="flex: 1;">
+        <span id="checklistSizeValue" style="min-width: 40px; font-size: 12px;">${obj.r}px</span>
+      </div>
+    </div>
+    
+    <div class="kv">
+      <label>Прозрачность:</label>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <input type="range" id="checklistOpacity" min="0.1" max="1" step="0.1" value="${obj.opacity}" style="flex: 1;">
+        <span id="checklistOpacityValue" style="min-width: 40px; font-size: 12px;">${Math.round(obj.opacity * 100)}%</span>
+      </div>
+    </div>
+    
     <div class="kv">Родитель: ${parentInfo}</div>
     <div class="kv">Создан: ${daysSince(obj.createdAt)} дн. назад</div>
+    <div class="kv">Обновлен: ${daysSince(obj.updatedAt)} дн. назад</div>
     
     ${renderHierarchySection(obj)}
     
     <div class="btns">
-      <button class="btn primary" id="editChecklist">✏️ Редактировать</button>
+      <button class="btn primary" id="saveChecklist">💾 Сохранить</button>
+      <button class="btn" id="editChecklistAdvanced">✏️ Редактировать элементы</button>
       <button class="btn danger" id="delChecklist">🗑️ Удалить</button>
     </div>
   `;
   
   // Обработчики событий
-  document.getElementById("editChecklist").onclick = () => {
+  document.getElementById("saveChecklist").onclick = () => {
+    const color = document.getElementById("checklistColor").value;
+    const size = parseInt(document.getElementById("checklistSize").value);
+    const opacity = parseFloat(document.getElementById("checklistOpacity").value);
+    
+    obj.color = color;
+    obj.r = size;
+    obj.opacity = opacity;
+    obj.updatedAt = Date.now();
+    
+    saveState();
+    drawMap();
+    openInspectorFor(obj);
+  };
+  
+  document.getElementById("editChecklistAdvanced").onclick = () => {
     if (window.showChecklistEditor) {
       window.showChecklistEditor(obj);
     }
@@ -904,6 +1127,23 @@ function showChecklistInspector(obj, ins) {
       showPlaceholder();
     }
   };
+  
+  // Обработчики цветовых пресетов
+  document.querySelectorAll('.color-preset').forEach(preset => {
+    preset.addEventListener('click', () => {
+      const color = preset.dataset.color;
+      document.getElementById('checklistColor').value = color;
+    });
+  });
+  
+  // Обработчики слайдеров
+  document.getElementById('checklistSize').addEventListener('input', (e) => {
+    document.getElementById('checklistSizeValue').textContent = e.target.value + 'px';
+  });
+  
+  document.getElementById('checklistOpacity').addEventListener('input', (e) => {
+    document.getElementById('checklistOpacityValue').textContent = Math.round(e.target.value * 100) + '%';
+  });
   
   setupHierarchyActionHandlers(obj);
 }
