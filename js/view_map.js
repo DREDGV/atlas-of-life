@@ -3409,6 +3409,62 @@ export function drawMap() {
         ctx.beginPath();
         ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 4, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (draggedNode._type === "idea") {
+        // Draw idea with glow effect
+        const idea = state.ideas.find(i => i.id === draggedNode.id);
+        if (idea) {
+          const baseColor = idea.color || '#8b5cf6';
+          ctx.fillStyle = baseColor;
+          ctx.beginPath();
+          ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Add pulsing border
+          const time = performance.now() * 0.004;
+          const pulse = 1 + Math.sin(time) * 0.15;
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 1.5 * pulse;
+          ctx.beginPath();
+          ctx.arc(draggedNode.x, draggedNode.y, draggedNode.r + 4, 0, Math.PI * 2);
+          ctx.stroke();
+          
+          // Draw icon
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `${draggedNode.r * 0.8}px Arial`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('💡', draggedNode.x, draggedNode.y);
+        }
+      } else if (draggedNode._type === "note") {
+        // Draw note with glow effect
+        const note = state.notes.find(n => n.id === draggedNode.id);
+        if (note) {
+          const baseColor = note.color || '#6c757d';
+          const width = draggedNode.r * 2.2;
+          const height = draggedNode.r * 1.6;
+          const cornerRadius = draggedNode.r * 0.3;
+          
+          ctx.fillStyle = baseColor;
+          ctx.beginPath();
+          drawRoundedRect(ctx, draggedNode.x - width/2, draggedNode.y - height/2, width, height, cornerRadius);
+          ctx.fill();
+          
+          // Add pulsing border
+          const time = performance.now() * 0.004;
+          const pulse = 1 + Math.sin(time) * 0.15;
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 1.5 * pulse;
+          ctx.beginPath();
+          drawRoundedRect(ctx, draggedNode.x - width/2 - 2, draggedNode.y - height/2 - 2, width + 4, height + 4, cornerRadius + 2);
+          ctx.stroke();
+          
+          // Draw icon
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `${draggedNode.r * 0.8}px Arial`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('📝', draggedNode.x, draggedNode.y);
+        }
       } else if (draggedNode._type === "project") {
         // Draw project with glow effect
         // Use project ID as seed for unique shape and project color
@@ -5901,7 +5957,7 @@ function showIdeaMoveConfirmation(idea, fromParentId, toParentId, targetType = '
 }
 
 function showIdeaDetachConfirmation(idea) {
-  const currentParent = getParentTitle(idea.domainId);
+  const currentParent = getParentTitle(idea.parentId || idea.domainId);
   
   const toast = document.getElementById("toast");
   if (toast) {
@@ -5913,6 +5969,7 @@ function showIdeaDetachConfirmation(idea) {
     // Set up pending detach
     pendingIdeaDetach = {
       ideaId: idea.id,
+      fromParentId: idea.parentId,
       fromDomainId: idea.domainId,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
@@ -5979,7 +6036,7 @@ function showNoteMoveConfirmation(note, fromParentId, toParentId, targetType = '
 }
 
 function showNoteDetachConfirmation(note) {
-  const currentParent = getParentTitle(note.domainId);
+  const currentParent = getParentTitle(note.parentId || note.domainId);
   
   const toast = document.getElementById("toast");
   if (toast) {
@@ -5991,6 +6048,7 @@ function showNoteDetachConfirmation(note) {
     // Set up pending detach
     pendingNoteDetach = {
       noteId: note.id,
+      fromParentId: note.parentId,
       fromDomainId: note.domainId,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
@@ -6112,6 +6170,9 @@ function confirmIdeaMove() {
   }
   
   saveState();
+  requestLayout();
+  requestDraw();
+  openInspectorFor(idea);
   showToast("Идея перемещена", "ok");
   pendingIdeaMove = null;
 }
@@ -6125,7 +6186,7 @@ function confirmIdeaDetach() {
     return;
   }
   
-  // Remove from domain
+  // Remove from all parents
   idea.domainId = null;
   idea.parentId = null;
   idea.updatedAt = Date.now();
@@ -6137,6 +6198,9 @@ function confirmIdeaDetach() {
   }
   
   saveState();
+  requestLayout();
+  requestDraw();
+  openInspectorFor(idea);
   showToast("Идея отвязана", "ok");
   pendingIdeaDetach = null;
 }
@@ -6187,6 +6251,9 @@ function confirmNoteMove() {
   }
   
   saveState();
+  requestLayout();
+  requestDraw();
+  openInspectorFor(note);
   showToast("Заметка перемещена", "ok");
   pendingNoteMove = null;
 }
@@ -6200,7 +6267,7 @@ function confirmNoteDetach() {
     return;
   }
   
-  // Remove from domain
+  // Remove from all parents
   note.domainId = null;
   note.parentId = null;
   note.updatedAt = Date.now();
@@ -6212,6 +6279,9 @@ function confirmNoteDetach() {
   }
   
   saveState();
+  requestLayout();
+  requestDraw();
+  openInspectorFor(note);
   showToast("Заметка отвязана", "ok");
   pendingNoteDetach = null;
 }
@@ -7835,8 +7905,8 @@ function drawIdeas() {
     x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
   
   state.ideas.forEach(idea => {
-    // Temporarily disabled drag exclusion to test performance
-    // if (draggedNode && draggedNode._type === 'idea' && draggedNode.id === idea.id) return;
+    // Exclude dragged node to prevent double rendering
+    if (draggedNode && draggedNode._type === 'idea' && draggedNode.id === idea.id) return;
     
     if (!inView(idea.x, idea.y, idea.r + 20 * DPR)) return;
     
@@ -7945,8 +8015,8 @@ function drawNotes() {
     x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
   
   state.notes.forEach((note, index) => {
-    // Temporarily disabled drag exclusion to test performance
-    // if (draggedNode && draggedNode._type === 'note' && draggedNode.id === note.id) return;
+    // Exclude dragged node to prevent double rendering
+    if (draggedNode && draggedNode._type === 'note' && draggedNode.id === note.id) return;
     
     if (!inView(note.x, note.y, note.r + 20 * DPR)) {
       return;
