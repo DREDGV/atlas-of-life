@@ -398,6 +398,19 @@ export function findObjectById(id) {
   return allObjects.find(obj => obj.id === id) || null;
 }
 
+// @ts-check
+export function byTypeAndId(type, id) {
+  switch (type) {
+    case 'domain':    return state.domains?.find?.(d => d.id === id)   ?? null;
+    case 'project':   return state.projects?.find?.(p => p.id === id)  ?? null;
+    case 'task':      return state.tasks?.find?.(t => t.id === id)     ?? null;
+    case 'idea':      return state.ideas?.find?.(i => i.id === id)     ?? null;
+    case 'note':      return state.notes?.find?.(n => n.id === id)     ?? null;
+    case 'checklist': return state.checklists?.find?.(c => c.id === id)?? null;
+    default:          return null;
+  }
+}
+
 /**
  * Получение типа объекта
  * @param {Object} obj - Объект

@@ -7309,6 +7309,7 @@ function onClick(e) {
                 clickedNodeId = n.id;
                 clickEffectTime = 1.0;
                 
+                console.debug('[select]', { type: 'checklist', id: n.id });
                 console.log("🔍 Click: Opening inspector for checklist", checklist);
                 console.log("🔍 Click: openInspectorFor function available?", typeof openInspectorFor);
                 try {
