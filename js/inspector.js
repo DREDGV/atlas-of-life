@@ -14,6 +14,7 @@ import {
   getChildObjects,
   getParentObject,
   findObjectById,
+  getObjectType,
   canChangeHierarchy,
   attachObjectToParent,
   detachObjectFromParent,
@@ -463,6 +464,7 @@ function showParentSelectionModal(obj) {
 
 export function openInspectorFor(obj) {
   console.log("🔍 Inspector: openInspectorFor called with", obj);
+  console.log("🔍 Inspector: Object type:", obj?._type);
   console.log("🔍 Inspector: state available?", !!state);
   console.log("🔍 Inspector: state.domains?", state?.domains?.length);
   console.log("🔍 Inspector: state.ideas?", state?.ideas?.length);
@@ -1342,6 +1344,9 @@ function showColorPicker(project) {
     const progress = totalItems > 0 ? Math.round((completedItems.length / totalItems) * 100) : 0;
     
     console.log("🔍 Inspector: Setting innerHTML for checklist");
+    console.log("🔍 Inspector: Checklist title:", obj.title);
+    console.log("🔍 Inspector: Checklist progress:", progress);
+    
     ins.innerHTML = `
       <h2>Чек-лист: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Прогресс: ${progress}% (${completedItems.length}/${totalItems})</div>
@@ -1353,6 +1358,10 @@ function showColorPicker(project) {
         <button class="btn danger" id="delChecklist">🗑️ Удалить</button>
       </div>
     `;
+    
+    console.log("🔍 Inspector: innerHTML set, checking if element exists");
+    console.log("🔍 Inspector: inspector element:", ins);
+    console.log("🔍 Inspector: inspector innerHTML length:", ins.innerHTML.length);
     
     document.getElementById("editChecklist").onclick = () => {
       // Закрываем возможные всплывающие окна, затем открываем редактор
