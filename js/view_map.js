@@ -1727,11 +1727,13 @@ function createProjectAtPosition(x, y) {
 }
 
 function createIdeaAtPosition(x, y) {
+  const domainId = state.activeDomain || state.domains[0]?.id || null;
   const idea = {
     id: generateId(),
     title: 'Новая идея',
     content: '',
-    domainId: state.activeDomain || state.domains[0]?.id || null,
+    domainId: domainId,
+    parentId: domainId, // Добавляем parentId для совместимости с иерархией
     x: x,
     y: y,
     r: 20,
@@ -1748,11 +1750,13 @@ function createIdeaAtPosition(x, y) {
 }
 
 function createNoteAtPosition(x, y) {
+  const domainId = state.activeDomain || state.domains[0]?.id || null;
   const note = {
     id: generateId(),
     title: 'Новая заметка',
     content: '',
-    domainId: state.activeDomain || state.domains[0]?.id || null,
+    domainId: domainId,
+    parentId: domainId, // Добавляем parentId для совместимости с иерархией
     x: x,
     y: y,
     r: 18,
@@ -5490,13 +5494,21 @@ function handleIdeaDrop(ideaNode, dropTarget) {
         return; // Wait for confirmation
       }
     } else if (dropTarget.type === 'project') {
-      // Moving to project (not supported for ideas, but keeping for consistency)
-      showToast("Идеи нельзя привязывать к проектам", "warn");
-      return;
+      // Moving to project - now supported!
+      if (idea.parentId !== toParentId) {
+        showIdeaMoveConfirmation(idea, idea.parentId, toParentId, 'project');
+        return; // Wait for confirmation
+      }
+    } else if (dropTarget.type === 'task') {
+      // Moving to task - now supported!
+      if (idea.parentId !== toParentId) {
+        showIdeaMoveConfirmation(idea, idea.parentId, toParentId, 'task');
+        return; // Wait for confirmation
+      }
     }
   } else {
     // Moving to independent (outside any parent)
-    if (idea.domainId !== null) {
+    if (idea.parentId !== null || idea.domainId !== null) {
       showIdeaDetachConfirmation(idea);
       return; // Wait for confirmation
     }
@@ -5529,17 +5541,21 @@ function handleNoteDrop(noteNode, dropTarget) {
         return; // Wait for confirmation
       }
     } else if (dropTarget.type === 'project') {
-      // Moving to project (not supported for notes, but keeping for consistency)
-      showToast("Заметки нельзя привязывать к проектам", "warn");
-      return;
+      // Moving to project - now supported!
+      if (note.parentId !== toParentId) {
+        showNoteMoveConfirmation(note, note.parentId, toParentId, 'project');
+        return; // Wait for confirmation
+      }
     } else if (dropTarget.type === 'task') {
-      // Moving to task (not supported for notes, but keeping for consistency)
-      showToast("Заметки нельзя привязывать к задачам", "warn");
-      return;
+      // Moving to task - now supported!
+      if (note.parentId !== toParentId) {
+        showNoteMoveConfirmation(note, note.parentId, toParentId, 'task');
+        return; // Wait for confirmation
+      }
     }
   } else {
     // Moving to independent (outside any parent)
-    if (note.domainId !== null) {
+    if (note.parentId !== null || note.domainId !== null) {
       showNoteDetachConfirmation(note);
       return; // Wait for confirmation
     }
@@ -5844,22 +5860,23 @@ function confirmTaskDetach() {
 }
 
 // Idea move confirmation functions
-function showIdeaMoveConfirmation(idea, fromDomainId, toDomainId) {
-  const fromParent = fromDomainId ? getParentTitle(fromDomainId) : "независимая";
-  const toParent = getParentTitle(toDomainId);
+function showIdeaMoveConfirmation(idea, fromParentId, toParentId, targetType = 'domain') {
+  const fromParent = fromParentId ? getParentTitle(fromParentId) : "независимая";
+  const toParent = getParentTitle(toParentId);
   
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
     toast.className = "toast attach show";
-    toast.innerHTML = `Переместить идею "${idea.title}"${fromDomainId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="ideaMoveOk">Переместить</button> <button id="ideaMoveCancel">Отменить</button>`;
+    toast.innerHTML = `Переместить идею "${idea.title}"${fromParentId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="ideaMoveOk">Переместить</button> <button id="ideaMoveCancel">Отменить</button>`;
     isModalOpen = true;
     
     // Set up pending move
     pendingIdeaMove = {
       ideaId: idea.id,
-      fromDomainId: fromDomainId,
-      toDomainId: toDomainId,
+      fromParentId: fromParentId,
+      toParentId: toParentId,
+      targetType: targetType,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
     
@@ -5921,22 +5938,23 @@ function showIdeaDetachConfirmation(idea) {
 }
 
 // Note move confirmation functions
-function showNoteMoveConfirmation(note, fromDomainId, toDomainId) {
-  const fromParent = fromDomainId ? getParentTitle(fromDomainId) : "независимая";
-  const toParent = getParentTitle(toDomainId);
+function showNoteMoveConfirmation(note, fromParentId, toParentId, targetType = 'domain') {
+  const fromParent = fromParentId ? getParentTitle(fromParentId) : "независимая";
+  const toParent = getParentTitle(toParentId);
   
   const toast = document.getElementById("toast");
   if (toast) {
     hideToast();
     toast.className = "toast attach show";
-    toast.innerHTML = `Переместить заметку "${note.title}"${fromDomainId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="noteMoveOk">Переместить</button> <button id="noteMoveCancel">Отменить</button>`;
+    toast.innerHTML = `Переместить заметку "${note.title}"${fromParentId ? ` из "${fromParent}"` : ''} в "${toParent}"? <button id="noteMoveOk">Переместить</button> <button id="noteMoveCancel">Отменить</button>`;
     isModalOpen = true;
     
     // Set up pending move
     pendingNoteMove = {
       noteId: note.id,
-      fromDomainId: fromDomainId,
-      toDomainId: toDomainId,
+      fromParentId: fromParentId,
+      toParentId: toParentId,
+      targetType: targetType,
       pos: { x: draggedNode.x, y: draggedNode.y }
     };
     
@@ -6058,11 +6076,33 @@ function confirmIdeaMove() {
     return;
   }
   
-  const fromDomainId = pendingIdeaMove.fromDomainId;
-  const toDomainId = pendingIdeaMove.toDomainId;
+  const fromParentId = pendingIdeaMove.fromParentId;
+  const toParentId = pendingIdeaMove.toParentId;
+  const targetType = pendingIdeaMove.targetType;
   
-  // Update idea domain
-  idea.domainId = toDomainId;
+  // Update idea parent based on target type
+  if (targetType === 'domain') {
+    idea.domainId = toParentId;
+    idea.parentId = toParentId;
+  } else if (targetType === 'project') {
+    idea.parentId = toParentId;
+    // Get domain from project
+    const project = state.projects.find(p => p.id === toParentId);
+    if (project) {
+      idea.domainId = project.domainId;
+    }
+  } else if (targetType === 'task') {
+    idea.parentId = toParentId;
+    // Get domain from task's project
+    const task = state.tasks.find(t => t.id === toParentId);
+    if (task) {
+      const project = state.projects.find(p => p.id === task.projectId);
+      if (project) {
+        idea.domainId = project.domainId;
+      }
+    }
+  }
+  
   idea.updatedAt = Date.now();
   
   // Update position
@@ -6087,6 +6127,7 @@ function confirmIdeaDetach() {
   
   // Remove from domain
   idea.domainId = null;
+  idea.parentId = null;
   idea.updatedAt = Date.now();
   
   // Update position
@@ -6110,11 +6151,33 @@ function confirmNoteMove() {
     return;
   }
   
-  const fromDomainId = pendingNoteMove.fromDomainId;
-  const toDomainId = pendingNoteMove.toDomainId;
+  const fromParentId = pendingNoteMove.fromParentId;
+  const toParentId = pendingNoteMove.toParentId;
+  const targetType = pendingNoteMove.targetType;
   
-  // Update note domain
-  note.domainId = toDomainId;
+  // Update note parent based on target type
+  if (targetType === 'domain') {
+    note.domainId = toParentId;
+    note.parentId = toParentId;
+  } else if (targetType === 'project') {
+    note.parentId = toParentId;
+    // Get domain from project
+    const project = state.projects.find(p => p.id === toParentId);
+    if (project) {
+      note.domainId = project.domainId;
+    }
+  } else if (targetType === 'task') {
+    note.parentId = toParentId;
+    // Get domain from task's project
+    const task = state.tasks.find(t => t.id === toParentId);
+    if (task) {
+      const project = state.projects.find(p => p.id === task.projectId);
+      if (project) {
+        note.domainId = project.domainId;
+      }
+    }
+  }
+  
   note.updatedAt = Date.now();
   
   // Update position
@@ -6139,6 +6202,7 @@ function confirmNoteDetach() {
   
   // Remove from domain
   note.domainId = null;
+  note.parentId = null;
   note.updatedAt = Date.now();
   
   // Update position
