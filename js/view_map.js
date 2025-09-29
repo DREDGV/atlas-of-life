@@ -7314,7 +7314,13 @@ function onClick(e) {
                 clickEffectTime = 1.0;
                 
                 console.log("🔍 Click: Opening inspector for checklist", checklist);
-                openInspectorFor({...checklist, _type: 'checklist'});
+                console.log("🔍 Click: openInspectorFor function available?", typeof openInspectorFor);
+                try {
+                  openInspectorFor({...checklist, _type: 'checklist'});
+                  console.log("🔍 Click: openInspectorFor called successfully");
+                } catch (error) {
+                  console.error("🔍 Click: Error calling openInspectorFor", error);
+                }
               }
               return;
             } else {
