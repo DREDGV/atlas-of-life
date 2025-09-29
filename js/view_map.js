@@ -4073,6 +4073,8 @@ function screenToWorld(x, y) {
   };
 }
 function hit(x, y) {
+  console.log("🔍 hit() called with:", x, y, "nodes.length:", nodes.length);
+  
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
     const dx = x - n.x,
@@ -4089,10 +4091,17 @@ function hit(x, y) {
         : n._type === "checklist"
         ? n.r * 1.7 + 8 * DPR
         : n.r;
+    
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    console.log(`🔍 Checking ${n._type} ${n.id}: distance=${distance.toFixed(2)}, radius=${rr.toFixed(2)}, hit=${distance <= rr}`);
+    
     if (dx * dx + dy * dy <= rr * rr) {
+      console.log("🔍 Hit found:", n._type, n.id);
       return n;
     }
   }
+  
+  console.log("🔍 No hit found");
   return null;
 }
 
