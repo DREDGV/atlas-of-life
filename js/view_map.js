@@ -4077,20 +4077,33 @@ function hit(x, y) {
   
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
+    
+    // Специальная обработка для чек-листов (прямоугольная область)
+    if (n._type === "checklist") {
+      const rect = getChecklistRectFromBase(n.x, n.y, n.r);
+      const isInside = x >= rect.x1 && x <= rect.x2 && y >= rect.y1 && y <= rect.y2;
+      console.log(`🔍 Checking checklist ${n.id}: rect(${rect.x1.toFixed(1)}, ${rect.y1.toFixed(1)}, ${rect.x2.toFixed(1)}, ${rect.y2.toFixed(1)}), point(${x.toFixed(1)}, ${y.toFixed(1)}), hit=${isInside}`);
+      
+      if (isInside) {
+        console.log("🔍 Hit found: checklist", n.id);
+        return n;
+      }
+      continue;
+    }
+    
+    // Обычная круговая проверка для остальных объектов
     const dx = x - n.x,
       dy = y - n.y;
-  const rr =
-      n._type === "task"
-        ? n.r + 6 * DPR
-        : n._type === "project"
-        ? n.r + 10 * DPR
-        : n._type === "idea"
-        ? n.r + 15 * DPR
-        : n._type === "note"
-        ? n.r + 8 * DPR
-        : n._type === "checklist"
-        ? n.r * 1.7 + 8 * DPR
-        : n.r;
+    const rr =
+        n._type === "task"
+          ? n.r + 6 * DPR
+          : n._type === "project"
+          ? n.r + 10 * DPR
+          : n._type === "idea"
+          ? n.r + 15 * DPR
+          : n._type === "note"
+          ? n.r + 8 * DPR
+          : n.r;
     
     const distance = Math.sqrt(dx * dx + dy * dy);
     console.log(`🔍 Checking ${n._type} ${n.id}: distance=${distance.toFixed(2)}, radius=${rr.toFixed(2)}, hit=${distance <= rr}`);
