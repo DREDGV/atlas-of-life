@@ -845,14 +845,9 @@ function showIdeaInspector(obj, ins) {
   // Обработчики событий
   document.getElementById("saveIdea").onclick = () => {
     const content = document.getElementById("ideaContent").value.trim();
-    const color = document.getElementById("ideaColor").value;
-    const size = parseInt(document.getElementById("ideaSize").value);
-    const opacity = parseFloat(document.getElementById("ideaOpacity").value);
     
+    // Сохраняем только текстовое содержимое (визуальные свойства уже применяются в реальном времени)
     obj.content = content;
-    obj.color = color;
-    obj.r = size;
-    obj.opacity = opacity;
     obj.updatedAt = Date.now();
     
     saveState();
@@ -907,12 +902,28 @@ function showIdeaInspector(obj, ins) {
     drawMap();
   });
   
-  // Обработчик изменения цвета через color picker
-  document.getElementById('ideaColor').addEventListener('change', (e) => {
-    obj.color = e.target.value;
-    obj.updatedAt = Date.now();
-    saveState();
-    drawMap();
+  // Обработчик изменения текстового содержимого с автосохранением
+  document.getElementById("ideaContent").addEventListener('blur', (e) => {
+    const content = e.target.value.trim();
+    if (content !== obj.content) {
+      obj.content = content;
+      obj.updatedAt = Date.now();
+      saveState();
+      drawMap();
+    }
+  });
+  
+  // Обработчик изменения текстового содержимого при нажатии Enter
+  document.getElementById("ideaContent").addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault();
+      const content = e.target.value.trim();
+      obj.content = content;
+      obj.updatedAt = Date.now();
+      saveState();
+      drawMap();
+      e.target.blur();
+    }
   });
   
   setupHierarchyActionHandlers(obj);
@@ -981,14 +992,9 @@ function showNoteInspector(obj, ins) {
   // Обработчики событий
   document.getElementById("saveNote").onclick = () => {
     const text = document.getElementById("noteText").value.trim();
-    const color = document.getElementById("noteColor").value;
-    const size = parseInt(document.getElementById("noteSize").value);
-    const opacity = parseFloat(document.getElementById("noteOpacity").value);
     
+    // Сохраняем только текстовое содержимое (визуальные свойства уже применяются в реальном времени)
     obj.text = text;
-    obj.color = color;
-    obj.r = size;
-    obj.opacity = opacity;
     obj.updatedAt = Date.now();
     
     saveState();
@@ -1043,12 +1049,28 @@ function showNoteInspector(obj, ins) {
     drawMap();
   });
   
-  // Обработчик изменения цвета через color picker
-  document.getElementById('noteColor').addEventListener('change', (e) => {
-    obj.color = e.target.value;
-    obj.updatedAt = Date.now();
-    saveState();
-    drawMap();
+  // Обработчик изменения текстового содержимого с автосохранением
+  document.getElementById("noteText").addEventListener('blur', (e) => {
+    const text = e.target.value.trim();
+    if (text !== obj.text) {
+      obj.text = text;
+      obj.updatedAt = Date.now();
+      saveState();
+      drawMap();
+    }
+  });
+  
+  // Обработчик изменения текстового содержимого при нажатии Enter
+  document.getElementById("noteText").addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault();
+      const text = e.target.value.trim();
+      obj.text = text;
+      obj.updatedAt = Date.now();
+      saveState();
+      drawMap();
+      e.target.blur();
+    }
   });
   
   setupHierarchyActionHandlers(obj);
@@ -1145,15 +1167,10 @@ function showChecklistInspector(obj, ins) {
   
   // Обработчики событий
   document.getElementById("saveChecklist").onclick = () => {
-    const color = document.getElementById("checklistColor").value;
-    const size = parseInt(document.getElementById("checklistSize").value);
-    const opacity = parseFloat(document.getElementById("checklistOpacity").value);
-    
-    obj.color = color;
-    obj.r = size;
-    obj.opacity = opacity;
+    // Для чек-листов визуальные свойства уже применяются в реальном времени
+    // Кнопка "Сохранить" здесь не нужна, так как все изменения применяются сразу
+    // Оставляем только для совместимости с интерфейсом
     obj.updatedAt = Date.now();
-    
     saveState();
     drawMap();
     openInspectorFor(obj);
