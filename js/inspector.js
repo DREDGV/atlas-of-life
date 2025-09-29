@@ -1341,13 +1341,12 @@ function showColorPicker(project) {
     const completedItems = obj.items?.filter(item => item.completed) || [];
     const progress = totalItems > 0 ? Math.round((completedItems.length / totalItems) * 100) : 0;
     
+    console.log("🔍 Inspector: Setting innerHTML for checklist");
     ins.innerHTML = `
       <h2>Чек-лист: ${obj.title || 'Без названия'}</h2>
       <div class="kv">Прогресс: ${progress}% (${completedItems.length}/${totalItems})</div>
       <div class="kv">Родитель: ${parentInfo}</div>
       <div class="kv">Создан: ${daysSince(obj.createdAt)} дн. назад</div>
-      
-      ${renderHierarchySection(obj)}
       
       <div class="btns">
         <button class="btn primary" id="editChecklist">✏️ Редактировать</button>
