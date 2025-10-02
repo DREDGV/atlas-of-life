@@ -4432,31 +4432,58 @@ async function init() {
         console.warn(`  ${index + 1}. ${problem.message} (${problem.code}) - ID: ${problem.id}`);
       });
       
-      // Автоисправление простых случаев
+      // Принудительное автоисправление всех проблем
+      console.log('🔧 Запускаем принудительное автоисправление...');
       let fixed = 0;
-      problems.forEach(problem => {
-        if (problem.code === 'missing_parent') {
-          const obj = state.domains.find(d => d.id === problem.id) ||
-                     state.projects.find(p => p.id === problem.id) ||
-                     state.tasks.find(t => t.id === problem.id) ||
-                     state.ideas.find(i => i.id === problem.id) ||
-                     state.notes.find(n => n.id === problem.id) ||
-                     state.checklists.find(c => c.id === problem.id);
-          
-          if (obj) {
-            obj.parentId = null;
-            obj.projectId = null;
-            obj.domainId = null;
-            fixed++;
-            console.log(`🔧 Автоисправлено: ${problem.id} (несуществующий родитель)`);
-          }
+      
+      // Собираем все существующие ID
+      const existingIds = new Set([
+        ...state.domains.map(d => d.id),
+        ...state.projects.map(p => p.id),
+        ...state.tasks.map(t => t.id),
+        ...state.ideas.map(i => i.id),
+        ...state.notes.map(n => n.id),
+        ...state.checklists.map(c => c.id)
+      ]);
+      
+      // Исправляем все объекты
+      const allObjects = [
+        ...state.domains,
+        ...state.projects,
+        ...state.tasks,
+        ...state.ideas,
+        ...state.notes,
+        ...state.checklists
+      ];
+      
+      allObjects.forEach(obj => {
+        // Очищаем некорректные parentId
+        if (obj.parentId && !existingIds.has(obj.parentId)) {
+          console.log(`🧹 Исправляем: очищаем parentId ${obj.parentId} у объекта ${obj.id}`);
+          obj.parentId = null;
+          fixed++;
+        }
+        
+        // Очищаем некорректные children
+        if (obj.children) {
+          Object.entries(obj.children).forEach(([childType, childIds]) => {
+            if (Array.isArray(childIds)) {
+              const validChildIds = childIds.filter(childId => existingIds.has(childId));
+              if (validChildIds.length !== childIds.length) {
+                console.log(`🧹 Исправляем: очищаем некорректные children у объекта ${obj.id}`);
+                obj.children[childType] = validChildIds;
+                fixed++;
+              }
+            }
+          });
         }
       });
       
       if (fixed > 0) {
-        console.log(`✅ Автоисправлено ${fixed} ошибок связей`);
+        console.log(`✅ Автоисправлено ${fixed} проблем. Сохраняем состояние...`);
         saveState();
       }
+      
     } else {
       console.log('✅ Иерархия валидна');
     }
