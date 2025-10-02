@@ -1135,6 +1135,46 @@ function migrateObjectsToHistory() {
   }
 }
 
+// Миграция для очистки некорректных ссылок parentId
+function migrateObjectsCleanupParentId() {
+  console.log('🔄 Миграция: очистка некорректных ссылок parentId...');
+  
+  let cleaned = 0;
+  
+  // Собираем все существующие ID
+  const existingIds = new Set([
+    ...state.domains.map(d => d.id),
+    ...state.projects.map(p => p.id),
+    ...state.tasks.map(t => t.id),
+    ...state.ideas.map(i => i.id),
+    ...state.notes.map(n => n.id),
+    ...state.checklists.map(c => c.id)
+  ]);
+  
+  // Проверяем все объекты на некорректные parentId
+  const allObjects = [
+    ...state.domains,
+    ...state.projects,
+    ...state.tasks,
+    ...state.ideas,
+    ...state.notes,
+    ...state.checklists
+  ];
+  
+  allObjects.forEach(obj => {
+    if (obj.parentId && !existingIds.has(obj.parentId)) {
+      console.log(`🧹 Очищаем некорректный parentId ${obj.parentId} у объекта ${obj.id}`);
+      obj.parentId = null;
+      cleaned++;
+    }
+  });
+  
+  if (cleaned > 0) {
+    console.log(`✅ Миграция завершена: очищено ${cleaned} некорректных ссылок parentId`);
+    saveState();
+  }
+}
+
 // Функции для работы с историей связей
 export function addHierarchyHistory(objectId, action, details) {
   const obj = findObjectById(objectId);
@@ -1349,6 +1389,7 @@ function migrateObjectsToParentId() {
 // Вызываем миграции при загрузке
 migrateObjectsToParentId();
 migrateObjectsToHistory();
+migrateObjectsCleanupParentId();
 
 // Lightweight event bus for inter-module communication
 const eventBus = {
