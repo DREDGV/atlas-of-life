@@ -381,54 +381,6 @@ function renderHierarchyActions(obj) {
   return html;
 }
 
-// Функция для отображения истории связей
-function renderHierarchyHistory(obj) {
-  if (!state.hierarchyLog || state.hierarchyLog.length === 0) return '';
-  
-  // Фильтруем записи, связанные с этим объектом
-  const relevantEntries = state.hierarchyLog.filter(entry => 
-    entry.child.id === obj.id || 
-    (entry.from && entry.from.id === obj.id) || 
-    (entry.to && entry.to.id === obj.id)
-  ).slice(0, 5); // Показываем только последние 5 записей
-  
-  if (relevantEntries.length === 0) return '';
-  
-  let html = `
-    <div class="hierarchy-history">
-      <h4>📜 История связей</h4>
-      <div class="history-entries">
-  `;
-  
-  relevantEntries.forEach(entry => {
-    const timeAgo = Math.floor((Date.now() - entry.ts) / (1000 * 60)); // минуты назад
-    const timeStr = timeAgo < 60 ? `${timeAgo}м назад` : `${Math.floor(timeAgo / 60)}ч назад`;
-    
-    let actionText = '';
-    if (entry.action === 'attach') {
-      actionText = `Привязан к ${entry.to?.type || 'объекту'} "${entry.to?.title || 'неизвестно'}"`;
-    } else if (entry.action === 'detach') {
-      actionText = `Отвязан от ${entry.from?.type || 'объекта'} "${entry.from?.title || 'неизвестно'}"`;
-    } else if (entry.action === 'move') {
-      actionText = `Перемещён из ${entry.from?.type || 'объекта'} "${entry.from?.title || 'неизвестно'}" в ${entry.to?.type || 'объект'} "${entry.to?.title || 'неизвестно'}"`;
-    }
-    
-    html += `
-      <div class="history-entry">
-        <span class="history-time">${timeStr}</span>
-        <span class="history-action">${actionText}</span>
-      </div>
-    `;
-  });
-  
-  html += `
-      </div>
-    </div>
-  `;
-  
-  return html;
-}
-
 // Настройка обработчиков действий иерархии
 function setupHierarchyActionHandlers(obj) {
   const detachBtn = document.getElementById('detachFromParent');
