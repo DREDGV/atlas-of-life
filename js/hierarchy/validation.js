@@ -69,6 +69,20 @@ export function validateHierarchyInternal(state) {
     const performanceErrors = validatePerformanceLimits(allObjects);
     errors.push(...performanceErrors);
 
+    // Если были автоисправления, сохраняем состояние
+    const hasAutoFixes = errors.some(error => error.message.includes('(автоисправлено)'));
+    if (hasAutoFixes) {
+      console.log('💾 Сохраняем состояние после автоисправлений...');
+      try {
+        // Импортируем saveState динамически, чтобы избежать циклических зависимостей
+        if (typeof window !== 'undefined' && window.saveState) {
+          window.saveState();
+        }
+      } catch (saveError) {
+        console.warn('⚠️ Не удалось сохранить состояние после автоисправлений:', saveError);
+      }
+    }
+
     console.log(`✅ Валидация завершена. Найдено ошибок: ${errors.length}`);
     return errors;
 
@@ -107,9 +121,12 @@ export function validateObject(obj, state) {
     if (obj.parentId) {
       const parent = findObjectById(state, obj.parentId);
       if (!parent) {
+        // Автоматически очищаем некорректную ссылку
+        console.log(`🧹 Автоисправление: очищаем некорректный parentId ${obj.parentId} у объекта ${obj.id}`);
+        obj.parentId = null;
         errors.push(new HierarchyValidationError(
           VALIDATION_ERROR_TYPES.MISSING_OBJECT,
-          `Родительский объект ${obj.parentId} не найден`,
+          `Родительский объект ${obj.parentId} не найден (автоисправлено)`,
           obj.id,
           obj.parentId
         ));
@@ -144,9 +161,15 @@ export function validateObject(obj, state) {
         childIds.forEach(childId => {
           const child = findObjectById(state, childId);
           if (!child) {
+            // Автоматически удаляем некорректную ссылку из children
+            console.log(`🧹 Автоисправление: удаляем некорректную ссылку на дочерний объект ${childId} из ${obj.id}`);
+            const index = childIds.indexOf(childId);
+            if (index > -1) {
+              childIds.splice(index, 1);
+            }
             errors.push(new HierarchyValidationError(
               VALIDATION_ERROR_TYPES.MISSING_OBJECT,
-              `Дочерний объект ${childId} не найден`,
+              `Дочерний объект ${childId} не найден (автоисправлено)`,
               obj.id,
               obj.id,
               childId
@@ -297,9 +320,12 @@ export function findCyclicDependencies(allObjects) {
       if (obj.parentId) {
         const path = getObjectPath(obj.id, allObjects);
         if (path.includes(obj.id)) {
+          // Автоматически разрываем циклическую зависимость
+          console.log(`🧹 Автоисправление: разрываем циклическую зависимость для объекта ${obj.id}`);
+          obj.parentId = null;
           errors.push(new HierarchyValidationError(
             VALIDATION_ERROR_TYPES.CYCLIC_DEPENDENCY,
-            `Обнаружена циклическая зависимость в пути: ${path.join(' → ')}`,
+            `Обнаружена циклическая зависимость в пути: ${path.join(' → ')} (автоисправлено)`,
             obj.id
           ));
         }

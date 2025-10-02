@@ -1391,6 +1391,11 @@ migrateObjectsToParentId();
 migrateObjectsToHistory();
 migrateObjectsCleanupParentId();
 
+// Делаем saveState доступным глобально для автоисправлений
+if (typeof window !== 'undefined') {
+  window.saveState = saveState;
+}
+
 // Lightweight event bus for inter-module communication
 const eventBus = {
   listeners: new Map(),
