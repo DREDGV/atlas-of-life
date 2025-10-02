@@ -56,7 +56,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.8.2.0";
+let APP_VERSION = "Atlas_of_life_v0.8.3.0";
 
 // ephemeral UI state
 const ui = {
@@ -408,45 +408,6 @@ function clearHotkey(action) {
   if (input) {
     input.value = '';
   }
-}
-
-function openThemeModal() {
-  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-  
-  let bodyHTML = '<div style="display:flex;flex-direction:column;gap:12px;">';
-  bodyHTML += '<div style="background:var(--panel-2);padding:8px;border-radius:4px;">';
-  bodyHTML += '<strong>🎨 Выберите тему оформления:</strong>';
-  bodyHTML += '</div>';
-  
-  bodyHTML += `
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;cursor:pointer;">
-        <input type="radio" name="theme" value="dark" ${currentTheme === 'dark' ? 'checked' : ''} style="margin:0;">
-        <span>🌙 Темная тема</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--panel-2);border-radius:4px;cursor:pointer;">
-        <input type="radio" name="theme" value="light" ${currentTheme === 'light' ? 'checked' : ''} style="margin:0;">
-        <span>☀️ Светлая тема</span>
-      </label>
-    </div>
-  `;
-  
-  bodyHTML += '</div>';
-  
-  openModal({
-    title: "🎨 Настройки темы",
-    bodyHTML: bodyHTML,
-    onConfirm: () => {
-      const selectedTheme = document.querySelector('input[name="theme"]:checked')?.value;
-      if (selectedTheme && selectedTheme !== currentTheme) {
-        document.documentElement.setAttribute('data-theme', selectedTheme);
-        localStorage.setItem('atlas_theme', selectedTheme);
-        showToast(`Тема изменена на ${selectedTheme === 'dark' ? 'темную' : 'светлую'}`, "ok");
-      }
-    },
-    confirmText: "Применить",
-    cancelText: "Отмена"
-  });
 }
 
 function openDisplayModal() {
@@ -1254,7 +1215,6 @@ function setupInfoPanelTooltips() {
   // Подсказки для настроек
   const settingsItems = [
     { selector: '[data-action="hotkeys"]', text: 'Настроить горячие клавиши для быстрого доступа к функциям', icon: '⌨️' },
-    { selector: '[data-action="theme"]', text: 'Изменить тему оформления приложения', icon: '🎨' },
     { selector: '[data-action="display"]', text: 'Настройки отображения карты и объектов', icon: '📱' },
     { selector: '[data-action="hierarchy"]', text: 'Управление системой иерархии объектов (экспериментальная функция)', icon: '🌐' },
     { selector: '[data-action="export"]', text: 'Экспорт и импорт данных для резервного копирования', icon: '💾' },
@@ -3195,24 +3155,9 @@ function setupHeader() {
       openHotkeysModal();
     };
   }
-  // theme toggle using data-theme attribute (persist in localStorage)
-  try{
-    const THEME_KEY = 'atlas_theme';
-    const cur = localStorage.getItem(THEME_KEY) || 'dark';
-    document.documentElement.setAttribute('data-theme', cur);
-    const lab = document.createElement('label');
-    lab.style.marginLeft = '8px';
-    lab.innerHTML = `<input type="checkbox" id="tgTheme" ${cur==='light'?'checked':''}/> Тема`;
-    document.querySelector('header .toggle')?.appendChild(lab);
-    const tgl = document.getElementById('tgTheme');
-    if(tgl){
-      tgl.onchange = (e)=>{
-        const next = e.target.checked ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem(THEME_KEY, next);
-      };
-    }
-  }catch(_){}
+  
+  // Установка темной темы по умолчанию
+  document.documentElement.setAttribute('data-theme', 'dark');
   
   // Setup settings dropdown
   const btnSettings = document.getElementById("btnSettings");
@@ -3246,9 +3191,6 @@ function setupHeader() {
         switch (action) {
           case 'hotkeys':
             openHotkeysModal();
-            break;
-          case 'theme':
-            openThemeModal();
             break;
           case 'display':
             openDisplayModal();

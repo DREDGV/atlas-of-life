@@ -9,7 +9,7 @@
 
 /* Enhanced modal styles for ideas and notes */
 .idea-editor, .note-editor {
-  background: linear-gradient(135deg, var(--panel) 0%, #1a1a2e 100%);
+  background: linear-gradient(135deg, var(--panel) 0%, var(--panel-2) 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
@@ -129,7 +129,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #4ecdc4;
+  background: var(--accent);
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
@@ -240,12 +240,6 @@
   --accent:#56ccf2; --warn:#f2c94c; --danger:#ff6b6b; --ok:#19c37d; --link:#7f9cf5;
   --home:#2dd4bf; --dacha:#f59e0b;
   --gradient-1:#10162a; --gradient-2:#0c1322; --gradient-3:#0b0f17;
-}
-/* Light theme overrides */
-[data-theme="light"]{
-  --bg:#f7fafc; --panel:#ffffff; --panel-2:#f2f6fb; --text:#0b1220; --muted:#6b7a90;
-  --accent:#2563eb; --warn:#b7791f; --danger:#d14343; --ok:#059669; --link:#3b82f6;
-  --gradient-1:#f7fafc; --gradient-2:#f2f6fb; --gradient-3:#e2e8f0;
 }
 *{box-sizing:border-box}
 
@@ -466,20 +460,6 @@ header .nav-hint {
   font-size: 14px;
   line-height: 1.5;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-/* Светлая тема для информационной панели */
-@media (prefers-color-scheme: light) {
-  .info-panel {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(242, 246, 251, 0.95) 100%);
-    border-top: 2px solid rgba(0, 212, 178, 0.5);
-    color: #0b1220;
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
-    box-shadow: 
-      0 -8px 24px rgba(0, 0, 0, 0.1),
-      0 -4px 16px rgba(0, 0, 0, 0.05),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  }
 }
 
 .info-panel.show {
@@ -903,24 +883,6 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
   word-wrap: break-word;
   z-index: 1001;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-/* Светлая тема для tooltip */
-@media (prefers-color-scheme: light) {
-  .tooltip {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(242, 246, 251, 0.95) 100%);
-    border: 1px solid rgba(0, 212, 178, 0.4);
-    color: #0b1220;
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
-    box-shadow: 
-      0 12px 32px rgba(0, 0, 0, 0.15),
-      0 4px 16px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  }
-  
-  .tooltip .hint {
-    color: #6b7a90;
-  }
 }
 
 .tooltip.show {
