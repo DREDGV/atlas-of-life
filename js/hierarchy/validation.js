@@ -29,7 +29,7 @@ export class HierarchyValidationError extends Error {
  * @param {Object} state - Состояние приложения
  * @returns {Array} Массив ошибок валидации
  */
-export function validateHierarchy(state) {
+export function validateHierarchyInternal(state) {
   const errors = [];
   
   try {
@@ -41,7 +41,8 @@ export function validateHierarchy(state) {
       ...(state.projects || []),
       ...(state.tasks || []),
       ...(state.ideas || []),
-      ...(state.notes || [])
+      ...(state.notes || []),
+      ...(state.checklists || [])
     ];
 
     // Проверяем каждый объект

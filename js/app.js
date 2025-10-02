@@ -4427,7 +4427,10 @@ async function init() {
     // Валидируем иерархию
     const problems = validateHierarchy(state);
     if (problems.length > 0) {
-      console.warn(`⚠️ Найдено ${problems.length} проблем в иерархии:`, problems);
+      console.warn(`⚠️ Найдено ${problems.length} проблем в иерархии:`);
+      problems.forEach((problem, index) => {
+        console.warn(`  ${index + 1}. ${problem.message} (${problem.code}) - ID: ${problem.id}`);
+      });
       
       // Автоисправление простых случаев
       let fixed = 0;
