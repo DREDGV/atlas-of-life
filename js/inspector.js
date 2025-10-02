@@ -19,6 +19,8 @@ import {
   canChangeHierarchy,
   attachObjectToParent,
   detachObjectFromParent,
+  getHierarchyHistory,
+  rollbackHierarchyChange,
   getAvailableParents,
   createChecklist,
   getChecklistsOfProject,
@@ -37,6 +39,85 @@ function drawMap() {
 function requestLayout() {
   return window.mapApi && window.mapApi.requestLayout && window.mapApi.requestLayout();
 }
+
+// Функция для отображения истории связей объекта
+function renderHierarchyHistory(obj) {
+  const history = getHierarchyHistory(obj.id);
+  
+  if (!history || history.length === 0) {
+    return '<div class="history-section"><h4>📝 История связей</h4><p class="hint">История изменений связей пуста</p></div>';
+  }
+  
+  let html = '<div class="history-section"><h4>📝 История связей</h4><div class="history-list">';
+  
+  history.forEach((entry, index) => {
+    const date = new Date(entry.timestamp);
+    const timeStr = date.toLocaleString('ru-RU', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    let actionText = '';
+    let actionIcon = '';
+    
+    switch (entry.action) {
+      case 'attach':
+        actionText = `Привязан к ${entry.details.toParentTitle || entry.details.toParentId}`;
+        actionIcon = '🔗';
+        break;
+      case 'detach':
+        actionText = `Отвязан от ${entry.details.fromParentTitle || entry.details.fromParentId}`;
+        actionIcon = '🔓';
+        break;
+      case 'move':
+        actionText = `Перемещен из ${entry.details.fromParentTitle || entry.details.fromParentId} в ${entry.details.toParentTitle || entry.details.toParentId}`;
+        actionIcon = '🔄';
+        break;
+      default:
+        actionText = entry.action;
+        actionIcon = '📝';
+    }
+    
+    html += `
+      <div class="history-item ${index === 0 ? 'latest' : ''}">
+        <div class="history-icon">${actionIcon}</div>
+        <div class="history-content">
+          <div class="history-action">${actionText}</div>
+          <div class="history-time">${timeStr}</div>
+        </div>
+        <div class="history-actions">
+          <button class="btn-small rollback-btn" onclick="rollbackHistoryEntry('${obj.id}', '${entry.id}')" title="Откатить это изменение">
+            🔄
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  
+  html += '</div></div>';
+  return html;
+}
+
+// Глобальная функция для отката изменений истории
+window.rollbackHistoryEntry = function(objectId, historyEntryId) {
+  if (confirm('Вы уверены, что хотите откатить это изменение?')) {
+    const success = rollbackHierarchyChange(objectId, historyEntryId);
+    if (success) {
+      // Обновляем инспектор
+      const obj = findObjectById(objectId);
+      if (obj) {
+        openInspectorFor(obj);
+        requestLayout();
+        drawMap();
+      }
+    } else {
+      alert('Не удалось выполнить откат изменений');
+    }
+  }
+};
 function refreshMap(opts){
   return window.mapApi && window.mapApi.refresh && window.mapApi.refresh(opts||{});
 }
@@ -595,6 +676,7 @@ function showProjectInspector(obj, ins) {
     </div>
     
     ${renderHierarchySection(obj)}
+    ${renderHierarchyHistory(obj)}
     
     <div class="btns">
       <button class="btn primary" id="addTask">+ Задача</button>
@@ -911,6 +993,7 @@ function showIdeaInspector(obj, ins) {
     <div class="kv">Обновлено: ${daysSince(obj.updatedAt)} дн. назад</div>
     
     ${renderHierarchySection(obj)}
+    ${renderHierarchyHistory(obj)}
     
     <div class="btns">
       <button class="btn primary" id="saveIdea">💾 Сохранить</button>
@@ -1058,6 +1141,7 @@ function showNoteInspector(obj, ins) {
     <div class="kv">Обновлено: ${daysSince(obj.updatedAt)} дн. назад</div>
     
     ${renderHierarchySection(obj)}
+    ${renderHierarchyHistory(obj)}
     
     <div class="btns">
       <button class="btn primary" id="saveNote">💾 Сохранить</button>
@@ -1234,6 +1318,7 @@ function showChecklistInspector(obj, ins) {
     <div class="kv">Обновлен: ${daysSince(obj.updatedAt)} дн. назад</div>
     
     ${renderHierarchySection(obj)}
+    ${renderHierarchyHistory(obj)}
     
     <div class="btns">
       <button class="btn primary" id="saveChecklist">💾 Сохранить</button>

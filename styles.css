@@ -2,6 +2,107 @@
   color: var(--muted);
   opacity: 0.85;
 }
+
+/* Стили для истории связей */
+.history-section {
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.history-section h4 {
+  margin: 0 0 12px 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  background: var(--panel);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.history-item.latest {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.history-icon {
+  font-size: 16px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.history-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-action {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.history-time {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'Courier New', monospace;
+}
+
+.history-item:hover {
+  background: var(--hover);
+  transform: translateY(-1px);
+}
+
+.history-item.latest:hover {
+  background: var(--accent-bg);
+  transform: translateY(-1px);
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-small {
+  padding: 4px 6px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0.7;
+}
+
+.btn-small:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.rollback-btn {
+  font-size: 14px;
+}
 /* Перенесённые стили из index.html */
 .zoom-slider {
   width: 120px;

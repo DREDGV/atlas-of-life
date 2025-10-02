@@ -256,6 +256,18 @@ export function logHierarchyChange(action, child, fromParent, toParent) {
   if (state.hierarchyLog.length > 300) {
     state.hierarchyLog = state.hierarchyLog.slice(0, 300);
   }
+  
+  // Записываем историю в сам объект
+  const historyDetails = {
+    fromParentId: fromParent?.id || null,
+    toParentId: toParent?.id || null,
+    parentType: toParent ? _hGetType(toParent) : null,
+    childType: _hGetType(child),
+    fromParentTitle: fromParent?.title || null,
+    toParentTitle: toParent?.title || null
+  };
+  
+  addHierarchyHistory(child.id, action, historyDetails);
 }
 
 // Обёртки над новым иерархическим API (единая точка входа из UI/DnD)
@@ -965,7 +977,8 @@ export function createDomain(title, mood = 'balance') {
     color: getMoodColor(mood),
     opacity: 1.0,
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    history: []
   };
   state.domains.push(domain);
   
@@ -987,7 +1000,8 @@ export function createProject(title, domainId = null) {
     color: getRandomProjectColor(),
     opacity: 1.0,
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    history: []
   };
   state.projects.push(project);
   
@@ -1012,7 +1026,8 @@ export function createTask(title, projectId = null, domainId = null) {
     color: '#3b82f6',
     opacity: 1.0,
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    history: []
   };
   state.tasks.push(task);
   
@@ -1036,7 +1051,8 @@ export function createIdea(title, content = '', domainId = null) {
     color: getRandomIdeaColor(),
     opacity: 1.0,
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    history: []
   };
   state.ideas.push(idea);
   return idea;
@@ -1055,7 +1071,8 @@ export function createNote(title, text = '', domainId = null) {
     color: getRandomNoteColor(),
     opacity: 1.0,
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    history: []
   };
   state.notes.push(note);
   return note;
@@ -1075,7 +1092,8 @@ export function createChecklist(title, projectId = null, domainId = null) {
     opacity: 0.9,
     items: [], // Массив элементов чек-листа
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    history: []
   };
   state.checklists.push(checklist);
   console.log('✅ Checklist created:', checklist.title, 'ID:', checklist.id, 'Total checklists:', state.checklists.length); // Debug
@@ -1086,6 +1104,158 @@ export function createChecklist(title, projectId = null, domainId = null) {
   if (window.drawMap) window.drawMap();
   
   return checklist;
+}
+
+// Миграция для добавления поля history к существующим объектам
+function migrateObjectsToHistory() {
+  console.log('🔄 Миграция: добавление поля history к существующим объектам...');
+  
+  let migrated = 0;
+  
+  // Мигрируем все типы объектов
+  const allObjects = [
+    ...state.domains,
+    ...state.projects,
+    ...state.tasks,
+    ...state.ideas,
+    ...state.notes,
+    ...state.checklists
+  ];
+  
+  allObjects.forEach(obj => {
+    if (!obj.history) {
+      obj.history = [];
+      migrated++;
+    }
+  });
+  
+  if (migrated > 0) {
+    console.log(`✅ Миграция завершена: добавлено поле history к ${migrated} объектам`);
+    saveState();
+  }
+}
+
+// Функции для работы с историей связей
+export function addHierarchyHistory(objectId, action, details) {
+  const obj = findObjectById(objectId);
+  if (!obj) {
+    console.warn('⚠️ addHierarchyHistory: объект не найден', objectId);
+    return false;
+  }
+  
+  if (!obj.history) {
+    obj.history = [];
+  }
+  
+  const historyEntry = {
+    timestamp: Date.now(),
+    action: action, // 'attach', 'detach', 'move'
+    details: details, // { fromParentId, toParentId, parentType, childType }
+    id: 'h' + generateId()
+  };
+  
+  // Добавляем запись в начало массива (новые сверху)
+  obj.history.unshift(historyEntry);
+  
+  // Ограничиваем историю последними 10 записями
+  if (obj.history.length > 10) {
+    obj.history = obj.history.slice(0, 10);
+  }
+  
+  console.log(`📝 История: ${action} для ${objectId}`, details);
+  return true;
+}
+
+export function getHierarchyHistory(objectId) {
+  const obj = findObjectById(objectId);
+  return obj?.history || [];
+}
+
+export function clearHierarchyHistory(objectId) {
+  const obj = findObjectById(objectId);
+  if (obj) {
+    obj.history = [];
+    console.log(`🗑️ История очищена для ${objectId}`);
+    return true;
+  }
+  return false;
+}
+
+// Функция отката изменений связей
+export function rollbackHierarchyChange(objectId, historyEntryId) {
+  const obj = findObjectById(objectId);
+  if (!obj || !obj.history) {
+    console.warn('⚠️ rollbackHierarchyChange: объект или история не найдены', objectId);
+    return false;
+  }
+  
+  const historyEntry = obj.history.find(entry => entry.id === historyEntryId);
+  if (!historyEntry) {
+    console.warn('⚠️ rollbackHierarchyChange: запись истории не найдена', historyEntryId);
+    return false;
+  }
+  
+  try {
+    // Выполняем обратное действие
+    switch (historyEntry.action) {
+      case 'attach':
+        // Отвязываем от родителя
+        if (historyEntry.details.toParentId) {
+          const detachResult = detachChild({ 
+            childType: historyEntry.details.childType, 
+            childId: objectId 
+          });
+          if (detachResult.ok) {
+            console.log(`🔄 Откат: отвязан от ${historyEntry.details.toParentId}`);
+          }
+        }
+        break;
+        
+      case 'detach':
+        // Привязываем обратно к родителю
+        if (historyEntry.details.fromParentId) {
+          const attachResult = attachChild({
+            parentType: historyEntry.details.parentType,
+            parentId: historyEntry.details.fromParentId,
+            childType: historyEntry.details.childType,
+            childId: objectId
+          });
+          if (attachResult.ok) {
+            console.log(`🔄 Откат: привязан обратно к ${historyEntry.details.fromParentId}`);
+          }
+        }
+        break;
+        
+      case 'move':
+        // Возвращаем к предыдущему родителю
+        if (historyEntry.details.fromParentId) {
+          const attachResult = attachChild({
+            parentType: historyEntry.details.parentType,
+            parentId: historyEntry.details.fromParentId,
+            childType: historyEntry.details.childType,
+            childId: objectId
+          });
+          if (attachResult.ok) {
+            console.log(`🔄 Откат: возвращен к ${historyEntry.details.fromParentId}`);
+          }
+        }
+        break;
+        
+      default:
+        console.warn('⚠️ rollbackHierarchyChange: неизвестное действие', historyEntry.action);
+        return false;
+    }
+    
+    // Удаляем запись из истории после успешного отката
+    obj.history = obj.history.filter(entry => entry.id !== historyEntryId);
+    
+    console.log(`✅ Откат выполнен для ${objectId}`);
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Ошибка при откате изменений:', error);
+    return false;
+  }
 }
 
 // Функции для работы с элементами чек-листа
@@ -1176,8 +1346,9 @@ function migrateObjectsToParentId() {
   console.log("🔄 Migration completed");
 }
 
-// Вызываем миграцию при загрузке
+// Вызываем миграции при загрузке
 migrateObjectsToParentId();
+migrateObjectsToHistory();
 
 // Lightweight event bus for inter-module communication
 const eventBus = {
