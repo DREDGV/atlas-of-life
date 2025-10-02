@@ -56,7 +56,7 @@ try {
 } catch (_) {}
 
 // App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.8.3.0";
+let APP_VERSION = "Atlas_of_life_v0.8.4.0";
 
 // ephemeral UI state
 const ui = {
@@ -4414,6 +4414,52 @@ async function init() {
   // Normal initialization for all browsers (including Edge)
   const ok = loadState();
   if (!ok) initDemoData();
+  
+  // Аудит иерархии после загрузки
+  try {
+    console.log('🔍 Запуск аудита иерархии...');
+    const { validateHierarchy, index } = await import('./hierarchy/index.js');
+    
+    // Строим индексы
+    const indices = index(state);
+    console.log(`📊 Индексы построены: ${indices.byId.size} объектов, ${indices.childrenById.size} родителей`);
+    
+    // Валидируем иерархию
+    const problems = validateHierarchy(state);
+    if (problems.length > 0) {
+      console.warn(`⚠️ Найдено ${problems.length} проблем в иерархии:`, problems);
+      
+      // Автоисправление простых случаев
+      let fixed = 0;
+      problems.forEach(problem => {
+        if (problem.code === 'missing_parent') {
+          const obj = state.domains.find(d => d.id === problem.id) ||
+                     state.projects.find(p => p.id === problem.id) ||
+                     state.tasks.find(t => t.id === problem.id) ||
+                     state.ideas.find(i => i.id === problem.id) ||
+                     state.notes.find(n => n.id === problem.id) ||
+                     state.checklists.find(c => c.id === problem.id);
+          
+          if (obj) {
+            obj.parentId = null;
+            obj.projectId = null;
+            obj.domainId = null;
+            fixed++;
+            console.log(`🔧 Автоисправлено: ${problem.id} (несуществующий родитель)`);
+          }
+        }
+      });
+      
+      if (fixed > 0) {
+        console.log(`✅ Автоисправлено ${fixed} ошибок связей`);
+        saveState();
+      }
+    } else {
+      console.log('✅ Иерархия валидна');
+    }
+  } catch (error) {
+    console.warn('⚠️ Ошибка аудита иерархии:', error);
+  }
   
   // Initialize hotkeys
   initializeHotkeys();

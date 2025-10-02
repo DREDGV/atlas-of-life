@@ -10,7 +10,12 @@ import {
   isObjectLocked,
   setObjectLock,
   canMoveObject,
-  canChangeHierarchy
+  canChangeHierarchy,
+  attach as _hAttach,
+  detach as _hDetach,
+  move as _hMove,
+  getType as _hGetType,
+  getParentObject as _hGetParentObject
 } from "./hierarchy/index.js";
 
 export const state = {
@@ -19,6 +24,8 @@ export const state = {
   activeDomain:null,
   filterTag:null,
   wipLimit:3,
+  // Журнал изменений иерархии (кольцевой буфер)
+  hierarchyLog: [],
   settings: {
     layoutMode: 'auto',
     wipTodayLimit: 5,
@@ -125,11 +132,27 @@ export function $$(selector) {
 }
 
 // Функция для привязки объекта к родителю
-export function attachObjectToParent(childId, childType, parentId, parentType) {
+export function attachObjectToParent(childArg, childTypeArg, parentArg, parentTypeArg) {
   try {
-    // Находим объекты
-    const child = findObjectById(childId);
-    const parent = findObjectById(parentId);
+    // Универсальная нормализация аргументов (совместимость со старыми и новыми вызовами)
+    // Поддерживаем формы:
+    // 1) (childId, childType, parentId, parentType)
+    // 2) (childObj, parentObj)
+    // 3) (childObj, childType, parentObj, parentType)
+    let childObj, parentObj, childType, parentType;
+    if (typeof childArg === 'object' && typeof childTypeArg === 'object' && parentArg == null) {
+      // форма (childObj, parentObj)
+      childObj = childArg; parentObj = childTypeArg;
+      childType = _hGetType(childObj); parentType = _hGetType(parentObj);
+    } else {
+      childObj = typeof childArg === 'object' ? childArg : findObjectById(childArg);
+      parentObj = typeof parentArg === 'object' ? parentArg : findObjectById(parentArg);
+      childType = typeof childTypeArg === 'string' ? childTypeArg : _hGetType(childObj);
+      parentType = typeof parentTypeArg === 'string' ? parentTypeArg : _hGetType(parentObj);
+    }
+
+    const child = childObj;
+    const parent = parentObj;
     
     if (!child) {
       console.error(`Объект ${childId} не найден`);
@@ -141,14 +164,16 @@ export function attachObjectToParent(childId, childType, parentId, parentType) {
       return false;
     }
     
-    // Устанавливаем связь
-    const success = setParentChild(parentId, childId, childType);
+    // Устанавливаем связь через новый слой (с обратной совместимостью)
+    const res = _hAttach({ parentType, parentId: parent.id, childType, childId: child.id }, state);
+    const success = !!res.ok || setParentChild(parent.id, child.id, childType, state);
     
     if (success) {
-      console.log(`✅ Объект ${childId} привязан к ${parentId}`);
+      console.log(`✅ Объект ${child.id} привязан к ${parent.id}`);
+      saveState();
       return true;
     } else {
-      console.error(`❌ Не удалось привязать ${childId} к ${parentId}`);
+      console.error(`❌ Не удалось привязать ${child?.id} к ${parent?.id}`);
       return false;
     }
     
@@ -159,16 +184,18 @@ export function attachObjectToParent(childId, childType, parentId, parentType) {
 }
 
 // Функция для отвязки объекта от родителя
-export function detachObjectFromParent(childId, childType) {
+export function detachObjectFromParent(childArg, childTypeArg) {
   try {
-    const child = findObjectById(childId);
+    const child = typeof childArg === 'object' ? childArg : findObjectById(childArg);
+    const childType = typeof childTypeArg === 'string' ? childTypeArg : _hGetType(child);
     if (!child) {
-      console.error(`Объект ${childId} не найден`);
+      console.error(`Объект не найден`);
       return false;
     }
     
     // Отвязываем от родителя
-    const success = removeParentChild(child.parentId, childId, childType);
+    const res = _hDetach({ childType, childId: child.id }, state);
+    const success = !!res.ok || removeParentChild(child.parentId, child.id, childType, state);
     
     if (success) {
       // Очищаем поля связи в зависимости от типа
@@ -181,10 +208,11 @@ export function detachObjectFromParent(childId, childType) {
         child.domainId = null;
       }
       
-      console.log(`✅ Объект ${childId} отвязан от родителя`);
+      console.log(`✅ Объект ${child.id} отвязан от родителя`);
+      saveState();
       return true;
     } else {
-      console.error(`❌ Не удалось отвязать ${childId} от родителя`);
+      console.error(`❌ Не удалось отвязать ${child.id} от родителя`);
       return false;
     }
     
@@ -211,6 +239,77 @@ export function getAvailableParents(childType) {
   return parents;
 }
 
+// Журнал изменений иерархии
+export function logHierarchyChange(action, child, fromParent, toParent) {
+  if (!state.hierarchyLog) state.hierarchyLog = [];
+  
+  const entry = {
+    ts: Date.now(),
+    action: action, // 'attach', 'detach', 'move'
+    child: { type: _hGetType(child), id: child.id, title: child.title },
+    from: fromParent ? { type: _hGetType(fromParent), id: fromParent.id, title: fromParent.title } : null,
+    to: toParent ? { type: _hGetType(toParent), id: toParent.id, title: toParent.title } : null
+  };
+  
+  // Кольцевой буфер (максимум 300 записей)
+  state.hierarchyLog.unshift(entry);
+  if (state.hierarchyLog.length > 300) {
+    state.hierarchyLog = state.hierarchyLog.slice(0, 300);
+  }
+}
+
+// Обёртки над новым иерархическим API (единая точка входа из UI/DnD)
+export function attachChild({ parentType, parentId, childType, childId }) {
+  const res = _hAttach({ parentType, parentId, childType, childId }, state);
+  if (!res.ok) return res;
+  
+  // Логируем изменение
+  const child = byId(state, childId);
+  const parent = byId(state, parentId);
+  if (child && parent) {
+    logHierarchyChange('attach', child, null, parent);
+  }
+  
+  try { saveState(); } catch(_) {}
+  try { if (window.layoutMap) window.layoutMap(); if (window.drawMap) window.drawMap(); } catch(_) {}
+  return res;
+}
+
+export function detachChild({ childType, childId }) {
+  const child = byId(state, childId);
+  const fromParent = child ? _hGetParentObject(child, state) : null;
+  
+  const res = _hDetach({ childType, childId }, state);
+  if (!res.ok) return res;
+  
+  // Логируем изменение
+  if (child && fromParent) {
+    logHierarchyChange('detach', child, fromParent, null);
+  }
+  
+  try { saveState(); } catch(_) {}
+  try { if (window.layoutMap) window.layoutMap(); if (window.drawMap) window.drawMap(); } catch(_) {}
+  return res;
+}
+
+export function moveChild({ toParentType, toParentId, childType, childId }) {
+  const child = byId(state, childId);
+  const fromParent = child ? _hGetParentObject(child, state) : null;
+  const toParent = byId(state, toParentId);
+  
+  const res = _hMove({ toParentType, toParentId, childType, childId }, state);
+  if (!res.ok) return res;
+  
+  // Логируем изменение
+  if (child && toParent) {
+    logHierarchyChange('move', child, fromParent, toParent);
+  }
+  
+  try { saveState(); } catch(_) {}
+  try { if (window.layoutMap) window.layoutMap(); if (window.drawMap) window.drawMap(); } catch(_) {}
+  return res;
+}
+
 // Реэкспорт функций из модуля hierarchy/index.js
 export {
   canChangeHierarchy,
@@ -219,7 +318,6 @@ export {
   initHierarchyFields,
   setParentChild,
   removeParentChild,
-  validateHierarchy,
   isObjectLocked,
   setObjectLock,
   canMoveObject
@@ -505,7 +603,7 @@ export function restoreHierarchyConnections() {
     state.projects.forEach(project => {
       if (project.domainId) {
         try {
-          if (setParentChild(project.domainId, project.id, 'project')) {
+          if (setParentChild(project.domainId, project.id, 'project', state)) {
             result.restoredConnections++;
             result.details.push(`Восстановлена связь: ${project.domainId} → ${project.id} (project)`);
           }
@@ -519,7 +617,7 @@ export function restoreHierarchyConnections() {
     state.tasks.forEach(task => {
       if (task.projectId) {
         try {
-          if (setParentChild(task.projectId, task.id, 'task')) {
+          if (setParentChild(task.projectId, task.id, 'task', state)) {
             result.restoredConnections++;
             result.details.push(`Восстановлена связь: ${task.projectId} → ${task.id} (task)`);
           }
@@ -528,7 +626,7 @@ export function restoreHierarchyConnections() {
         }
       } else if (task.domainId) {
         try {
-          if (setParentChild(task.domainId, task.id, 'task')) {
+          if (setParentChild(task.domainId, task.id, 'task', state)) {
             result.restoredConnections++;
             result.details.push(`Восстановлена связь: ${task.domainId} → ${task.id} (task)`);
           }
@@ -542,7 +640,7 @@ export function restoreHierarchyConnections() {
     state.ideas.forEach(idea => {
       if (idea.domainId) {
         try {
-          if (setParentChild(idea.domainId, idea.id, 'idea')) {
+          if (setParentChild(idea.domainId, idea.id, 'idea', state)) {
             result.restoredConnections++;
             result.details.push(`Восстановлена связь: ${idea.domainId} → ${idea.id} (idea)`);
           }
@@ -556,7 +654,7 @@ export function restoreHierarchyConnections() {
     state.notes.forEach(note => {
       if (note.domainId) {
         try {
-          if (setParentChild(note.domainId, note.id, 'note')) {
+          if (setParentChild(note.domainId, note.id, 'note', state)) {
             result.restoredConnections++;
             result.details.push(`Восстановлена связь: ${note.domainId} → ${note.id} (note)`);
           }

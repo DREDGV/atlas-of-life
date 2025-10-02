@@ -257,6 +257,7 @@ function renderHierarchySection(obj) {
       </div>
       
       ${renderHierarchyActions(obj)}
+      ${renderHierarchyHistory(obj)}
     </div>
   `;
   
@@ -299,6 +300,54 @@ function renderHierarchyActions(obj) {
   return html;
 }
 
+// Функция для отображения истории связей
+function renderHierarchyHistory(obj) {
+  if (!state.hierarchyLog || state.hierarchyLog.length === 0) return '';
+  
+  // Фильтруем записи, связанные с этим объектом
+  const relevantEntries = state.hierarchyLog.filter(entry => 
+    entry.child.id === obj.id || 
+    (entry.from && entry.from.id === obj.id) || 
+    (entry.to && entry.to.id === obj.id)
+  ).slice(0, 5); // Показываем только последние 5 записей
+  
+  if (relevantEntries.length === 0) return '';
+  
+  let html = `
+    <div class="hierarchy-history">
+      <h4>📜 История связей</h4>
+      <div class="history-entries">
+  `;
+  
+  relevantEntries.forEach(entry => {
+    const timeAgo = Math.floor((Date.now() - entry.ts) / (1000 * 60)); // минуты назад
+    const timeStr = timeAgo < 60 ? `${timeAgo}м назад` : `${Math.floor(timeAgo / 60)}ч назад`;
+    
+    let actionText = '';
+    if (entry.action === 'attach') {
+      actionText = `Привязан к ${entry.to?.type || 'объекту'} "${entry.to?.title || 'неизвестно'}"`;
+    } else if (entry.action === 'detach') {
+      actionText = `Отвязан от ${entry.from?.type || 'объекта'} "${entry.from?.title || 'неизвестно'}"`;
+    } else if (entry.action === 'move') {
+      actionText = `Перемещён из ${entry.from?.type || 'объекта'} "${entry.from?.title || 'неизвестно'}" в ${entry.to?.type || 'объект'} "${entry.to?.title || 'неизвестно'}"`;
+    }
+    
+    html += `
+      <div class="history-entry">
+        <span class="history-time">${timeStr}</span>
+        <span class="history-action">${actionText}</span>
+      </div>
+    `;
+  });
+  
+  html += `
+      </div>
+    </div>
+  `;
+  
+  return html;
+}
+
 // Настройка обработчиков действий иерархии
 function setupHierarchyActionHandlers(obj) {
   const detachBtn = document.getElementById('detachFromParent');
@@ -306,10 +355,21 @@ function setupHierarchyActionHandlers(obj) {
     detachBtn.onclick = () => {
       const parent = getParentObjectFallback(obj);
       if (parent && confirm(`Отвязать "${obj.title}" от "${parent.title}"?`)) {
-        detachObjectFromParent(obj);
-        saveState();
-        refreshMap();
-        openInspectorFor(obj);
+        const objType = getObjectType(obj);
+        const res = state.detachChild({
+          childType: objType,
+          childId: obj.id
+        });
+        
+        if (res.ok) {
+          refreshMap();
+          openInspectorFor(obj);
+          showToast("Объект отвязан", "ok");
+        } else {
+          let errorMsg = "Не удалось отвязать объект";
+          if (res.error === 'locked') errorMsg = "Объект заблокирован для изменений";
+          showToast(errorMsg, "error");
+        }
       }
     };
   }
@@ -320,17 +380,34 @@ function setupHierarchyActionHandlers(obj) {
       const availableParents = getAvailableParents(obj);
       if (availableParents.length === 0) return;
       
-      const options = availableParents.map(p => `${p._type === 'domain' ? 'Домен' : 'Проект'}: ${p.title}`).join('\n');
-      const choice = prompt(`Выберите родителя (введите номер):\n${availableParents.map((p, i) => `${i + 1}. ${p._type === 'domain' ? 'Домен' : 'Проект'}: ${p.title}`).join('\n')}`);
+      const options = availableParents.map(p => `${p._type === 'domain' ? 'Домен' : p._type === 'project' ? 'Проект' : p._type === 'task' ? 'Задача' : 'Объект'}: ${p.title}`).join('\n');
+      const choice = prompt(`Выберите родителя (введите номер):\n${availableParents.map((p, i) => `${i + 1}. ${p._type === 'domain' ? 'Домен' : p._type === 'project' ? 'Проект' : p._type === 'task' ? 'Задача' : 'Объект'}: ${p.title}`).join('\n')}`);
       
       if (choice) {
         const index = parseInt(choice) - 1;
         if (index >= 0 && index < availableParents.length) {
           const selectedParent = availableParents[index];
-          attachObjectToParent(obj, selectedParent);
-          saveState();
-          refreshMap();
-          openInspectorFor(obj);
+          const objType = getObjectType(obj);
+          const parentType = getObjectType(selectedParent);
+          
+          const res = state.attachChild({
+            parentType: parentType,
+            parentId: selectedParent.id,
+            childType: objType,
+            childId: obj.id
+          });
+          
+          if (res.ok) {
+            refreshMap();
+            openInspectorFor(obj);
+            showToast("Объект привязан", "ok");
+          } else {
+            let errorMsg = "Не удалось привязать объект";
+            if (res.error === 'disallowed') errorMsg = "Такая связь не разрешена";
+            else if (res.error === 'cycle') errorMsg = "Это создаст циклическую зависимость";
+            else if (res.error === 'locked') errorMsg = "Объект заблокирован для изменений";
+            showToast(errorMsg, "error");
+          }
         }
       }
     };

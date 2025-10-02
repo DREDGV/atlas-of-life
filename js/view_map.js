@@ -6166,46 +6166,37 @@ function confirmIdeaMove() {
     return;
   }
   
-  const fromParentId = pendingIdeaMove.fromParentId;
   const toParentId = pendingIdeaMove.toParentId;
   const targetType = pendingIdeaMove.targetType;
   
-  // Update idea parent based on target type
-  if (targetType === 'domain') {
-    idea.domainId = toParentId;
-    idea.parentId = toParentId;
-  } else if (targetType === 'project') {
-    idea.parentId = toParentId;
-    // Get domain from project
-    const project = state.projects.find(p => p.id === toParentId);
-    if (project) {
-      idea.domainId = project.domainId;
+  // Используем новый API для перемещения
+  const res = state.moveChild({
+    toParentType: targetType,
+    toParentId: toParentId,
+    childType: 'idea',
+    childId: idea.id
+  });
+  
+  if (res.ok) {
+    // Update position
+    if (pendingIdeaMove.pos) {
+      idea.x = pendingIdeaMove.pos.x;
+      idea.y = pendingIdeaMove.pos.y;
     }
-  } else if (targetType === 'task') {
-    idea.parentId = toParentId;
-    // Get domain from task's project
-    const task = state.tasks.find(t => t.id === toParentId);
-    if (task) {
-      const project = state.projects.find(p => p.id === task.projectId);
-      if (project) {
-        idea.domainId = project.domainId;
-      }
-    }
+    
+    requestLayout();
+    requestDraw();
+    openInspectorFor(idea);
+    showToast("Идея перемещена", "ok");
+  } else {
+    // Показываем понятную ошибку
+    let errorMsg = "Не удалось переместить идею";
+    if (res.error === 'disallowed') errorMsg = "Такая связь не разрешена";
+    else if (res.error === 'cycle') errorMsg = "Это создаст циклическую зависимость";
+    else if (res.error === 'locked') errorMsg = "Идея заблокирована для изменений";
+    showToast(errorMsg, "error");
   }
   
-  idea.updatedAt = Date.now();
-  
-  // Update position
-  if (pendingIdeaMove.pos) {
-    idea.x = pendingIdeaMove.pos.x;
-    idea.y = pendingIdeaMove.pos.y;
-  }
-  
-  saveState();
-  requestLayout();
-  requestDraw();
-  openInspectorFor(idea);
-  showToast("Идея перемещена", "ok");
   pendingIdeaMove = null;
 }
 
@@ -6218,22 +6209,30 @@ function confirmIdeaDetach() {
     return;
   }
   
-  // Remove from all parents
-  idea.domainId = null;
-  idea.parentId = null;
-  idea.updatedAt = Date.now();
+  // Используем новый API для отвязки
+  const res = state.detachChild({
+    childType: 'idea',
+    childId: idea.id
+  });
   
-  // Update position
-  if (pendingIdeaDetach.pos) {
-    idea.x = pendingIdeaDetach.pos.x;
-    idea.y = pendingIdeaDetach.pos.y;
+  if (res.ok) {
+    // Update position
+    if (pendingIdeaDetach.pos) {
+      idea.x = pendingIdeaDetach.pos.x;
+      idea.y = pendingIdeaDetach.pos.y;
+    }
+    
+    requestLayout();
+    requestDraw();
+    openInspectorFor(idea);
+    showToast("Идея отвязана", "ok");
+  } else {
+    // Показываем понятную ошибку
+    let errorMsg = "Не удалось отвязать идею";
+    if (res.error === 'locked') errorMsg = "Идея заблокирована для изменений";
+    showToast(errorMsg, "error");
   }
   
-  saveState();
-  requestLayout();
-  requestDraw();
-  openInspectorFor(idea);
-  showToast("Идея отвязана", "ok");
   pendingIdeaDetach = null;
 }
 
@@ -6247,46 +6246,37 @@ function confirmNoteMove() {
     return;
   }
   
-  const fromParentId = pendingNoteMove.fromParentId;
   const toParentId = pendingNoteMove.toParentId;
   const targetType = pendingNoteMove.targetType;
   
-  // Update note parent based on target type
-  if (targetType === 'domain') {
-    note.domainId = toParentId;
-    note.parentId = toParentId;
-  } else if (targetType === 'project') {
-    note.parentId = toParentId;
-    // Get domain from project
-    const project = state.projects.find(p => p.id === toParentId);
-    if (project) {
-      note.domainId = project.domainId;
+  // Используем новый API для перемещения
+  const res = state.moveChild({
+    toParentType: targetType,
+    toParentId: toParentId,
+    childType: 'note',
+    childId: note.id
+  });
+  
+  if (res.ok) {
+    // Update position
+    if (pendingNoteMove.pos) {
+      note.x = pendingNoteMove.pos.x;
+      note.y = pendingNoteMove.pos.y;
     }
-  } else if (targetType === 'task') {
-    note.parentId = toParentId;
-    // Get domain from task's project
-    const task = state.tasks.find(t => t.id === toParentId);
-    if (task) {
-      const project = state.projects.find(p => p.id === task.projectId);
-      if (project) {
-        note.domainId = project.domainId;
-      }
-    }
+    
+    requestLayout();
+    requestDraw();
+    openInspectorFor(note);
+    showToast("Заметка перемещена", "ok");
+  } else {
+    // Показываем понятную ошибку
+    let errorMsg = "Не удалось переместить заметку";
+    if (res.error === 'disallowed') errorMsg = "Такая связь не разрешена";
+    else if (res.error === 'cycle') errorMsg = "Это создаст циклическую зависимость";
+    else if (res.error === 'locked') errorMsg = "Заметка заблокирована для изменений";
+    showToast(errorMsg, "error");
   }
   
-  note.updatedAt = Date.now();
-  
-  // Update position
-  if (pendingNoteMove.pos) {
-    note.x = pendingNoteMove.pos.x;
-    note.y = pendingNoteMove.pos.y;
-  }
-  
-  saveState();
-  requestLayout();
-  requestDraw();
-  openInspectorFor(note);
-  showToast("Заметка перемещена", "ok");
   pendingNoteMove = null;
 }
 
@@ -6299,22 +6289,30 @@ function confirmNoteDetach() {
     return;
   }
   
-  // Remove from all parents
-  note.domainId = null;
-  note.parentId = null;
-  note.updatedAt = Date.now();
+  // Используем новый API для отвязки
+  const res = state.detachChild({
+    childType: 'note',
+    childId: note.id
+  });
   
-  // Update position
-  if (pendingNoteDetach.pos) {
-    note.x = pendingNoteDetach.pos.x;
-    note.y = pendingNoteDetach.pos.y;
+  if (res.ok) {
+    // Update position
+    if (pendingNoteDetach.pos) {
+      note.x = pendingNoteDetach.pos.x;
+      note.y = pendingNoteDetach.pos.y;
+    }
+    
+    requestLayout();
+    requestDraw();
+    openInspectorFor(note);
+    showToast("Заметка отвязана", "ok");
+  } else {
+    // Показываем понятную ошибку
+    let errorMsg = "Не удалось отвязать заметку";
+    if (res.error === 'locked') errorMsg = "Заметка заблокирована для изменений";
+    showToast(errorMsg, "error");
   }
   
-  saveState();
-  requestLayout();
-  requestDraw();
-  openInspectorFor(note);
-  showToast("Заметка отвязана", "ok");
   pendingNoteDetach = null;
 }
 
@@ -6328,34 +6326,37 @@ function confirmChecklistMove() {
     return;
   }
   
-  const fromProjectId = pendingChecklistMove.fromProjectId;
-  const fromDomainId = pendingChecklistMove.fromDomainId;
   const toParentId = pendingChecklistMove.toParentId;
   const targetType = pendingChecklistMove.targetType;
   
-  // Update checklist parent based on target type
-  if (targetType === 'project') {
-    checklist.projectId = toParentId;
-    // Get domain from project
-    const project = state.projects.find(p => p.id === toParentId);
-    if (project) {
-      checklist.domainId = project.domainId;
+  // Используем новый API для перемещения
+  const res = state.moveChild({
+    toParentType: targetType,
+    toParentId: toParentId,
+    childType: 'checklist',
+    childId: checklist.id
+  });
+  
+  if (res.ok) {
+    // Update position
+    if (pendingChecklistMove.pos) {
+      checklist.x = pendingChecklistMove.pos.x;
+      checklist.y = pendingChecklistMove.pos.y;
     }
-  } else if (targetType === 'domain') {
-    checklist.domainId = toParentId;
-    checklist.projectId = null; // Remove project assignment when moving to domain
+    
+    requestLayout();
+    requestDraw();
+    openInspectorFor(checklist);
+    showToast("Чек-лист перемещён", "ok");
+  } else {
+    // Показываем понятную ошибку
+    let errorMsg = "Не удалось переместить чек-лист";
+    if (res.error === 'disallowed') errorMsg = "Такая связь не разрешена";
+    else if (res.error === 'cycle') errorMsg = "Это создаст циклическую зависимость";
+    else if (res.error === 'locked') errorMsg = "Чек-лист заблокирован для изменений";
+    showToast(errorMsg, "error");
   }
   
-  checklist.updatedAt = Date.now();
-  
-  // Update position
-  if (pendingChecklistMove.pos) {
-    checklist.x = pendingChecklistMove.pos.x;
-    checklist.y = pendingChecklistMove.pos.y;
-  }
-  
-  saveState();
-  showToast("Чек-лист перемещен", "ok");
   pendingChecklistMove = null;
 }
 
@@ -6368,19 +6369,30 @@ function confirmChecklistDetach() {
     return;
   }
   
-  // Remove all parent assignments
-  checklist.projectId = null;
-  checklist.domainId = null;
-  checklist.updatedAt = Date.now();
+  // Используем новый API для отвязки
+  const res = state.detachChild({
+    childType: 'checklist',
+    childId: checklist.id
+  });
   
-  // Update position
-  if (pendingChecklistDetach.pos) {
-    checklist.x = pendingChecklistDetach.pos.x;
-    checklist.y = pendingChecklistDetach.pos.y;
+  if (res.ok) {
+    // Update position
+    if (pendingChecklistDetach.pos) {
+      checklist.x = pendingChecklistDetach.pos.x;
+      checklist.y = pendingChecklistDetach.pos.y;
+    }
+    
+    requestLayout();
+    requestDraw();
+    openInspectorFor(checklist);
+    showToast("Чек-лист отвязан", "ok");
+  } else {
+    // Показываем понятную ошибку
+    let errorMsg = "Не удалось отвязать чек-лист";
+    if (res.error === 'locked') errorMsg = "Чек-лист заблокирован для изменений";
+    showToast(errorMsg, "error");
   }
   
-  saveState();
-  showToast("Чек-лист отвязан", "ok");
   pendingChecklistDetach = null;
 }
 
