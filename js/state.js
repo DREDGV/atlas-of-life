@@ -273,13 +273,23 @@ export function logHierarchyChange(action, child, fromParent, toParent) {
 // Обёртки над новым иерархическим API (единая точка входа из UI/DnD)
 export function attachChild({ parentType, parentId, childType, childId }) {
   const res = _hAttach({ parentType, parentId, childType, childId }, state);
-  if (!res.ok) return res;
+  if (!res.ok) {
+    console.warn(`⚠️ attachChild failed: ${res.error}`, { parentType, parentId, childType, childId });
+    return res;
+  }
   
-  // Логируем изменение
+  // Логируем изменение (даже если есть проблемы с валидацией)
   const child = byId(state, childId);
   const parent = byId(state, parentId);
   if (child && parent) {
-    logHierarchyChange('attach', child, null, parent);
+    try {
+      logHierarchyChange('attach', child, null, parent);
+      console.log(`📝 История: записано прикрепление ${child.id} к ${parent.id}`);
+    } catch (error) {
+      console.warn('⚠️ Ошибка записи истории при attach:', error);
+    }
+  } else {
+    console.warn('⚠️ Не удалось найти объекты для записи истории:', { child: !!child, parent: !!parent });
   }
   
   try { saveState(); } catch(_) {}
@@ -292,11 +302,21 @@ export function detachChild({ childType, childId }) {
   const fromParent = child ? _hGetParentObject(child, state) : null;
   
   const res = _hDetach({ childType, childId }, state);
-  if (!res.ok) return res;
+  if (!res.ok) {
+    console.warn(`⚠️ detachChild failed: ${res.error}`, { childType, childId });
+    return res;
+  }
   
-  // Логируем изменение
+  // Логируем изменение (даже если есть проблемы с валидацией)
   if (child && fromParent) {
-    logHierarchyChange('detach', child, fromParent, null);
+    try {
+      logHierarchyChange('detach', child, fromParent, null);
+      console.log(`📝 История: записано открепление ${child.id} от ${fromParent.id}`);
+    } catch (error) {
+      console.warn('⚠️ Ошибка записи истории при detach:', error);
+    }
+  } else {
+    console.warn('⚠️ Не удалось найти объекты для записи истории detach:', { child: !!child, fromParent: !!fromParent });
   }
   
   try { saveState(); } catch(_) {}
@@ -310,11 +330,21 @@ export function moveChild({ toParentType, toParentId, childType, childId }) {
   const toParent = byId(state, toParentId);
   
   const res = _hMove({ toParentType, toParentId, childType, childId }, state);
-  if (!res.ok) return res;
+  if (!res.ok) {
+    console.warn(`⚠️ moveChild failed: ${res.error}`, { toParentType, toParentId, childType, childId });
+    return res;
+  }
   
-  // Логируем изменение
+  // Логируем изменение (даже если есть проблемы с валидацией)
   if (child && toParent) {
-    logHierarchyChange('move', child, fromParent, toParent);
+    try {
+      logHierarchyChange('move', child, fromParent, toParent);
+      console.log(`📝 История: записано перемещение ${child.id} из ${fromParent?.id || 'null'} в ${toParent.id}`);
+    } catch (error) {
+      console.warn('⚠️ Ошибка записи истории при move:', error);
+    }
+  } else {
+    console.warn('⚠️ Не удалось найти объекты для записи истории move:', { child: !!child, toParent: !!toParent });
   }
   
   try { saveState(); } catch(_) {}

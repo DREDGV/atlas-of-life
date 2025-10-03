@@ -4477,11 +4477,33 @@ async function init() {
             }
           });
         }
+        
+        // Очищаем некорректные domainId и projectId
+        if (obj.domainId && !existingIds.has(obj.domainId)) {
+          console.log(`🧹 Исправляем: очищаем domainId ${obj.domainId} у объекта ${obj.id}`);
+          obj.domainId = null;
+          fixed++;
+        }
+        
+        if (obj.projectId && !existingIds.has(obj.projectId)) {
+          console.log(`🧹 Исправляем: очищаем projectId ${obj.projectId} у объекта ${obj.id}`);
+          obj.projectId = null;
+          fixed++;
+        }
       });
       
       if (fixed > 0) {
         console.log(`✅ Автоисправлено ${fixed} проблем. Сохраняем состояние...`);
         saveState();
+        
+        // Перезапускаем валидацию после исправлений
+        console.log('🔄 Перезапускаем валидацию после исправлений...');
+        const newProblems = validateHierarchy(state);
+        if (newProblems.length === 0) {
+          console.log('✅ Все проблемы иерархии исправлены!');
+        } else {
+          console.warn(`⚠️ Осталось ${newProblems.length} проблем после автоисправления`);
+        }
       }
       
     } else {
