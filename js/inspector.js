@@ -21,7 +21,6 @@ import {
   detachObjectFromParent,
   getHierarchyHistory,
   rollbackHierarchyChange,
-  getCacheStats,
   getAvailableParents,
   createChecklist,
   getChecklistsOfProject,
@@ -32,6 +31,7 @@ import {
 import { saveState } from "./storage.js";
 import { normalizeType, normalizeId } from "./utils/normalize.js";
 import { getParentObjectFallback } from "./inspector/utils.js";
+import { getCacheStats, clearCache } from "./hierarchy/cache.js";
 
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
 function drawMap() {
