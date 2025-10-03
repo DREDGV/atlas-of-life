@@ -1237,6 +1237,9 @@ export function createTestHistoryEntries() {
   
   return created;
 }
+
+// Функции для работы с историей связей
+export function addHierarchyHistory(objectId, action, details) {
   const obj = findObjectById(objectId);
   if (!obj) {
     console.warn('⚠️ addHierarchyHistory: объект не найден', objectId);
