@@ -1220,8 +1220,8 @@ export function createTestHistoryEntries() {
   
   let created = 0;
   
-  // Добавляем тестовые записи истории к нескольким объектам
-  allObjects.slice(0, 3).forEach(obj => {
+  // Добавляем тестовые записи истории ко всем объектам
+  allObjects.forEach(obj => {
     if (!obj.history) {
       obj.history = [];
     }
