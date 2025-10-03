@@ -44,7 +44,10 @@ import {
   isObjectLocked,
   canMoveObject,
   getChecklistProgress,
-  canChangeHierarchy
+  canChangeHierarchy,
+  moveChild,
+  detachChild,
+  attachChild
 } from "./state.js";
 
 // Mood functions imported
@@ -6159,7 +6162,7 @@ function confirmIdeaMove() {
   const targetType = pendingIdeaMove.targetType;
   
   // Используем новый API для перемещения
-  const res = state.moveChild({
+  const res = moveChild({
     toParentType: targetType,
     toParentId: toParentId,
     childType: 'idea',
@@ -6199,7 +6202,7 @@ function confirmIdeaDetach() {
   }
   
   // Используем новый API для отвязки
-  const res = state.detachChild({
+  const res = detachChild({
     childType: 'idea',
     childId: idea.id
   });
@@ -6239,7 +6242,7 @@ function confirmNoteMove() {
   const targetType = pendingNoteMove.targetType;
   
   // Используем новый API для перемещения
-  const res = state.moveChild({
+  const res = moveChild({
     toParentType: targetType,
     toParentId: toParentId,
     childType: 'note',
@@ -6279,7 +6282,7 @@ function confirmNoteDetach() {
   }
   
   // Используем новый API для отвязки
-  const res = state.detachChild({
+  const res = detachChild({
     childType: 'note',
     childId: note.id
   });
@@ -6319,7 +6322,7 @@ function confirmChecklistMove() {
   const targetType = pendingChecklistMove.targetType;
   
   // Используем новый API для перемещения
-  const res = state.moveChild({
+  const res = moveChild({
     toParentType: targetType,
     toParentId: toParentId,
     childType: 'checklist',
@@ -6359,7 +6362,7 @@ function confirmChecklistDetach() {
   }
   
   // Используем новый API для отвязки
-  const res = state.detachChild({
+  const res = detachChild({
     childType: 'checklist',
     childId: checklist.id
   });
