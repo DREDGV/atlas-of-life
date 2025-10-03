@@ -1116,7 +1116,6 @@ function analyzeExistingData() {
 
 // Информационная панель
 function showInfoPanel(text, icon = '💡', isHtml = false) {
-  console.log('💡 Showing info panel:', text, icon, isHtml);
   const infoPanel = document.getElementById('infoPanel');
   const infoText = document.getElementById('infoText');
   const infoIcon = infoPanel.querySelector('.info-icon');
@@ -1381,7 +1380,6 @@ function setupInfoPanelTooltips() {
       // Временно отключено для тестирования новых подсказок
       // showInfoPanel(navHints[hintIndex].text, navHints[hintIndex].icon);
       // hintIndex = (hintIndex + 1) % navHints.length;
-      console.log('🎯 Canvas hover - showing new tooltips instead of old nav hints');
     });
     canvas.addEventListener('mouseleave', hideInfoPanel);
   }

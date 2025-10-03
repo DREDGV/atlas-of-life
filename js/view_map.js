@@ -2379,7 +2379,6 @@ export function layoutMap() {
       : d.color || "#2dd4bf";
     
     // Добавляем mood для домена
-    console.log(`=== CALCULATING MOOD FOR DOMAIN: ${d.title} (${d.id}) ===`);
     
     // Объявляем переменные вне try блока
     let mood, moodColor, moodDescription;
@@ -2683,7 +2682,6 @@ export function layoutMap() {
 
   // Добавляем идеи и заметки в nodes
   if (state.ideas && state.ideas.length > 0) {
-    console.log('🎨 Adding ideas to nodes:', state.ideas.length);
     state.ideas.forEach(idea => {
       if (idea.x !== undefined && idea.y !== undefined && idea.r !== undefined) {
         // Временно отключаем avoidOverlap для диагностики фризов
@@ -2708,7 +2706,6 @@ export function layoutMap() {
   }
 
   if (state.notes && state.notes.length > 0) {
-    console.log('📝 Adding notes to nodes:', state.notes.length);
     state.notes.forEach(note => {
       if (note.x !== undefined && note.y !== undefined && note.r !== undefined) {
         nodes.push({
@@ -2731,7 +2728,6 @@ export function layoutMap() {
 
   // Добавляем чек-листы в nodes
   if (state.checklists && state.checklists.length > 0) {
-    console.log('✓ Adding checklists to nodes:', state.checklists.length);
     state.checklists.forEach((checklist, index) => {
       // Если координаты не установлены или равны (0,0), устанавливаем их
       if (!checklist.x || !checklist.y || (checklist.x === 0 && checklist.y === 0)) {
@@ -4406,11 +4402,8 @@ function onMouseMove(e) {
     )} дн. ${tags}</span>`;
     tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
-    console.log('🎯 Task hover:', t.title, 'showInfoPanel available:', !!window.showInfoPanel);
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '🪐', true);
-    } else {
-      console.error('❌ showInfoPanel not available');
     }
   } else if (n._type === "project") {
     const p = state.projects.find((x) => x.id === n.id);
@@ -4420,11 +4413,8 @@ function onMouseMove(e) {
     }`;
     tooltip.innerHTML = tooltipText;
     // Показываем в информационной панели
-    console.log('🎯 Project hover:', p.title, 'showInfoPanel available:', !!window.showInfoPanel);
     if (window.showInfoPanel) {
       window.showInfoPanel(tooltipText, '🛰', true);
-    } else {
-      console.error('❌ showInfoPanel not available');
     }
   } else if (n._type === "idea") {
     const idea = state.ideas.find((x) => x.id === n.id);
@@ -4768,7 +4758,6 @@ function handleObjectHover(screenX, screenY, worldPos) {
   
   // Задержка для всплывающей подсказки (настраиваемая)
   const delay = (state.settings && state.settings.tooltipDelay !== undefined) ? state.settings.tooltipDelay : 500;
-  console.log('⏱️ Задержка подсказки:', delay, 'мс для объекта:', n._type, n.id);
   tooltipTimeout = setTimeout(() => {
     showTooltipForObject(n, screenX, screenY);
   }, delay);
