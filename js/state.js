@@ -1268,6 +1268,91 @@ export function createTestHistoryEntries() {
   return created;
 }
 
+// Функция для принудительной очистки всех проблем иерархии
+export function forceCleanupHierarchy() {
+  console.log('🧹 Принудительная очистка всех проблем иерархии...');
+  
+  let cleaned = 0;
+  
+  // Собираем все существующие ID
+  const existingIds = new Set([
+    ...state.domains.map(d => d.id),
+    ...state.projects.map(p => p.id),
+    ...state.tasks.map(t => t.id),
+    ...state.ideas.map(i => i.id),
+    ...state.notes.map(n => n.id),
+    ...state.checklists.map(c => c.id)
+  ]);
+  
+  console.log(`📊 Найдено ${existingIds.size} существующих объектов`);
+  
+  // Исправляем все объекты
+  const allObjects = [
+    ...state.domains,
+    ...state.projects,
+    ...state.tasks,
+    ...state.ideas,
+    ...state.notes,
+    ...state.checklists
+  ];
+  
+  allObjects.forEach(obj => {
+    // Очищаем некорректные parentId
+    if (obj.parentId && !existingIds.has(obj.parentId)) {
+      console.log(`🧹 Очищаем parentId ${obj.parentId} у объекта ${obj.id}`);
+      obj.parentId = null;
+      cleaned++;
+    }
+    
+    // Очищаем некорректные children
+    if (obj.children) {
+      Object.entries(obj.children).forEach(([childType, childIds]) => {
+        if (Array.isArray(childIds)) {
+          const validChildIds = childIds.filter(childId => existingIds.has(childId));
+          if (validChildIds.length !== childIds.length) {
+            console.log(`🧹 Очищаем некорректные children у объекта ${obj.id}`);
+            obj.children[childType] = validChildIds;
+            cleaned++;
+          }
+        }
+      });
+    }
+    
+    // Очищаем некорректные domainId и projectId
+    if (obj.domainId && !existingIds.has(obj.domainId)) {
+      console.log(`🧹 Очищаем domainId ${obj.domainId} у объекта ${obj.id}`);
+      obj.domainId = null;
+      cleaned++;
+    }
+    
+    if (obj.projectId && !existingIds.has(obj.projectId)) {
+      console.log(`🧹 Очищаем projectId ${obj.projectId} у объекта ${obj.id}`);
+      obj.projectId = null;
+      cleaned++;
+    }
+    
+    // Принудительно очищаем null и undefined ссылки
+    if (obj.parentId === null || obj.parentId === undefined) {
+      obj.parentId = null;
+    }
+    if (obj.domainId === null || obj.domainId === undefined) {
+      obj.domainId = null;
+    }
+    if (obj.projectId === null || obj.projectId === undefined) {
+      obj.projectId = null;
+    }
+  });
+  
+  if (cleaned > 0) {
+    console.log(`✅ Очищено ${cleaned} проблем. Сохраняем состояние...`);
+    saveState();
+  } else {
+    console.log('ℹ️ Проблем не найдено');
+  }
+  
+  return cleaned;
+}
+
 // Функция для проверки истории всех объектов (для отладки)
 export function checkAllObjectsHistory() {
   console.log('🔍 Проверяем историю всех объектов...');

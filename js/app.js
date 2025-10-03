@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist, eventBus, checkAllObjectsHistory, createTestHistoryEntries } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist, eventBus, checkAllObjectsHistory, createTestHistoryEntries, forceCleanupHierarchy } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson, backupStateSnapshot, listBackups } from "./storage.js";
 import {
   initMap,
@@ -4444,6 +4444,8 @@ async function init() {
         ...state.checklists.map(c => c.id)
       ]);
       
+      console.log(`📊 Найдено ${existingIds.size} существующих объектов`);
+      
       // Исправляем все объекты
       const allObjects = [
         ...state.domains,
@@ -4488,6 +4490,17 @@ async function init() {
           obj.projectId = null;
           fixed++;
         }
+        
+        // Принудительно очищаем null и undefined ссылки
+        if (obj.parentId === null || obj.parentId === undefined) {
+          obj.parentId = null;
+        }
+        if (obj.domainId === null || obj.domainId === undefined) {
+          obj.domainId = null;
+        }
+        if (obj.projectId === null || obj.projectId === undefined) {
+          obj.projectId = null;
+        }
       });
       
       if (fixed > 0) {
@@ -4501,7 +4514,13 @@ async function init() {
           console.log('✅ Все проблемы иерархии исправлены!');
         } else {
           console.warn(`⚠️ Осталось ${newProblems.length} проблем после автоисправления`);
+          // Показываем оставшиеся проблемы
+          newProblems.forEach((problem, index) => {
+            console.warn(`  ${index + 1}. ${problem.message} (${problem.code}) - ID: ${problem.id}`);
+          });
         }
+      } else {
+        console.log('ℹ️ Проблемы уже были исправлены ранее');
       }
       
     } else {
@@ -4666,6 +4685,7 @@ async function init() {
   // Make debugging functions globally available
   window.checkAllObjectsHistory = checkAllObjectsHistory;
   window.createTestHistoryEntries = createTestHistoryEntries;
+  window.forceCleanupHierarchy = forceCleanupHierarchy;
   
   // Setup creation panel buttons
   setupCreationPanel();
