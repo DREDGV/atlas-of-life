@@ -42,76 +42,120 @@ function requestLayout() {
   return window.mapApi && window.mapApi.requestLayout && window.mapApi.requestLayout();
 }
 
-// Функция для отображения истории связей объекта
+// Функция для отображения кнопки истории связей
 function renderHierarchyHistory(obj) {
   const history = getHierarchyHistory(obj.id);
+  const historyCount = history ? history.length : 0;
   
+  return `
+    <div class="history-section">
+      <button class="btn" onclick="openHistoryModal('${obj.id}')" title="Открыть полную историю связей">
+        📝 История связей ${historyCount > 0 ? `(${historyCount})` : ''}
+      </button>
+      ${historyCount === 0 ? `
+        <button class="btn-small" onclick="createTestHistory()" title="Создать тестовые записи для демонстрации" style="margin-left: 8px;">
+          🧪 Тест
+        </button>
+      ` : ''}
+    </div>
+  `;
+}
+
+// Функция для открытия модального окна с историей
+window.openHistoryModal = function(objectId) {
+  const obj = findObjectById(objectId);
+  if (!obj) return;
+  
+  const history = getHierarchyHistory(objectId);
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  
+  let historyHtml = '';
   if (!history || history.length === 0) {
-    return `
-      <div class="history-section">
-        <h4>📝 История связей</h4>
-        <p class="hint">История изменений связей пуста</p>
-        <div class="history-actions">
-          <button class="btn-small" onclick="createTestHistory()" title="Создать тестовые записи для демонстрации">
-            🧪 Создать тестовые записи
-          </button>
-        </div>
+    historyHtml = `
+      <p class="hint">История изменений связей пуста</p>
+      <div style="margin-top: 16px;">
+        <button class="btn" onclick="createTestHistory(); closeModal(); openHistoryModal('${objectId}');">
+          🧪 Создать тестовые записи
+        </button>
       </div>
     `;
+  } else {
+    historyHtml = '<div class="history-list">';
+    history.forEach((entry, index) => {
+      const date = new Date(entry.timestamp);
+      const timeStr = date.toLocaleString('ru-RU', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      let actionText = '';
+      let actionIcon = '';
+      
+      switch (entry.action) {
+        case 'attach':
+          actionText = `Привязан к ${entry.details.toParentTitle || entry.details.toParentId}`;
+          actionIcon = '🔗';
+          break;
+        case 'detach':
+          actionText = `Отвязан от ${entry.details.fromParentTitle || entry.details.fromParentId}`;
+          actionIcon = '🔓';
+          break;
+        case 'move':
+          actionText = `Перемещен из ${entry.details.fromParentTitle || entry.details.fromParentId} в ${entry.details.toParentTitle || entry.details.toParentId}`;
+          actionIcon = '🔄';
+          break;
+        default:
+          actionText = entry.action;
+          actionIcon = '📝';
+      }
+      
+      historyHtml += `
+        <div class="history-item ${index === 0 ? 'latest' : ''}">
+          <div class="history-icon">${actionIcon}</div>
+          <div class="history-content">
+            <div class="history-action">${actionText}</div>
+            <div class="history-time">${timeStr}</div>
+          </div>
+          <div class="history-actions">
+            <button class="btn-small rollback-btn" onclick="rollbackHistoryEntry('${objectId}', '${entry.id}')" title="Откатить это изменение">
+              🔄 Откат
+            </button>
+          </div>
+        </div>
+      `;
+    });
+    historyHtml += '</div>';
   }
   
-  let html = '<div class="history-section"><h4>📝 История связей</h4><div class="history-list">';
-  
-  history.forEach((entry, index) => {
-    const date = new Date(entry.timestamp);
-    const timeStr = date.toLocaleString('ru-RU', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    
-    let actionText = '';
-    let actionIcon = '';
-    
-    switch (entry.action) {
-      case 'attach':
-        actionText = `Привязан к ${entry.details.toParentTitle || entry.details.toParentId}`;
-        actionIcon = '🔗';
-        break;
-      case 'detach':
-        actionText = `Отвязан от ${entry.details.fromParentTitle || entry.details.fromParentId}`;
-        actionIcon = '🔓';
-        break;
-      case 'move':
-        actionText = `Перемещен из ${entry.details.fromParentTitle || entry.details.fromParentId} в ${entry.details.toParentTitle || entry.details.toParentId}`;
-        actionIcon = '🔄';
-        break;
-      default:
-        actionText = entry.action;
-        actionIcon = '📝';
-    }
-    
-    html += `
-      <div class="history-item ${index === 0 ? 'latest' : ''}">
-        <div class="history-icon">${actionIcon}</div>
-        <div class="history-content">
-          <div class="history-action">${actionText}</div>
-          <div class="history-time">${timeStr}</div>
-        </div>
-        <div class="history-actions">
-          <button class="btn-small rollback-btn" onclick="rollbackHistoryEntry('${obj.id}', '${entry.id}')" title="Откатить это изменение">
-            🔄
-          </button>
-        </div>
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h2>📝 История связей: ${obj.title || obj.id}</h2>
+        <button class="modal-close" onclick="closeModal()">×</button>
       </div>
-    `;
-  });
+      <div class="modal-body">
+        ${historyHtml}
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">Закрыть</button>
+      </div>
+    </div>
+  `;
   
-  html += '</div></div>';
-  return html;
-}
+  modal.style.display = 'flex';
+};
+
+// Функция для закрытия модального окна
+window.closeModal = function() {
+  const modal = document.getElementById('modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+};
 
 // Глобальная функция для отката изменений истории
 window.rollbackHistoryEntry = function(objectId, historyEntryId) {
