@@ -1353,6 +1353,37 @@ export function forceCleanupHierarchy() {
   return cleaned;
 }
 
+// Функция для проверки истории конкретного объекта
+export function checkObjectHistory(objectId) {
+  const obj = findObjectById(objectId);
+  if (!obj) {
+    console.warn(`⚠️ Объект ${objectId} не найден`);
+    return null;
+  }
+  
+  console.log(`🔍 Проверяем историю объекта: ${obj.title || obj.id} (${getObjectType(obj)})`);
+  
+  if (!obj.history || obj.history.length === 0) {
+    console.log(`📝 История пуста для объекта ${obj.id}`);
+    return { object: obj, history: [], hasHistory: false };
+  }
+  
+  console.log(`📝 Найдено ${obj.history.length} записей истории:`);
+  obj.history.forEach((entry, index) => {
+    const date = new Date(entry.timestamp);
+    const timeStr = date.toLocaleString('ru-RU', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    console.log(`  ${index + 1}. ${entry.action} в ${timeStr} - ${entry.details.fromParentTitle || 'null'} → ${entry.details.toParentTitle || 'null'}`);
+  });
+  
+  return { object: obj, history: obj.history, hasHistory: true };
+}
+
 // Функция для проверки истории всех объектов (для отладки)
 export function checkAllObjectsHistory() {
   console.log('🔍 Проверяем историю всех объектов...');

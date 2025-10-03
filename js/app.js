@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist, eventBus, checkAllObjectsHistory, createTestHistoryEntries, forceCleanupHierarchy } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist, eventBus, checkAllObjectsHistory, createTestHistoryEntries, forceCleanupHierarchy, checkObjectHistory } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson, backupStateSnapshot, listBackups } from "./storage.js";
 import {
   initMap,
@@ -4686,6 +4686,7 @@ async function init() {
   window.checkAllObjectsHistory = checkAllObjectsHistory;
   window.createTestHistoryEntries = createTestHistoryEntries;
   window.forceCleanupHierarchy = forceCleanupHierarchy;
+  window.checkObjectHistory = checkObjectHistory;
   
   // Setup creation panel buttons
   setupCreationPanel();
