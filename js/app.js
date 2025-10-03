@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist, eventBus } from "./state.js";
+import { state, $, $$, initDemoData, getRandomProjectColor, generateId, getRandomIdeaColor, getRandomNoteColor, getDomainMood, getMoodColor, findObjectById, getObjectType, addChecklistItem, removeChecklistItem, toggleChecklistItem, getChecklistProgress, createChecklist, eventBus, checkAllObjectsHistory, createTestHistoryEntries } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson, backupStateSnapshot, listBackups } from "./storage.js";
 import {
   initMap,
@@ -4662,6 +4662,10 @@ async function init() {
   initMap(canvas, tooltip);
   }
   updateWip();
+  
+  // Make debugging functions globally available
+  window.checkAllObjectsHistory = checkAllObjectsHistory;
+  window.createTestHistoryEntries = createTestHistoryEntries;
   
   // Setup creation panel buttons
   setupCreationPanel();

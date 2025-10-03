@@ -1268,6 +1268,45 @@ export function createTestHistoryEntries() {
   return created;
 }
 
+// Функция для проверки истории всех объектов (для отладки)
+export function checkAllObjectsHistory() {
+  console.log('🔍 Проверяем историю всех объектов...');
+  
+  const allObjects = [
+    ...state.domains,
+    ...state.projects,
+    ...state.tasks,
+    ...state.ideas,
+    ...state.notes,
+    ...state.checklists
+  ];
+  
+  let totalHistoryEntries = 0;
+  let objectsWithHistory = 0;
+  
+  allObjects.forEach(obj => {
+    if (obj.history && obj.history.length > 0) {
+      objectsWithHistory++;
+      totalHistoryEntries += obj.history.length;
+      console.log(`📝 ${obj.title || obj.id}: ${obj.history.length} записей истории`);
+      
+      // Показываем последние 2 записи
+      obj.history.slice(0, 2).forEach((entry, index) => {
+        const date = new Date(entry.timestamp);
+        const timeStr = date.toLocaleString('ru-RU', { 
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+        console.log(`  ${index + 1}. ${entry.action} в ${timeStr} - ${entry.details.fromParentTitle || 'null'} → ${entry.details.toParentTitle || 'null'}`);
+      });
+    }
+  });
+  
+  console.log(`📊 Итого: ${objectsWithHistory} объектов с историей, ${totalHistoryEntries} записей`);
+  return { objectsWithHistory, totalHistoryEntries };
+}
+
 // Функции для работы с историей связей
 export function addHierarchyHistory(objectId, action, details) {
   const obj = findObjectById(objectId);
