@@ -8,6 +8,14 @@ import {
   HierarchyUtils 
 } from '../types/hierarchy.js';
 
+import { 
+  getCachedParent, 
+  getCachedChildren, 
+  getCachedAncestors,
+  invalidateObjectCache,
+  invalidateHierarchyCache
+} from './cache.js';
+
 /**
  * Инициализация полей иерархии для объекта
  * @param {Object} obj - Объект для инициализации
@@ -177,14 +185,10 @@ export function removeParentChild(parentId, childId, childType) {
  * @param {string} childId - ID дочернего объекта
  * @returns {Object|null} Родительский объект или null
  */
-export function getParentObject(childId) {
+export function getParentObject(childId, state) {
   try {
-    const child = getObjectById(childId);
-    if (!child || !child.parentId) {
-      return null;
-    }
-    
-    return getObjectById(child.parentId);
+    // Используем кэширование
+    return getCachedParent(childId, state);
   } catch (error) {
     console.error('❌ getParentObject: Ошибка получения родителя:', error);
     return null;

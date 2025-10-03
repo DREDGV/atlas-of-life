@@ -103,6 +103,57 @@
 .rollback-btn {
   font-size: 14px;
 }
+
+/* Стили для статистики кэша */
+.cache-stats-section {
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.cache-stats-section h4 {
+  margin: 0 0 12px 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cache-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cache-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--panel);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.cache-stat-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cache-stat-value {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
+.cache-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
 /* Перенесённые стили из index.html */
 .zoom-slider {
   width: 120px;

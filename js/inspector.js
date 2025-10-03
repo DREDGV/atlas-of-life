@@ -21,6 +21,7 @@ import {
   detachObjectFromParent,
   getHierarchyHistory,
   rollbackHierarchyChange,
+  getCacheStats,
   getAvailableParents,
   createChecklist,
   getChecklistsOfProject,
@@ -115,6 +116,53 @@ window.rollbackHistoryEntry = function(objectId, historyEntryId) {
       }
     } else {
       alert('Не удалось выполнить откат изменений');
+    }
+  }
+};
+
+// Функция для отображения статистики кэша иерархии
+function renderCacheStats() {
+  const stats = getCacheStats();
+  
+  return `
+    <div class="cache-stats-section">
+      <h4>📊 Статистика кэша иерархии</h4>
+      <div class="cache-stats-grid">
+        <div class="cache-stat">
+          <span class="cache-stat-label">Размер кэша:</span>
+          <span class="cache-stat-value">${stats.size}/${stats.maxSize}</span>
+        </div>
+        <div class="cache-stat">
+          <span class="cache-stat-label">Попадания:</span>
+          <span class="cache-stat-value">${stats.hits}</span>
+        </div>
+        <div class="cache-stat">
+          <span class="cache-stat-label">Промахи:</span>
+          <span class="cache-stat-value">${stats.misses}</span>
+        </div>
+        <div class="cache-stat">
+          <span class="cache-stat-label">Эффективность:</span>
+          <span class="cache-stat-value">${stats.hitRate}</span>
+        </div>
+      </div>
+      <div class="cache-actions">
+        <button class="btn-small" onclick="clearHierarchyCache()" title="Очистить кэш">
+          🗑️ Очистить кэш
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// Глобальная функция для очистки кэша
+window.clearHierarchyCache = function() {
+  if (confirm('Вы уверены, что хотите очистить кэш иерархии?')) {
+    clearCache();
+    console.log('✅ Кэш иерархии очищен');
+    // Обновляем инспектор если он открыт
+    const inspector = document.getElementById('inspector');
+    if (inspector && inspector.style.display !== 'none') {
+      // Можно добавить обновление статистики кэша
     }
   }
 };
@@ -519,6 +567,7 @@ function showDomainInspector(obj, ins) {
     </div>
     
     ${renderHierarchySection(obj)}
+    ${renderCacheStats()}
     
     <div class="btns">
       <button class="btn primary" id="addProject">+ Проект</button>

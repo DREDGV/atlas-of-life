@@ -2,6 +2,18 @@
 // Минимальный, но цельный слой иерархии: разрешения, индексы, attach/detach/move, аудит
 // Без внешних зависимостей. Все функции чистые относительно переданного state.
 
+// Импорт валидации из отдельного модуля
+import { validateHierarchyInternal as validateHierarchy } from './validation.js';
+import { canChangeHierarchy, isObjectLocked, setObjectLock, canMoveObject } from './locks.js';
+import { 
+  getCachedParent, 
+  getCachedChildren, 
+  getCachedAncestors,
+  invalidateObjectCache,
+  invalidateHierarchyCache,
+  getCacheStats
+} from './cache.js';
+
 // Разрешённые связи (матрица)
 export const ALLOWED = {
   domain: new Set(['project', 'idea', 'note', 'checklist']),
@@ -94,17 +106,9 @@ export function wouldCreateCycle(parent, child, state) {
   return false;
 }
 
-// Инициализация полей на объекте (мягкая)
-export function initHierarchyFields(obj, type) {
-  if (!obj) return;
-  if (!('parentId' in obj)) obj.parentId = obj.parentId ?? (obj.projectId || obj.domainId || null);
-  if (!('locks' in obj)) obj.locks = obj.locks || { move: false, hierarchy: false };
-}
+// initHierarchyFields импортируется из core.js
 
-export function getParentObject(child, state) {
-  const pid = child?.parentId ?? child?.projectId ?? child?.domainId ?? null;
-  return pid ? byId(state, pid) : null;
-}
+// getParentObject импортируется из core.js
 
 export function getChildObjects(parent, state) {
   if (!parent) return [];
@@ -113,54 +117,7 @@ export function getChildObjects(parent, state) {
   return ids.map((id) => byId(state, id)).filter(Boolean);
 }
 
-// Валидатор целостности (минимальный)
-export function validateHierarchy(state) {
-  const problems = [];
-  const { byId: mapById } = index(state);
-
-  const all = [
-    ...state.domains,
-    ...state.projects,
-    ...state.tasks,
-    ...state.ideas,
-    ...state.notes,
-    ...(state.checklists || [])
-  ];
-
-  for (const obj of all) {
-    const type = getType(obj);
-    const pid = obj.parentId || obj.projectId || obj.domainId || null;
-    if (!pid) continue;
-    const parent = mapById.get(pid);
-    if (!parent) {
-      problems.push({ code: 'missing_parent', id: obj.id, type, parentId: pid });
-      continue;
-    }
-    const pType = getType(parent);
-    if (!isLinkAllowed(pType, type)) {
-      problems.push({ code: 'disallowed', id: obj.id, type, parentId: pid, parentType: pType });
-    }
-    if (wouldCreateCycle(parent, obj, state)) {
-      problems.push({ code: 'cycle', id: obj.id, type, parentId: pid });
-    }
-  }
-  return problems;
-}
-
-// Примитивные замки
-export function isObjectLocked(obj) {
-  return !!(obj?.locks?.move || obj?.locks?.hierarchy);
-}
-export function setObjectLock(obj, kind, value) {
-  if (!obj.locks) obj.locks = {};
-  obj.locks[kind] = !!value;
-}
-export function canMoveObject(obj) {
-  return !obj?.locks?.move;
-}
-export function canChangeHierarchy(obj) {
-  return !obj?.locks?.hierarchy;
-}
+// Примитивные замки (импортированы из locks.js)
 
 // Атомарные операции
 export function attach(params, state) {
@@ -208,6 +165,11 @@ export function attach(params, state) {
     }
   }
   child.updatedAt = Date.now();
+  
+  // Инвалидируем кэш для измененных объектов
+  invalidateObjectCache(childId);
+  invalidateObjectCache(parentId);
+  
   return { ok: true, child };
 }
 
@@ -229,6 +191,10 @@ export function detach(params, state) {
     child.domainId = null;
   }
   child.updatedAt = Date.now();
+  
+  // Инвалидируем кэш для измененного объекта
+  invalidateObjectCache(childId);
+  
   return { ok: true, child };
 }
 
@@ -250,6 +216,14 @@ export function move(params, state) {
   if (!det.ok) return det;
   const att = attach({ parentType: getType(toParent), parentId: toParent.id, childType, childId }, state);
   if (!att.ok) return att;
+  
+  // Инвалидируем кэш для всех затронутых объектов
+  invalidateObjectCache(childId);
+  invalidateObjectCache(toParentId);
+  if (fromParent) {
+    invalidateObjectCache(fromParent.id);
+  }
+  
   return { ok: true, child, from: fromParent || null, to: toParent };
 }
 
@@ -259,7 +233,7 @@ export function canMoveTo(parentType, childType) {
 }
 
 // Пустышки для совместимости с текущими импортами (минимум логики)
-export { initHierarchyFields };
+// initHierarchyFields импортируется из core.js
 
 // Старые названия из state.js (совместимость):
 export function setParentChild(parentId, childId, childType, state) {
@@ -276,11 +250,21 @@ export function removeParentChild(parentId, childId, childType, state) {
   return !!res.ok;
 }
 
-// Утилиты проверки
-export { getParentObject };
+// Утилиты проверки (импортированы из core.js)
 
-// Базовые проверки доступа
-export { isObjectLocked, setObjectLock, canMoveObject, canChangeHierarchy, validateHierarchy };
+// Базовые проверки доступа (импортированы из locks.js)
+export { validateHierarchy };
+
+// Экспорты кэширования
+export { 
+  getCachedParent, 
+  getCachedChildren, 
+  getCachedAncestors,
+  invalidateObjectCache,
+  invalidateHierarchyCache,
+  getCacheStats,
+  clearCache
+} from './cache.js';
 
 // js/hierarchy/index.js
 // Главный модуль системы иерархии v2
