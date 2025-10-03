@@ -1175,8 +1175,68 @@ function migrateObjectsCleanupParentId() {
   }
 }
 
-// Функции для работы с историей связей
-export function addHierarchyHistory(objectId, action, details) {
+// Функция для создания тестовых записей истории (для демонстрации)
+export function createTestHistoryEntries() {
+  console.log('🧪 Создаем тестовые записи истории для демонстрации...');
+  
+  const allObjects = [
+    ...state.domains,
+    ...state.projects,
+    ...state.tasks,
+    ...state.ideas,
+    ...state.notes,
+    ...state.checklists
+  ];
+  
+  let created = 0;
+  
+  // Добавляем тестовые записи истории к нескольким объектам
+  allObjects.slice(0, 3).forEach(obj => {
+    if (!obj.history) {
+      obj.history = [];
+    }
+    
+    // Создаем несколько тестовых записей
+    const testEntries = [
+      {
+        timestamp: Date.now() - 3600000, // 1 час назад
+        action: 'attach',
+        details: {
+          fromParentId: null,
+          toParentId: obj.parentId || 'test-parent',
+          parentType: 'domain',
+          childType: getObjectType(obj),
+          fromParentTitle: null,
+          toParentTitle: 'Тестовый домен'
+        },
+        id: 'h' + generateId()
+      },
+      {
+        timestamp: Date.now() - 1800000, // 30 минут назад
+        action: 'move',
+        details: {
+          fromParentId: 'test-parent',
+          toParentId: obj.parentId || 'test-project',
+          parentType: 'project',
+          childType: getObjectType(obj),
+          fromParentTitle: 'Тестовый домен',
+          toParentTitle: 'Тестовый проект'
+        },
+        id: 'h' + generateId()
+      }
+    ];
+    
+    obj.history = [...testEntries, ...obj.history];
+    created += testEntries.length;
+  });
+  
+  if (created > 0) {
+    console.log(`✅ Создано ${created} тестовых записей истории`);
+    saveState();
+  }
+  
+  return created;
+}
   const obj = findObjectById(objectId);
   if (!obj) {
     console.warn('⚠️ addHierarchyHistory: объект не найден', objectId);

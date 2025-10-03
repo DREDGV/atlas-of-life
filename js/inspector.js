@@ -21,6 +21,7 @@ import {
   detachObjectFromParent,
   getHierarchyHistory,
   rollbackHierarchyChange,
+  createTestHistoryEntries,
   getAvailableParents,
   createChecklist,
   getChecklistsOfProject,
@@ -46,7 +47,17 @@ function renderHierarchyHistory(obj) {
   const history = getHierarchyHistory(obj.id);
   
   if (!history || history.length === 0) {
-    return '<div class="history-section"><h4>📝 История связей</h4><p class="hint">История изменений связей пуста</p></div>';
+    return `
+      <div class="history-section">
+        <h4>📝 История связей</h4>
+        <p class="hint">История изменений связей пуста</p>
+        <div class="history-actions">
+          <button class="btn-small" onclick="createTestHistory()" title="Создать тестовые записи для демонстрации">
+            🧪 Создать тестовые записи
+          </button>
+        </div>
+      </div>
+    `;
   }
   
   let html = '<div class="history-section"><h4>📝 История связей</h4><div class="history-list">';
@@ -153,6 +164,30 @@ function renderCacheStats() {
     </div>
   `;
 }
+
+// Глобальная функция для создания тестовых записей истории
+window.createTestHistory = function() {
+  if (confirm('Создать тестовые записи истории для демонстрации функциональности?')) {
+    const created = createTestHistoryEntries();
+    if (created > 0) {
+      console.log(`✅ Создано ${created} тестовых записей истории`);
+      
+      // Обновляем инспектор если он открыт
+      const inspector = document.getElementById('inspector');
+      if (inspector && inspector.style.display !== 'none') {
+        // Находим текущий объект и обновляем инспектор
+        const currentObj = window.currentInspectorObject;
+        if (currentObj) {
+          openInspectorFor(currentObj);
+        }
+      }
+      
+      // Обновляем карту
+      requestLayout();
+      drawMap();
+    }
+  }
+};
 
 // Глобальная функция для очистки кэша
 window.clearHierarchyCache = function() {
@@ -508,6 +543,9 @@ export function openInspectorFor(objOrSel, state = window.state) {
   console.debug('[inspector:open]', { type, id, hasObj: !!(obj && (obj.title||obj.name)) });
 
   if (!obj) return showPlaceholder();
+  
+  // Сохраняем текущий объект для обновления инспектора
+  window.currentInspectorObject = obj;
 
   const ins = document.getElementById("inspector");
   if (!ins) return;
