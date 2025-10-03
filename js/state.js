@@ -1445,12 +1445,12 @@ export function addHierarchyHistory(objectId, action, details) {
   // Добавляем запись в начало массива (новые сверху)
   obj.history.unshift(historyEntry);
   
-  // Ограничиваем историю последними 10 записями
-  if (obj.history.length > 10) {
-    obj.history = obj.history.slice(0, 10);
+  // Ограничиваем историю последними 50 записями
+  if (obj.history.length > 50) {
+    obj.history = obj.history.slice(0, 50);
   }
   
-  console.log(`📝 История: ${action} для ${objectId}`, details);
+  console.log(`📝 История: ${action} для ${objectId} (всего записей: ${obj.history.length})`, details);
   return true;
 }
 
