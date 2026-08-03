@@ -9,9 +9,49 @@ import {
 } from '../features/inbox/model.js';
 
 const TASK_STATUSES = new Set(['backlog', 'today', 'doing', 'done']);
+const COMMAND_STATE_KEYS = [
+  'domains',
+  'projects',
+  'tasks',
+  'inbox',
+  'operationLog',
+  'activeDomain',
+  'settings',
+];
 
 function finish(options){
   if (options.persist !== false) saveState();
+}
+
+function cloneCommandValue(value){
+  if (typeof globalThis.structuredClone === 'function') {
+    try {
+      return globalThis.structuredClone(value);
+    } catch (_) {}
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
+function captureCommandState(){
+  return Object.fromEntries(
+    COMMAND_STATE_KEYS.map(key => [key, cloneCommandValue(state[key])])
+  );
+}
+
+function restoreCommandState(checkpoint){
+  COMMAND_STATE_KEYS.forEach(key => {
+    state[key] = checkpoint[key];
+  });
+}
+
+function runAtomicCommand(execute){
+  const checkpoint = captureCommandState();
+  try {
+    return execute();
+  } catch (error) {
+    restoreCommandState(checkpoint);
+    throw error;
+  }
 }
 
 function generateTaskId(){
@@ -67,7 +107,7 @@ function applyTaskPlacement(task, destination){
   }
 }
 
-export function captureInbox(text, options = {}){
+function captureInboxMutation(text, options){
   const created = addInboxLines(text, options);
   created.forEach(item => {
     appendOperation({
@@ -81,7 +121,11 @@ export function captureInbox(text, options = {}){
   return created;
 }
 
-export function deleteInbox(id, options = {}){
+export function captureInbox(text, options = {}){
+  return runAtomicCommand(() => captureInboxMutation(text, options));
+}
+
+function deleteInboxMutation(id, options){
   const removal = removeInboxItem(id);
   if (!removal) return null;
   appendOperation({
@@ -95,7 +139,11 @@ export function deleteInbox(id, options = {}){
   return removal;
 }
 
-export function undoDeleteInbox(removal, options = {}){
+export function deleteInbox(id, options = {}){
+  return runAtomicCommand(() => deleteInboxMutation(id, options));
+}
+
+function undoDeleteInboxMutation(removal, options){
   if (!restoreInboxItem(removal)) return false;
   appendOperation({
     type: 'inbox.restore',
@@ -107,7 +155,11 @@ export function undoDeleteInbox(removal, options = {}){
   return true;
 }
 
-export function convertInboxToTask(id, options = {}){
+export function undoDeleteInbox(removal, options = {}){
+  return runAtomicCommand(() => undoDeleteInboxMutation(removal, options));
+}
+
+function convertInboxToTaskMutation(id, options){
   const result = convertInboxItemToTask(id, options);
   if (!result) return null;
   appendOperation({
@@ -124,7 +176,11 @@ export function convertInboxToTask(id, options = {}){
   return result;
 }
 
-export function createTask(input, options = {}){
+export function convertInboxToTask(id, options = {}){
+  return runAtomicCommand(() => convertInboxToTaskMutation(id, options));
+}
+
+function createTaskMutation(input, options){
   const now = options.now ?? Date.now();
   const projectId = input.projectId ?? null;
   const task = {
@@ -150,7 +206,11 @@ export function createTask(input, options = {}){
   return task;
 }
 
-export function updateTask(taskId, patch, options = {}){
+export function createTask(input, options = {}){
+  return runAtomicCommand(() => createTaskMutation(input, options));
+}
+
+function updateTaskMutation(taskId, patch, options){
   const task = state.tasks.find(item => item.id === taskId);
   if (!task) return null;
 
@@ -192,7 +252,11 @@ export function updateTask(taskId, patch, options = {}){
   return { task, before, operation };
 }
 
-export function moveTask(taskId, destination = {}, options = {}){
+export function updateTask(taskId, patch, options = {}){
+  return runAtomicCommand(() => updateTaskMutation(taskId, patch, options));
+}
+
+function moveTaskMutation(taskId, destination, options){
   const task = state.tasks.find(item => item.id === taskId);
   if (!task) return null;
 
@@ -226,6 +290,10 @@ export function moveTask(taskId, destination = {}, options = {}){
   return { task, before, operation };
 }
 
+export function moveTask(taskId, destination = {}, options = {}){
+  return runAtomicCommand(() => moveTaskMutation(taskId, destination, options));
+}
+
 export function undoTaskMove(moveResult, options = {}){
   const operation = moveResult?.operation || moveResult;
   const before = moveResult?.before || operation?.payload?.before;
@@ -243,7 +311,7 @@ export function undoTaskMove(moveResult, options = {}){
   });
 }
 
-export function deleteTask(taskId, options = {}){
+function deleteTaskMutation(taskId, options){
   const index = state.tasks.findIndex(item => item.id === taskId);
   if (index < 0) return null;
   const [task] = state.tasks.splice(index, 1);
@@ -258,7 +326,11 @@ export function deleteTask(taskId, options = {}){
   return { task, index, operation };
 }
 
-export function createProject(input, options = {}){
+export function deleteTask(taskId, options = {}){
+  return runAtomicCommand(() => deleteTaskMutation(taskId, options));
+}
+
+function createProjectMutation(input, options){
   const now = options.now ?? Date.now();
   const project = {
     id: input.id || options.projectId || generateProjectId(),
@@ -280,7 +352,11 @@ export function createProject(input, options = {}){
   return project;
 }
 
-export function promoteTaskToProject(taskId, options = {}){
+export function createProject(input, options = {}){
+  return runAtomicCommand(() => createProjectMutation(input, options));
+}
+
+function promoteTaskToProjectMutation(taskId, options){
   const task = state.tasks.find(item => item.id === taskId);
   if (!task) return null;
   const domainId = task.projectId
@@ -319,4 +395,8 @@ export function promoteTaskToProject(taskId, options = {}){
   }, { timestamp: now, deviceId: options.deviceId });
   finish(options);
   return { task, project, operation };
+}
+
+export function promoteTaskToProject(taskId, options = {}){
+  return runAtomicCommand(() => promoteTaskToProjectMutation(taskId, options));
 }
