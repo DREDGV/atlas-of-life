@@ -8,16 +8,8 @@ const localStorageAdapter = {
     try{ return localStorage.getItem(KEY); }catch(_){ return null }
   },
   save(text){
-    try{ 
-      localStorage.setItem(KEY, text); 
-    }catch(e){ 
-      // Handle localStorage errors (e.g. quota exceeded)
-      console.warn('Failed to save to localStorage:', e);
-      // Optionally notify the user about the storage issue
-      if (typeof window !== 'undefined' && window.showToast) {
-        window.showToast('Ошибка сохранения данных: недостаточно места', 'warn');
-      }
-    }
+    localStorage.setItem(KEY, text);
+    return true;
   },
   clear(){
     try{ localStorage.removeItem(KEY); }catch(_){ /* ignore */ }
