@@ -184,12 +184,14 @@ export function saveState(){
       if (typeof window.renderSidebar==='function') window.renderSidebar();
       if (typeof window.renderToday==='function') window.renderToday();
     } catch(_){}
+    return true;
   }catch(e){
     console.warn('saveState error', e);
     // Notify user about save error
     if (typeof window !== 'undefined' && window.showToast) {
       window.showToast('Ошибка сохранения данных: ' + e.message, 'warn');
     }
+    throw e;
   }
 }
 
