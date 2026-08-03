@@ -5,6 +5,7 @@ import {
   project,
   domainOf,
   tasksOfProject,
+  normalizeTags,
   daysSince,
   statusPill,
 } from "./state.js";
@@ -34,8 +35,18 @@ function cancelAttach() {
     window.mapApi && window.mapApi.cancelAttach && window.mapApi.cancelAttach()
   );
 }
-import { saveState } from "./storage.js";
+import {
+  createProject,
+  createTask,
+  deleteTask,
+  promoteTaskToProject,
+  updateTask,
+} from "./core/commands.js";
 import { renderToday } from "./view_today.js";
+
+function forInspector(obj, type) {
+  return obj ? { ...obj, _type: type } : null;
+}
 
 export function openInspectorFor(obj) {
   const ins = document.getElementById("inspector");
@@ -71,16 +82,11 @@ export function openInspectorFor(obj) {
     document.getElementById("addProject").onclick = () => {
       const title = prompt("Название проекта:", "Новый проект");
       if (!title) return;
-      const id = "p" + Math.random().toString(36).slice(2, 8);
-      state.projects.push({
-        id,
+      createProject({
         domainId: obj.id,
         title,
         tags: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
       });
-      saveState();
       refreshMap({ layout: true });
       openInspectorFor(obj);
     };
@@ -98,12 +104,12 @@ export function openInspectorFor(obj) {
       <div class="list">${tks
         .map(
           (t) => `
-        <div class="card">
+        <button type="button" class="card inspector-card-button" data-task-id="${t.id}">
           <div>${statusPill(t.status)} <strong>${t.title}</strong></div>
-          <div class="meta">#${t.tags.join(" #")} · обновл. ${daysSince(
+          <div class="meta">#${normalizeTags(t.tags).join(" #")} · обновл. ${daysSince(
             t.updatedAt
           )} дн.</div>
-        </div>
+        </button>
       `
         )
         .join("")}</div>
@@ -111,17 +117,12 @@ export function openInspectorFor(obj) {
     document.getElementById("addTask").onclick = () => {
       const title = prompt("Название задачи:", "Новая задача");
       if (!title) return;
-      const id = "t" + Math.random().toString(36).slice(2, 8);
-      state.tasks.push({
-        id,
+      createTask({
         projectId: obj.id,
         title,
         tags: [],
         status: "backlog",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
       });
-      saveState();
       refreshMap({ layout: true });
       openInspectorFor(obj);
     };
@@ -137,9 +138,13 @@ export function openInspectorFor(obj) {
         b.onclick = () => {
           const title = prompt('Название независимой задачи:', 'Новая задача');
           if(!title) return;
-          const id = 't'+Math.random().toString(36).slice(2,8);
-          state.tasks.push({ id, projectId:null, domainId: obj.domainId, title, tags:[], status:'backlog', createdAt:Date.now(), updatedAt:Date.now() });
-          saveState();
+          createTask({
+            projectId: null,
+            domainId: obj.domainId,
+            title,
+            tags: [],
+            status: 'backlog',
+          });
           refreshMap({ layout: true });
           openInspectorFor(obj);
         };
@@ -147,29 +152,41 @@ export function openInspectorFor(obj) {
     }catch(_){ }
     document.getElementById("toToday").onclick = () => {
       const candidates = tks.filter((t) => t.status !== "done").slice(0, 3);
-      candidates.forEach((t) => {
-        t.status = "today";
-        t.updatedAt = Date.now();
-      });
-      try {
-        saveState();
-      } catch (_) {}
+      candidates.forEach((t) => updateTask(t.id, { status: "today" }));
       drawMap();
       renderToday();
+      openInspectorFor(obj);
     };
+    ins.querySelectorAll("[data-task-id]").forEach((card) => {
+      card.onclick = () => {
+        const task = state.tasks.find((item) => item.id === card.dataset.taskId);
+        if (!task) return;
+        openInspectorFor(forInspector(task, "task"));
+      };
+    });
   }
   if (type === "task") {
     const pending = getPendingAttach();
     const pendForThis = pending && pending.taskId === obj.id;
+    const taskProject = project(obj.projectId);
+    const taskDomainId = obj.domainId || taskProject?.domainId;
     ins.innerHTML = `
       <h2>Задача</h2>
       <div class="kv"><strong>${obj.title}</strong></div>
-      <div class="kv">Проект: ${project(obj.projectId)?.title || 'Без проекта'}</div>
-      <div class="kv">Домен: ${obj.domainId ? byId(state.domains, obj.domainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
-      <div class="kv">Теги: #${obj.tags.join(" #") || "-"}</div>
+      <div class="kv">Проект: ${taskProject?.title || 'Без проекта'}</div>
+      <div class="kv">Домен: ${taskDomainId ? byId(state.domains, taskDomainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
+      <div class="kv">Теги: #${normalizeTags(obj.tags).join(" #") || "-"}</div>
       <div class="kv">Статус: ${statusPill(obj.status)} · обновл.: ${daysSince(
       obj.updatedAt
     )} дн.</div>
+      <div class="inspector-form">
+        <label for="taskEditTitle">Название</label>
+        <input id="taskEditTitle" type="text" maxlength="240" />
+        <label for="taskEditTags">Теги</label>
+        <input id="taskEditTags" type="text" placeholder="дом, покупки" />
+        <div class="hint" id="taskEditError" role="status"></div>
+        <button class="btn primary" type="button" id="saveTask">Сохранить изменения</button>
+      </div>
       ${
         pendForThis
           ? `<div class="kv hint">Ожидает привязки к проекту: ${
@@ -178,6 +195,7 @@ export function openInspectorFor(obj) {
           : ""
       }
       <div class="btns">
+        <button class="btn" data-st="backlog">Бэклог</button>
         <button class="btn" data-st="today">Сегодня</button>
         <button class="btn" data-st="doing">В работе</button>
         <button class="btn ok" data-st="done">Готово</button>
@@ -189,6 +207,25 @@ export function openInspectorFor(obj) {
         }
       </div>
     `;
+    const titleInput = document.getElementById("taskEditTitle");
+    const tagsInput = document.getElementById("taskEditTags");
+    titleInput.value = obj.title || "";
+    tagsInput.value = normalizeTags(obj.tags).join(", ");
+    document.getElementById("saveTask").onclick = () => {
+      const error = document.getElementById("taskEditError");
+      try {
+        const result = updateTask(obj.id, {
+          title: titleInput.value,
+          tags: tagsInput.value.split(/[\s,#]+/),
+        });
+        if (!result) return;
+        drawMap();
+        renderToday();
+        openInspectorFor(forInspector(result.task, "task"));
+      } catch (err) {
+        error.textContent = err?.message || "Не удалось сохранить задачу";
+      }
+    };
     if (pendForThis) {
       document.getElementById("confirmAttach").onclick = () => {
         confirmAttach();
@@ -200,19 +237,19 @@ export function openInspectorFor(obj) {
       };
     }
     ins.querySelectorAll(".btn[data-st]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(obj.status === b.dataset.st));
+      if (obj.status === b.dataset.st) b.classList.add("primary");
       b.onclick = () => {
-        obj.status = b.dataset.st;
-        obj.updatedAt = Date.now();
-        saveState();
+        const result = updateTask(obj.id, { status: b.dataset.st });
+        if (!result) return;
         drawMap();
         renderToday();
-        openInspectorFor(obj);
+        openInspectorFor(forInspector(result.task, "task"));
       };
     });
     document.getElementById("delTask").onclick = () => {
-      if (confirm("Удалить задачу без возможности восстановления?")) {
-        state.tasks = state.tasks.filter((t) => t.id !== obj.id);
-        saveState();
+      if (confirm("Удалить задачу?")) {
+        deleteTask(obj.id);
         drawMap();
         renderToday();
         openInspectorFor(null);
@@ -228,16 +265,10 @@ export function openInspectorFor(obj) {
         b.textContent = 'Сделать проектом';
         btns.appendChild(b);
         b.onclick = ()=>{
-          const domId = obj.projectId ? (state.projects.find(p=>p.id===obj.projectId)?.domainId) : (obj.domainId||state.activeDomain||state.domains[0]?.id);
-          if(!domId) return;
-          const pid = 'p'+Math.random().toString(36).slice(2,8);
-          state.projects.push({ id:pid, domainId:domId, title: obj.title, tags:[...(obj.tags||[])], priority: obj.priority||2, createdAt:Date.now(), updatedAt:Date.now() });
-          obj.projectId = pid;
-          try{ if(state.settings && state.settings.layoutMode==='auto'){ delete obj.pos; } }catch(_){}
-          obj.updatedAt = Date.now();
-          saveState();
+          const result = promoteTaskToProject(obj.id);
+          if(!result) return;
           refreshMap({ layout: true });
-          openInspectorFor(state.projects.find(p=>p.id===pid));
+          openInspectorFor(forInspector(result.project, "project"));
         };
       }
     }catch(_){ }

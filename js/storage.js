@@ -1,10 +1,51 @@
 // js/storage.js
-import { state } from './state.js';
+import { state, normalizeTags } from './state.js';
 import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 4;
+const OPERATION_LOG_LIMIT = 1000;
+
+function normalizeOperationLog(entries){
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter(entry => entry && typeof entry === 'object' && entry.id && entry.type)
+    .map(entry => ({
+      schema: Number(entry.schema) || 1,
+      id: String(entry.id),
+      deviceId: entry.deviceId ? String(entry.deviceId) : 'unknown-device',
+      timestamp: Number(entry.timestamp) || Date.now(),
+      type: String(entry.type),
+      entityType: entry.entityType ? String(entry.entityType) : null,
+      entityId: entry.entityId ? String(entry.entityId) : null,
+      baseVersion: entry.baseVersion ?? null,
+      payload: entry.payload ?? null,
+      syncStatus: entry.syncStatus || 'pending',
+    }))
+    .slice(-OPERATION_LOG_LIMIT);
+}
+
+function normalizeInboxEntries(entries){
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry, index) => {
+      const source = typeof entry === 'string' ? { text: entry } : entry;
+      if (!source || typeof source !== 'object') return null;
+      const text = String(source.text || source.title || '').trim();
+      if (!text) return null;
+      const createdAt = Number(source.createdAt) || Date.now();
+      return {
+        ...source,
+        id: source.id || `inbox-migrated-${index}`,
+        text,
+        createdAt,
+        updatedAt: Number(source.updatedAt) || createdAt,
+      };
+    })
+    .filter(Boolean);
+}
+
 const MIGRATIONS = [
   // 0 -> 1
   (data) => {
@@ -18,7 +59,46 @@ const MIGRATIONS = [
     }
     return out;
   },
+  // 1 -> 2: tags are always arrays. This prevents legacy incomplete records
+  // from leaking an `undefined` tag into filters and view renderers.
+  (data) => {
+    const out = { ...data };
+    if (Array.isArray(out.projects)) {
+      out.projects = out.projects.map(project => ({
+        ...project,
+        tags: normalizeTags(project?.tags),
+      }));
+    }
+    if (Array.isArray(out.tasks)) {
+      out.tasks = out.tasks.map(task => ({
+        ...task,
+        tags: normalizeTags(task?.tags),
+      }));
+    }
+    return out;
+  },
+  // 2 -> 3: introduce a dedicated Inbox collection.
+  (data) => ({
+    ...data,
+    inbox: normalizeInboxEntries(data?.inbox),
+  }),
+  // 3 -> 4: add a bounded local operation log for recovery and future sync.
+  (data) => ({
+    ...data,
+    operationLog: normalizeOperationLog(data?.operationLog),
+  }),
 ];
+
+function normalizeEntities(entities, options = {}){
+  return Array.isArray(entities)
+    ? entities.map(entity => {
+      const { _type, ...clean } = entity || {};
+      return options.tags === false
+        ? clean
+        : { ...clean, tags: normalizeTags(clean.tags) };
+    })
+    : entities;
+}
 
 export function loadState(){
   try{
@@ -34,9 +114,11 @@ export function loadState(){
       cur++;
     }
     if(!data || !data.domains || !data.projects || !data.tasks) return false;
-    state.domains = data.domains;
-    state.projects = data.projects;
-    state.tasks = data.tasks;
+    state.domains = normalizeEntities(data.domains, { tags: false });
+    state.projects = normalizeEntities(data.projects);
+    state.tasks = normalizeEntities(data.tasks);
+    state.inbox = normalizeInboxEntries(data.inbox);
+    state.operationLog = normalizeOperationLog(data.operationLog);
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -55,6 +137,15 @@ export function loadState(){
         if(!t.domainId) t.domainId = state.activeDomain || firstDom;
       }
     });
+    // Store the migration now, rather than waiting for an unrelated edit.
+    if (ver < SCHEMA_VERSION) {
+      data.schema = SCHEMA_VERSION;
+      data.projects = state.projects;
+      data.tasks = state.tasks;
+      data.inbox = state.inbox;
+      data.operationLog = state.operationLog;
+      adapter.save(JSON.stringify(data));
+    }
     return true;
   }catch(e){
     console.warn('loadState error', e);
@@ -65,11 +156,13 @@ export function loadState(){
 export function saveState(){
   try{
     const data = {
-      schema:1,
+      schema:SCHEMA_VERSION,
       exportedAt: Date.now(),
-      domains: state.domains,
-      projects: state.projects,
-      tasks: state.tasks,
+      domains: normalizeEntities(state.domains, { tags: false }),
+      projects: normalizeEntities(state.projects),
+      tasks: normalizeEntities(state.tasks),
+      inbox: normalizeInboxEntries(state.inbox),
+      operationLog: normalizeOperationLog(state.operationLog),
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,
@@ -104,9 +197,11 @@ export function exportJson(){
   const data = {
     schema: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    domains: state.domains,
-    projects: state.projects,
-    tasks: state.tasks,
+    domains: normalizeEntities(state.domains, { tags: false }),
+    projects: normalizeEntities(state.projects),
+    tasks: normalizeEntities(state.tasks),
+    inbox: normalizeInboxEntries(state.inbox),
+    operationLog: normalizeOperationLog(state.operationLog),
     maxEdges: state.maxEdges,
     showLinks: !!state.showLinks,
     showAging: !!state.showAging,
@@ -140,9 +235,11 @@ export function importJson(file){
         const prjIds = new Set(data.projects.map(p=>p.id));
         for(const p of data.projects){ if(!domIds.has(p.domainId)) throw new Error(`Проект ${p.title||p.id}: неизвестный domainId ${p.domainId}`); }
         for(const t of data.tasks){ if(!prjIds.has(t.projectId)) throw new Error(`Задача ${t.title||t.id}: неизвестный projectId ${t.projectId}`); }
-        state.domains = data.domains;
-        state.projects = data.projects;
-        state.tasks = data.tasks;
+        state.domains = normalizeEntities(data.domains, { tags: false });
+        state.projects = normalizeEntities(data.projects);
+        state.tasks = normalizeEntities(data.tasks);
+        state.inbox = normalizeInboxEntries(data.inbox);
+        state.operationLog = normalizeOperationLog(data.operationLog);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         if(typeof data.showLinks==='boolean') state.showLinks = data.showLinks; else state.showLinks = true;
         if(typeof data.showAging==='boolean') state.showAging = data.showAging; else state.showAging = true;
@@ -175,9 +272,11 @@ export function importJsonV26(file){
           if(t.projectId===null) continue;
           if(!prjIds.has(t.projectId)) throw new Error(`Задача ${t.title||t.id}: неизвестный projectId ${t.projectId}`);
         }
-        state.domains = data.domains;
-        state.projects = data.projects;
-        state.tasks = data.tasks;
+        state.domains = normalizeEntities(data.domains, { tags: false });
+        state.projects = normalizeEntities(data.projects);
+        state.tasks = normalizeEntities(data.tasks);
+        state.inbox = normalizeInboxEntries(data.inbox);
+        state.operationLog = normalizeOperationLog(data.operationLog);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         state.showLinks = typeof data.showLinks==='boolean' ? data.showLinks : true;
         state.showAging = typeof data.showAging==='boolean' ? data.showAging : true;

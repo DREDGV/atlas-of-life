@@ -7,3 +7,5 @@
 /dist/
 /build/
 /atlas-logs-export.json
+/.playwright-cli/
+/output/playwright/

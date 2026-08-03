@@ -1,6 +1,6 @@
 // js/view_today.js
-import { state } from './state.js';
-import { saveState } from './storage.js';
+import { state, normalizeTags } from './state.js';
+import { updateTask } from './core/commands.js';
 
 export function renderToday(){
   const wrap = document.getElementById('viewToday');
@@ -14,7 +14,7 @@ export function renderToday(){
   wrap.innerHTML = list.map(t=>`
     <div class="todo" data-id="${t.id}">
       <input type="checkbox" ${t.status==='done'?'checked':''}/>
-      <div class="title">${t.title} <span class="hint">#${t.tags.join(' #')}</span></div>
+      <div class="title">${t.title} <span class="hint">#${normalizeTags(t.tags).join(' #')}</span></div>
       <div class="hint">${t.estimateMin?('~'+t.estimateMin+'м'):' '}</div>
       <div class="handle">⋮⋮</div>
     </div>
@@ -22,10 +22,7 @@ export function renderToday(){
   wrap.querySelectorAll('.todo input[type="checkbox"]').forEach(cb=>{
     cb.onchange=(e)=>{
       const id = e.target.closest('.todo').dataset.id;
-      const t = state.tasks.find(x=>x.id===id);
-      t.status = e.target.checked?'done':'today';
-      t.updatedAt = Date.now();
-      try{ saveState(); }catch(_){}
+      updateTask(id, { status: e.target.checked?'done':'today' });
       renderToday();
     };
   });

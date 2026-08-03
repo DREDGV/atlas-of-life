@@ -10,6 +10,7 @@ import {
   daysSince,
 } from "./state.js";
 import { openInspectorFor } from "./inspector.js";
+import { moveTask, undoTaskMove } from "./core/commands.js";
 import { saveState } from "./storage.js";
 import { logEvent } from "./utils/analytics.js";
 
@@ -78,6 +79,18 @@ let pendingDragNode = null;
 let pendingDragStart = { x: 0, y: 0 };
 // simple undo stack for moves: store { type: 'task'|'project', id, fromProjectId, toProjectId, fromPos, toPos }
 let undoStack = [];
+function rememberTaskMove(result) {
+  if (!result?.operation) return false;
+  undoStack.push({
+    type: "task.move",
+    moveResult: {
+      before: result.before,
+      operation: result.operation,
+    },
+  });
+  if (undoStack.length > 50) undoStack.shift();
+  return true;
+}
 // transient pending attach: { taskId, fromProjectId, toProjectId, pos }
 let pendingAttach = null;
 // transient pending detach: { taskId, fromProjectId, pos }
@@ -1163,15 +1176,10 @@ window.addEventListener("mouseup", (e) => {
   }
   if (!draggedNode) return;
   let moved = false;
+  let taskMoveDeferred = false;
+  let taskMoveCommitted = false;
   // record before state for undo
   const before = {};
-  if (draggedNode._type === "task") {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t) {
-      before.fromProjectId = t.projectId;
-      before.fromPos = t._pos ? { x: t._pos.x, y: t._pos.y } : null;
-    }
-  }
   if (draggedNode._type === "project") {
     const p = state.projects.find((x) => x.id === draggedNode.id);
     if (p) {
@@ -1224,11 +1232,11 @@ window.addEventListener("mouseup", (e) => {
         toProjectId: dropTargetProjectId,
         pos,
       };
+      taskMoveDeferred = true;
       // update inspector so user sees confirm/cancel immediately
       try {
         const obj = state.tasks.find((t) => t.id === draggedNode.id);
-        obj._type = "task";
-        openInspectorFor(obj);
+        openInspectorFor({ ...obj, _type: "task" });
       } catch (e) {}
       // show attach toast with buttons
       const toast = document.getElementById("toast");
@@ -1283,9 +1291,12 @@ window.addEventListener("mouseup", (e) => {
     if (t && dropTargetDomainId && dropTargetDomainId !== curDomain) {
       // Если задача была полностью независимой (без domainId), сразу прикрепляем к домену
       if (!t.domainId && !t.projectId) {
-        t.domainId = dropTargetDomainId;
-        t.updatedAt = Date.now();
-        saveState();
+        const result = moveTask(t.id, {
+          projectId: null,
+          domainId: dropTargetDomainId,
+          pos: { x: draggedNode.x, y: draggedNode.y },
+        }, { reason: "map.attach_domain" });
+        taskMoveCommitted = rememberTaskMove(result);
         const toast = document.getElementById("toast");
         if (toast) {
           toast.className = "toast ok";
@@ -1296,13 +1307,21 @@ window.addEventListener("mouseup", (e) => {
         drawMap();
       } else {
         // Для остальных случаев показываем модалку выбора
-        openMoveTaskModal(t, dropTargetDomainId);
+        taskMoveDeferred = true;
+        openMoveTaskModal(t, dropTargetDomainId, {
+          x: draggedNode.x,
+          y: draggedNode.y,
+        });
       }
     }
   }
 
   // If task dropped outside any domain and beyond its project circle, propose detach
-  if (draggedNode._type === "task" && !dropTargetDomainId) {
+  if (
+    draggedNode._type === "task" &&
+    !dropTargetDomainId &&
+    !pendingAttach
+  ) {
     const t = state.tasks.find((x) => x.id === draggedNode.id);
     if (t && t.projectId) {
       const pNode = nodes.find(
@@ -1319,6 +1338,7 @@ window.addEventListener("mouseup", (e) => {
             fromProjectId: t.projectId,
             pos: { x: draggedNode.x, y: draggedNode.y },
           };
+          taskMoveDeferred = true;
           const toast = document.getElementById("toast");
           if (toast) {
             toast.className = "toast detach";
@@ -1341,6 +1361,8 @@ window.addEventListener("mouseup", (e) => {
                 cancel.onclick = () => {
                   pendingDetach = null;
                   toast.style.display = "none";
+                  layoutMap();
+                  drawMap();
                 };
               }
             }, 10);
@@ -1353,14 +1375,14 @@ window.addEventListener("mouseup", (e) => {
   // persist visual position back to state
   if (draggedNode._type === "task") {
     const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t) {
-      // if there is a pendingAttach for this task, don't persist yet (wait for confirm)
-      if (pendingAttach && pendingAttach.taskId === t.id) {
-        // keep transient pending visualization; actual save occurs on confirmAttach
-      } else {
-        t.pos = { x: draggedNode.x, y: draggedNode.y };
-        saveState();
-      }
+    if (t && !taskMoveDeferred && !taskMoveCommitted && !t.projectId) {
+      const result = moveTask(t.id, {
+        projectId: null,
+        domainId: t.domainId ?? null,
+        pos: { x: draggedNode.x, y: draggedNode.y },
+      }, { reason: "map.reposition" });
+      taskMoveCommitted = rememberTaskMove(result);
+      moved = taskMoveCommitted;
     }
   }
   if (draggedNode._type === "project") {
@@ -1373,32 +1395,6 @@ window.addEventListener("mouseup", (e) => {
 
   // record after state and push undo entry if relevant
   const after = {};
-  if (draggedNode._type === "task") {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t) {
-      after.toProjectId = t.projectId;
-      after.toPos = t.pos ? { x: t.pos.x, y: t.pos.y } : null;
-    }
-    if (
-      before.fromProjectId !== after.toProjectId ||
-      (before.fromPos &&
-        after.toPos &&
-        (before.fromPos.x !== after.toPos.x ||
-          before.fromPos.y !== after.toPos.y)) ||
-      (!before.fromPos && after.toPos)
-    ) {
-      undoStack.push({
-        type: "task",
-        id: draggedNode.id,
-        fromProjectId: before.fromProjectId,
-        toProjectId: after.toProjectId,
-        fromPos: before.fromPos,
-        toPos: after.toPos,
-      });
-      // cap undo stack
-      if (undoStack.length > 50) undoStack.shift();
-    }
-  }
   if (draggedNode._type === "project") {
     const p = state.projects.find((x) => x.id === draggedNode.id);
     if (p) {
@@ -1471,13 +1467,9 @@ window.addEventListener("mouseup", (e) => {
 export function undoLastMove() {
   const item = undoStack.pop();
   if (!item) return false;
-  if (item.type === "task") {
-    const t = state.tasks.find((x) => x.id === item.id);
-    if (!t) return false;
-    if (typeof item.fromProjectId !== "undefined")
-      t.projectId = item.fromProjectId;
-    if (item.fromPos) t.pos = { x: item.fromPos.x, y: item.fromPos.y };
-    saveState();
+  if (item.type === "task.move") {
+    const result = undoTaskMove(item.moveResult, { reason: "map.undo" });
+    if (!result) return false;
     layoutMap();
     drawMap();
     return true;
@@ -1497,36 +1489,14 @@ export function undoLastMove() {
 export function confirmAttach() {
   if (!pendingAttach) return false;
   const item = pendingAttach;
-  const t = state.tasks.find((x) => x.id === item.taskId);
-  if (!t) {
+  const result = moveTask(item.taskId, {
+    projectId: item.toProjectId,
+  }, { reason: "map.attach_project" });
+  if (!result) {
     pendingAttach = null;
     return false;
   }
-  t.projectId = item.toProjectId;
-  // Устанавливаем domainId из проекта
-  try {
-    const project = state.projects.find(p => p.id === item.toProjectId);
-    if (project) t.domainId = project.domainId;
-  } catch (_) {}
-  if (state.settings && state.settings.layoutMode === "auto") {
-    try {
-      delete t.pos;
-    } catch (_) {}
-  } else {
-    t.pos = { x: item.pos.x, y: item.pos.y };
-  }
-  t.updatedAt = Date.now();
-  saveState();
-  // push undo entry
-  undoStack.push({
-    type: "task",
-    id: t.id,
-    fromProjectId: item.fromProjectId,
-    toProjectId: item.toProjectId,
-    fromPos: item.fromPos || null,
-    toPos: item.pos,
-  });
-  if (undoStack.length > 50) undoStack.shift();
+  rememberTaskMove(result);
   pendingAttach = null;
   // hide toast
   const toast = document.getElementById("toast");
@@ -1585,25 +1555,16 @@ function confirmDetach() {
       }
     }
     
-    // Отвязываем от проекта
-    t.projectId = null;
-    
-    if (insideDomain) {
-      // Задача внутри домена — остается в домене
-      t.domainId = insideDomain;
-    } else {
-      // Задача вне всех доменов — становится полностью независимой
-      t.domainId = null;
+    const result = moveTask(t.id, {
+      projectId: null,
+      domainId: insideDomain,
+      pos: state.settings?.layoutMode === "auto" ? null : taskPos,
+    }, { reason: "map.detach_project" });
+    if (!result) {
+      pendingDetach = null;
+      return false;
     }
-    
-    if (state.settings && state.settings.layoutMode === "auto") {
-      try { delete t.pos; } catch (_) {}
-    } else {
-      t.pos = { x: taskPos.x, y: taskPos.y };
-    }
-    
-    t.updatedAt = Date.now();
-    saveState();
+    rememberTaskMove(result);
     pendingDetach = null;
     const toast = document.getElementById("toast");
     if (toast) {
@@ -1694,7 +1655,7 @@ function openModalLocal({
   modal.style.display = "flex";
 }
 
-function openMoveTaskModal(task, targetDomainId) {
+function openMoveTaskModal(task, targetDomainId, dropPosition = null) {
   const projs = state.projects.filter((p) => p.domainId === targetDomainId);
   const options = [`<option value="__indep__">Оставить независимой</option>`]
     .concat(projs.map((p) => `<option value="${p.id}">${p.title}</option>`))
@@ -1713,25 +1674,18 @@ function openMoveTaskModal(task, targetDomainId) {
     onConfirm: (bodyEl) => {
       const sel = bodyEl.querySelector("#selProject");
       const val = sel ? sel.value : "__indep__";
-      if (val === "__indep__") {
-        task.projectId = null;
-        task.domainId = targetDomainId;
-        // keep manual pos if manual; else recompute on next layout
-      } else {
-        task.projectId = val;
-        // Устанавливаем domainId из проекта
-        try {
-          const project = state.projects.find(p => p.id === val);
-          if (project) task.domainId = project.domainId;
-        } catch (_) {}
-        if (state.settings && state.settings.layoutMode === "auto") {
-          try {
-            delete task.pos;
-          } catch (_) {}
+      const destination = val === "__indep__"
+        ? {
+          projectId: null,
+          domainId: targetDomainId,
+          pos: state.settings?.layoutMode === "auto" ? null : dropPosition,
         }
-      }
-      task.updatedAt = Date.now();
-      saveState();
+        : { projectId: val };
+      const result = moveTask(task.id, destination, {
+        reason: val === "__indep__" ? "map.move_domain" : "map.move_project",
+      });
+      if (!result) return;
+      rememberTaskMove(result);
       const toast = document.getElementById("toast");
       if (toast) {
         toast.className = "toast ok";
@@ -1804,15 +1758,12 @@ function onClick(e) {
   hoverNodeId = n.id;
   if (n._type === "task") {
     const obj = state.tasks.find((t) => t.id === n.id);
-    obj._type = "task";
-    openInspectorFor(obj);
+    openInspectorFor({ ...obj, _type: "task" });
   } else if (n._type === "project") {
     const obj = state.projects.find((p) => p.id === n.id);
-    obj._type = "project";
-    openInspectorFor(obj);
+    openInspectorFor({ ...obj, _type: "project" });
   } else {
     const obj = state.domains.find((d) => d.id === n.id);
-    obj._type = "domain";
-    openInspectorFor(obj);
+    openInspectorFor({ ...obj, _type: "domain" });
   }
 }

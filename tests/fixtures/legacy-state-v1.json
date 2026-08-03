@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "exportedAt": "2026-08-03T00:00:00.000Z",
+  "domains": [
+    {
+      "id": "d-test",
+      "title": "Тестовый домен",
+      "color": "#38bdf8",
+      "createdAt": 1770000000000,
+      "updatedAt": 1770000000000
+    }
+  ],
+  "projects": [
+    {
+      "id": "p-test",
+      "domainId": "d-test",
+      "title": "Тестовый проект",
+      "tags": "проект",
+      "priority": 2,
+      "createdAt": 1770000000000,
+      "updatedAt": 1770000000000
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t-test",
+      "projectId": "p-test",
+      "title": "Задача без массива тегов",
+      "status": "today",
+      "estimateMin": 15,
+      "priority": 2,
+      "createdAt": 1770000000000,
+      "updatedAt": 1770000000000
+    }
+  ],
+  "view": "map",
+  "showLinks": true,
+  "showAging": true,
+  "showGlow": true,
+  "settings": {
+    "layoutMode": "auto"
+  }
+}

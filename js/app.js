@@ -1,5 +1,5 @@
 // js/app.js
-import { state, $, $$, initDemoData } from "./state.js";
+import { state, $, $$, initDemoData, normalizeTags } from "./state.js";
 import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
@@ -15,6 +15,8 @@ import {
 import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
+import { initInbox } from "./features/inbox/index.js";
+import { createTask } from "./core/commands.js";
 
 // I18N
 const I18N = {
@@ -335,8 +337,8 @@ function renderSidebar() {
   const allTags = [
     ...new Set(
       state.tasks
-        .flatMap((t) => t.tags)
-        .concat(state.projects.flatMap((p) => p.tags))
+        .flatMap((t) => normalizeTags(t.tags))
+        .concat(state.projects.flatMap((p) => normalizeTags(p.tags)))
     ),
   ].sort();
   const tWrap = document.getElementById("tagsList");
@@ -1029,8 +1031,7 @@ function submitQuick(text) {
   }
   const tags = [];
   if (parsed.tag) tags.push(parsed.tag);
-  state.tasks.push({
-    id: "t" + Math.random().toString(36).slice(2, 8),
+  createTask({
     projectId: pid,
     domainId: pid ? undefined : domainId,
     title,
@@ -1038,10 +1039,7 @@ function submitQuick(text) {
     status: "today",
     estimateMin: parsed.estimate || null,
     priority: parsed.priority || 2,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
   });
-  saveState();
   layoutMap();
   drawMap();
   renderToday();
@@ -1062,6 +1060,15 @@ async function init() {
   renderSidebar();
   setupHeader();
   setupQuickAdd();
+  initInbox({
+    onStateChange: () => {
+      renderSidebar();
+      renderToday();
+      layoutMap();
+      drawMap();
+      updateWip();
+    },
+  });
   // ensure header chips reflect persisted view
   try {
     $$(".chip").forEach((c) => {
@@ -1070,8 +1077,9 @@ async function init() {
     $("#canvas").style.display = state.view === "map" ? "block" : "none";
     $("#viewToday").style.display = state.view === "today" ? "block" : "none";
   } catch (_) {}
-  // hotkeys: C/F/P/R + N new domain, FPS toggle
+  // hotkeys: C/F/P/R, FPS toggle. N is owned by Inbox.
   window.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented) return;
     // Ctrl+Z -> undo last move
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -1101,12 +1109,6 @@ async function init() {
     if (k === "r") {
       e.preventDefault();
       resetView();
-    }
-    if (k === "n") {
-      e.preventDefault();
-      ui.newDomain = true;
-      renderSidebar();
-      $("#newDomName")?.focus();
     }
   });
   const canvas = document.getElementById("canvas");

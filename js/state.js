@@ -9,6 +9,8 @@ export const state = {
   domains:[],
   projects:[],
   tasks:[],
+  inbox:[],
+  operationLog:[],
   maxEdges:300
 };
 
@@ -42,6 +44,21 @@ export const project = id => byId(state.projects,id);
 export const domainOf = prj => byId(state.domains, prj.domainId);
 export const tasksOfProject = pid => state.tasks.filter(t=>t.projectId===pid);
 export const tasksIndependentOfDomain = (did) => state.tasks.filter(t=>!t.projectId && (t.domainId===did));
+
+// Older exports may omit `tags` or store a single tag as a string. Keep the
+// display and filtering layers defensive without discarding user-entered data.
+export function normalizeTags(rawTags){
+  const values = Array.isArray(rawTags)
+    ? rawTags
+    : rawTags == null
+      ? []
+      : [rawTags];
+  return [...new Set(values
+    .filter(tag => tag !== null && tag !== undefined)
+    .map(tag => String(tag).trim())
+    .filter(Boolean))];
+}
+
 export const daysSince = ts => Math.floor((Date.now()-ts)/(24*3600*1000));
 export const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 
