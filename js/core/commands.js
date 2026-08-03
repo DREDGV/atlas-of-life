@@ -9,14 +9,12 @@ import {
 } from '../features/inbox/model.js';
 
 const TASK_STATUSES = new Set(['backlog', 'today', 'doing', 'done']);
-const COMMAND_STATE_KEYS = [
+const COMMAND_ARRAY_KEYS = [
   'domains',
   'projects',
   'tasks',
   'inbox',
   'operationLog',
-  'activeDomain',
-  'settings',
 ];
 
 function finish(options){
@@ -24,6 +22,7 @@ function finish(options){
 }
 
 function cloneCommandValue(value){
+  if (value === undefined) return undefined;
   if (typeof globalThis.structuredClone === 'function') {
     try {
       return globalThis.structuredClone(value);
@@ -32,16 +31,61 @@ function cloneCommandValue(value){
   return JSON.parse(JSON.stringify(value));
 }
 
+function isObject(value){
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function restoreObjectInPlace(target, snapshot){
+  Object.keys(target).forEach(key => delete target[key]);
+  Object.assign(target, cloneCommandValue(snapshot));
+}
+
+function captureArrayState(key){
+  const arrayRef = state[key];
+  return {
+    arrayRef,
+    entries: arrayRef.map(value => ({
+      objectRef: isObject(value) ? value : null,
+      snapshot: cloneCommandValue(value),
+    })),
+  };
+}
+
 function captureCommandState(){
-  return Object.fromEntries(
-    COMMAND_STATE_KEYS.map(key => [key, cloneCommandValue(state[key])])
-  );
+  const settingsRef = isObject(state.settings) ? state.settings : null;
+  return {
+    arrays: Object.fromEntries(
+      COMMAND_ARRAY_KEYS.map(key => [key, captureArrayState(key)])
+    ),
+    settings: {
+      objectRef: settingsRef,
+      snapshot: cloneCommandValue(state.settings),
+    },
+    activeDomain: state.activeDomain,
+  };
 }
 
 function restoreCommandState(checkpoint){
-  COMMAND_STATE_KEYS.forEach(key => {
-    state[key] = checkpoint[key];
+  COMMAND_ARRAY_KEYS.forEach(key => {
+    const { arrayRef, entries } = checkpoint.arrays[key];
+    const originalEntries = entries.map(entry => {
+      if (!entry.objectRef) return cloneCommandValue(entry.snapshot);
+      restoreObjectInPlace(entry.objectRef, entry.snapshot);
+      return entry.objectRef;
+    });
+    arrayRef.splice(0, arrayRef.length, ...originalEntries);
+    state[key] = arrayRef;
   });
+  if (checkpoint.settings.objectRef) {
+    restoreObjectInPlace(
+      checkpoint.settings.objectRef,
+      checkpoint.settings.snapshot
+    );
+    state.settings = checkpoint.settings.objectRef;
+  } else {
+    state.settings = cloneCommandValue(checkpoint.settings.snapshot);
+  }
+  state.activeDomain = checkpoint.activeDomain;
 }
 
 function runAtomicCommand(execute){

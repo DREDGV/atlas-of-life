@@ -202,6 +202,81 @@ function expectPersistenceRollback(label, prepare, execute) {
   );
 }
 
+function captureIdentityState(taskId = 't1') {
+  const taskRef = state.tasks.find(task => task.id === taskId);
+  return {
+    domainsRef: state.domains,
+    domainRefs: [...state.domains],
+    projectsRef: state.projects,
+    projectRefs: [...state.projects],
+    tasksRef: state.tasks,
+    taskRefs: [...state.tasks],
+    taskRef,
+    taskSnapshot: clone(taskRef),
+    inboxRef: state.inbox,
+    inboxRefs: [...state.inbox],
+    operationLogRef: state.operationLog,
+    operationRefs: [...state.operationLog],
+    settingsRef: state.settings,
+    settingsSnapshot: clone(state.settings),
+  };
+}
+
+function assertBaseIdentityRestored(identity, label) {
+  assert(state.domains === identity.domainsRef, `${label}: domains array identity must survive rollback`);
+  assert(state.projects === identity.projectsRef, `${label}: projects array identity must survive rollback`);
+  assert(state.tasks === identity.tasksRef, `${label}: tasks array identity must survive rollback`);
+  assert(state.inbox === identity.inboxRef, `${label}: Inbox array identity must survive rollback`);
+  assert(
+    state.operationLog === identity.operationLogRef,
+    `${label}: operationLog array identity must survive rollback`
+  );
+  assert(state.settings === identity.settingsRef, `${label}: settings identity must survive rollback`);
+  assert(
+    state.domains.every((item, index) => item === identity.domainRefs[index]),
+    `${label}: domain object identities must survive rollback`
+  );
+  assert(
+    state.projects.every((item, index) => item === identity.projectRefs[index]),
+    `${label}: project object identities must survive rollback`
+  );
+  assert(
+    state.tasks.every((item, index) => item === identity.taskRefs[index]),
+    `${label}: task object identities and order must survive rollback`
+  );
+  assert(
+    state.inbox.every((item, index) => item === identity.inboxRefs[index]),
+    `${label}: Inbox object identities must survive rollback`
+  );
+  assert(
+    state.operationLog.every((item, index) => item === identity.operationRefs[index]),
+    `${label}: operation object identities must survive rollback`
+  );
+  assert(
+    JSON.stringify(state.settings) === JSON.stringify(identity.settingsSnapshot),
+    `${label}: settings values must be restored`
+  );
+}
+
+function expectStorageIdentityRollback(label, taskId, execute, verify) {
+  resetState();
+  const identity = captureIdentityState(taskId);
+  let thrown = null;
+
+  failPrimaryWrites = true;
+  try {
+    execute(identity);
+  } catch (error) {
+    thrown = error;
+  } finally {
+    failPrimaryWrites = false;
+  }
+
+  assert(thrown === storageFailure, `${label}: original storage error must be rethrown`);
+  assertBaseIdentityRestored(identity, label);
+  verify(identity);
+}
+
 expectPersistenceRollback(
   'captureInbox',
   null,
@@ -314,6 +389,108 @@ expectPersistenceRollback(
     deviceId: 'test-device',
     projectId: 'p-promoted',
   })
+);
+
+expectStorageIdentityRollback(
+  'updateTask identity',
+  't1',
+  () => updateTask('t1', {
+    title: 'Changed identity title',
+    tags: ['identity'],
+    status: 'doing',
+  }, { now: 301, deviceId: 'test-device' }),
+  identity => {
+    const task = state.tasks.find(item => item.id === 't1');
+    assert(task === identity.taskRef, 'updateTask identity: original task reference must be restored');
+    assert(identity.taskRef.title === identity.taskSnapshot.title, 'updateTask identity: title must restore in-place');
+    assert(
+      JSON.stringify(identity.taskRef.tags) === JSON.stringify(identity.taskSnapshot.tags),
+      'updateTask identity: tags must restore in-place'
+    );
+    assert(identity.taskRef.status === identity.taskSnapshot.status, 'updateTask identity: status must restore in-place');
+    assert(
+      identity.taskRef.updatedAt === identity.taskSnapshot.updatedAt,
+      'updateTask identity: updatedAt must restore in-place'
+    );
+  }
+);
+
+expectStorageIdentityRollback(
+  'deleteTask identity',
+  't1',
+  identity => {
+    identity.originalIndex = state.tasks.indexOf(identity.taskRef);
+    return deleteTask('t1', { now: 302, deviceId: 'test-device' });
+  },
+  identity => {
+    assert(
+      state.tasks[identity.originalIndex] === identity.taskRef,
+      'deleteTask identity: original task must return to the same index and reference'
+    );
+  }
+);
+
+expectStorageIdentityRollback(
+  'createTask identity',
+  't1',
+  () => createTask({
+    id: 't-identity-created',
+    projectId: 'p1',
+    title: 'Must be removed',
+  }, { now: 303, deviceId: 'test-device' }),
+  identity => {
+    assert(
+      !state.tasks.some(task => task.id === 't-identity-created'),
+      'createTask identity: failed new task must be removed'
+    );
+    assert(
+      state.tasks[0] === identity.taskRefs[0] && state.tasks[1] === identity.taskRefs[1],
+      'createTask identity: existing task references must be preserved'
+    );
+  }
+);
+
+expectStorageIdentityRollback(
+  'promoteTaskToProject identity',
+  't2',
+  () => promoteTaskToProject('t2', {
+    now: 304,
+    deviceId: 'test-device',
+    projectId: 'p-identity-promoted',
+  }),
+  identity => {
+    const task = state.tasks.find(item => item.id === 't2');
+    assert(task === identity.taskRef, 'promote identity: original task reference must be restored');
+    assert(
+      JSON.stringify(identity.taskRef) === JSON.stringify(identity.taskSnapshot),
+      'promote identity: original task fields must restore in-place'
+    );
+    assert(
+      !state.projects.some(project => project.id === 'p-identity-promoted'),
+      'promote identity: failed project must be removed'
+    );
+    assert(
+      state.projects === identity.projectsRef,
+      'promote identity: projects array identity must be preserved'
+    );
+  }
+);
+
+resetState();
+const validationIdentity = captureIdentityState('t1');
+const validationBefore = captureProtectedState();
+let validationError = null;
+try {
+  updateTask('t1', { title: '' }, { now: 305, deviceId: 'test-device' });
+} catch (error) {
+  validationError = error;
+}
+assert(validationError?.message === 'Task title cannot be empty', 'Validation error must be rethrown');
+assertBaseIdentityRestored(validationIdentity, 'validation error identity');
+assertProtectedStateEquals(validationBefore, 'validation error values');
+assert(
+  state.tasks[0] === validationIdentity.taskRef,
+  'Validation error must preserve the original task reference'
 );
 
 resetState();
