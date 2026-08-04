@@ -1,12 +1,12 @@
 import { state } from '../state.js';
-import { loadState, saveState } from '../storage.js';
+import { loadState } from '../storage.js';
+import adapter from '../storageAdapter.js';
 import { captureInbox, deleteInbox, undoDeleteInbox } from '../core/commands.js';
 import { getInboxItems } from '../features/inbox/index.js';
 import { getDeviceId } from '../core/device.js';
-import { APP_NAME, APP_VERSION, APP_LABEL } from '../version.js';
+import { APP_VERSION } from '../version.js';
 
 const RECENT_LIMIT = 8;
-const VALID_HINTS = new Set(['task', 'thought', 'note']);
 
 let currentView = 'capture';
 let currentUserHint = null;
@@ -28,13 +28,48 @@ function safeGetValue(el) {
 function showToast(message, duration = 3000) {
   const toast = document.getElementById('toast');
   if (!toast) return;
-  safeSetText(toast, message);
+  toast.replaceChildren();
+  const msg = document.createElement('span');
+  msg.textContent = message;
+  toast.appendChild(msg);
   toast.hidden = false;
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toast.hidden = true;
     toastTimer = null;
   }, duration);
+}
+
+function showToastWithUndo(message) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.replaceChildren();
+
+  const msg = document.createElement('span');
+  msg.textContent = message;
+
+  const undoBtn = document.createElement('button');
+  undoBtn.type = 'button';
+  undoBtn.className = 'toast-undo';
+  undoBtn.textContent = 'Отменить';
+  undoBtn.addEventListener('click', () => {
+    if (lastRemoval && undoDeleteInbox(lastRemoval)) {
+      lastRemoval = null;
+      updateCounter();
+      renderInboxList();
+      renderRecentItems();
+      toast.hidden = true;
+    }
+  });
+
+  toast.append(msg, undoBtn);
+  toast.hidden = false;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+    lastRemoval = null;
+    toastTimer = null;
+  }, 5000);
 }
 
 function updateStatus(text) {
@@ -112,27 +147,6 @@ function renderInboxList() {
     return;
   }
 
-  if (lastRemoval) {
-    const undoBar = document.createElement('div');
-    undoBar.className = 'inbox-undo';
-    const undoText = document.createElement('span');
-    undoText.textContent = `Удалено: ${lastRemoval.item.text}`;
-    const undoBtn = document.createElement('button');
-    undoBtn.type = 'button';
-    undoBtn.textContent = 'Отменить';
-    undoBtn.addEventListener('click', () => {
-      if (undoDeleteInbox(lastRemoval)) {
-        lastRemoval = null;
-        updateCounter();
-        renderInboxList();
-        renderRecentItems();
-        showToast('Запись восстановлена');
-      }
-    });
-    undoBar.append(undoText, undoBtn);
-    container.appendChild(undoBar);
-  }
-
   items.forEach(item => {
     const row = document.createElement('div');
     row.className = 'inbox-row';
@@ -172,7 +186,9 @@ function renderInboxList() {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'inbox-delete-btn';
-    deleteBtn.textContent = '⋯';
+    deleteBtn.setAttribute('aria-label', 'Удалить запись');
+    deleteBtn.title = 'Удалить запись';
+    deleteBtn.textContent = '🗑';
     deleteBtn.addEventListener('click', () => {
       lastRemoval = deleteInbox(item.id);
       if (lastRemoval) {
@@ -187,38 +203,6 @@ function renderInboxList() {
     row.append(body, actions);
     container.appendChild(row);
   });
-}
-
-function showToastWithUndo(message) {
-  const toast = document.getElementById('toast');
-  if (!toast) return;
-  toast.replaceChildren();
-
-  const msg = document.createElement('span');
-  msg.textContent = message;
-
-  const undoBtn = document.createElement('button');
-  undoBtn.type = 'button';
-  undoBtn.className = 'toast-undo';
-  undoBtn.textContent = 'Отменить';
-  undoBtn.addEventListener('click', () => {
-    if (lastRemoval && undoDeleteInbox(lastRemoval)) {
-      lastRemoval = null;
-      updateCounter();
-      renderInboxList();
-      renderRecentItems();
-      toast.hidden = true;
-    }
-  });
-
-  toast.append(msg, undoBtn);
-  toast.hidden = false;
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toast.hidden = true;
-    lastRemoval = null;
-    toastTimer = null;
-  }, 5000);
 }
 
 function formatTime(ts) {
@@ -384,8 +368,17 @@ function initVoice() {
 }
 
 function init() {
-  const raw = localStorage.getItem('atlas_v2_data');
-  if (raw) {
+  let raw = null;
+  try {
+    raw = adapter.load();
+  } catch (e) {
+    storageOk = false;
+    updateStatus('Локальное хранилище недоступно');
+    showToast('Новые записи временно не сохраняются.', 8000);
+    document.getElementById('btnSave').disabled = true;
+  }
+
+  if (raw && storageOk) {
     try {
       const ok = loadState();
       if (!ok) {

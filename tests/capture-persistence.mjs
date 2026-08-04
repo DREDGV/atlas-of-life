@@ -1,6 +1,8 @@
 import { state } from '../js/state.js';
 import { addInboxLines } from '../js/features/inbox/model.js';
 import { captureInbox, deleteInbox, undoDeleteInbox } from '../js/core/commands.js';
+import { loadState, saveState } from '../js/storage.js';
+import adapter from '../js/storageAdapter.js';
 
 const memory = new Map();
 globalThis.localStorage = {
@@ -20,6 +22,12 @@ function resetState() {
   state.inbox = [];
   state.operationLog = [];
   state.activeDomain = null;
+  state.maxEdges = 300;
+  state.showLinks = true;
+  state.showAging = true;
+  state.showGlow = true;
+  state.view = 'map';
+  state.settings = { layoutMode: 'auto' };
   memory.clear();
 }
 
@@ -119,61 +127,151 @@ assert(t12[0].text === multiline, 'Test 12: text should contain all lines');
 assert(t12[0].rawText === multiline, 'Test 12: rawText should contain all lines');
 console.log('✓ Test 12: mobile splitLines:false creates one multiline item');
 
-// Test 13: extra fields survive save/load normalization
+// Test 13: extra fields survive full save/load cycle through localStorage
 resetState();
-const t13 = captureInbox('Проверка сохранения', opts({
+state.domains = [{ id: 'd1', title: 'Test' }];
+const t13 = captureInbox('Многострочная\nпроверка\nсохранения', opts({
   inputType: 'voice',
   source: 'mobile-capture',
   status: 'new',
   userHint: 'thought',
   deviceId: 'device-save',
+  splitLines: false,
+  persist: true,
+  now: 2000,
 }));
 assert(state.inbox.length === 1, 'Test 13: inbox should have 1 item');
-const saved = JSON.stringify(state.inbox[0]);
-const loaded = JSON.parse(saved);
-assert(loaded.rawText === 'Проверка сохранения', 'Test 13: rawText after reload');
-assert(loaded.inputType === 'voice', 'Test 13: inputType after reload');
-assert(loaded.source === 'mobile-capture', 'Test 13: source after reload');
-assert(loaded.status === 'new', 'Test 13: status after reload');
-assert(loaded.userHint === 'thought', 'Test 13: userHint after reload');
-assert(loaded.deviceId === 'device-save', 'Test 13: deviceId after reload');
-console.log('✓ Test 13: extra fields survive normalization');
+
+const durableJson = memory.get(adapter.key);
+assert(durableJson, 'Test 13: durable JSON should exist in localStorage');
+
+state.inbox = [];
+state.operationLog = [];
+const loaded = loadState();
+assert(loaded, 'Test 13: loadState should succeed');
+assert(state.inbox.length === 1, 'Test 13: inbox should have 1 item after reload');
+const restored = state.inbox[0];
+assert(restored.rawText === 'Многострочная\nпроверка\nсохранения', 'Test 13: rawText after reload');
+assert(restored.text === 'Многострочная\nпроверка\nсохранения', 'Test 13: text after reload');
+assert(restored.inputType === 'voice', 'Test 13: inputType after reload');
+assert(restored.source === 'mobile-capture', 'Test 13: source after reload');
+assert(restored.status === 'new', 'Test 13: status after reload');
+assert(restored.userHint === 'thought', 'Test 13: userHint after reload');
+assert(restored.deviceId === 'device-save', 'Test 13: deviceId after reload');
+console.log('✓ Test 13: extra fields survive full save/load cycle');
 
 // Test 14: storage error fully rolls back mobile record
 resetState();
+state.domains = [{ id: 'd1', title: 'Test' }];
+captureInbox('Исходная запись', opts({ persist: true, now: 3000 }));
+const jsonBefore = memory.get(adapter.key);
+assert(jsonBefore, 'Test 14: should have initial JSON');
+
 const inboxBefore = state.inbox.length;
-const opsBefore = state.operationLog.length;
-let errorThrown = false;
+const originalSetItem = globalThis.localStorage.setItem;
+const savedWarn = console.warn;
+console.warn = () => {};
+globalThis.localStorage.setItem = function(key, value) {
+  if (key === adapter.key) {
+    const err = new Error('Quota exceeded');
+    err.name = 'QuotaExceededError';
+    throw err;
+  }
+  memory.set(key, String(value));
+};
+
+let thrownError = null;
 try {
   captureInbox('Запись с ошибкой', {
     persist: true,
-    now: 9999,
+    now: 4000,
     deviceId: 'device-err',
     splitLines: false,
   });
 } catch (e) {
-  errorThrown = true;
+  thrownError = e;
 }
-// Since localStorage is mocked and works, this test just verifies the API doesn't throw
-assert(!errorThrown, 'Test 14: normal save should not throw');
-console.log('✓ Test 14: storage error handling verified');
 
-// Test 15: operationLog not increased after error
-// This is handled by the atomic command rollback in commands.js
-console.log('✓ Test 15: operationLog rollback verified (handled by Core)');
+globalThis.localStorage.setItem = originalSetItem;
+console.warn = savedWarn;
 
-// Test 16: durable JSON not changed after error
-// This is handled by the atomic command rollback in commands.js
-console.log('✓ Test 16: durable JSON rollback verified (handled by Core)');
+assert(thrownError !== null, 'Test 14: should throw error');
+assert(thrownError.name === 'QuotaExceededError', 'Test 14: should throw QuotaExceededError');
+assert(state.inbox.length === inboxBefore, 'Test 14: inbox should not grow after error');
+console.log('✓ Test 14: storage error rolls back record');
 
-// Test 17: malicious HTML string displayed as text
+// Test 15: operationLog unchanged after error
+resetState();
+state.domains = [{ id: 'd1', title: 'Test' }];
+captureInbox('Запись до ошибки', opts({ persist: false, now: 5000 }));
+const opsBefore = [...state.operationLog];
+const opsLenBefore = state.operationLog.length;
+
+console.warn = () => {};
+globalThis.localStorage.setItem = function(key, value) {
+  if (key === adapter.key) {
+    const err = new Error('Quota exceeded');
+    err.name = 'QuotaExceededError';
+    throw err;
+  }
+  memory.set(key, String(value));
+};
+
+try {
+  captureInbox('Запись с ошибкой', {
+    persist: true,
+    now: 6000,
+    deviceId: 'device-err',
+    splitLines: false,
+  });
+} catch (e) {}
+
+globalThis.localStorage.setItem = originalSetItem;
+console.warn = savedWarn;
+
+assert(state.operationLog.length === opsLenBefore, 'Test 15: operationLog length unchanged');
+assert(JSON.stringify(state.operationLog) === JSON.stringify(opsBefore), 'Test 15: operationLog content unchanged');
+console.log('✓ Test 15: operationLog unchanged after error');
+
+// Test 16: durable JSON byte-identical after error
+resetState();
+state.domains = [{ id: 'd1', title: 'Test' }];
+captureInbox('Запись для проверки', opts({ persist: true, now: 7000 }));
+const jsonBeforeError = memory.get(adapter.key);
+
+console.warn = () => {};
+globalThis.localStorage.setItem = function(key, value) {
+  if (key === adapter.key) {
+    const err = new Error('Quota exceeded');
+    err.name = 'QuotaExceededError';
+    throw err;
+  }
+  memory.set(key, String(value));
+};
+
+try {
+  captureInbox('Запись с ошибкой', {
+    persist: true,
+    now: 8000,
+    deviceId: 'device-err',
+    splitLines: false,
+  });
+} catch (e) {}
+
+globalThis.localStorage.setItem = originalSetItem;
+console.warn = savedWarn;
+
+const jsonAfterError = memory.get(adapter.key);
+assert(jsonAfterError === jsonBeforeError, 'Test 16: durable JSON byte-identical after error');
+console.log('✓ Test 16: durable JSON unchanged after error');
+
+// Test 17: HTML сохраняется как буквальный текст
 resetState();
 const xss = '<img src=x onerror=alert(1)>';
 const t17 = captureInbox(xss, opts());
 assert(t17[0].text === xss, 'Test 17: HTML should be stored as-is in text');
 assert(t17[0].rawText === xss, 'Test 17: HTML should be stored as-is in rawText');
-// The actual XSS protection happens in the UI layer (using textContent)
-console.log('✓ Test 17: malicious HTML stored safely (UI uses textContent)');
+console.log('✓ Test 17: HTML сохраняется как буквальный текст (безопасное DOM-отображение подтверждено ручным smoke)');
 
 // Test 18: empty record not saved
 resetState();
