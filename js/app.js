@@ -17,6 +17,7 @@ import { parseQuick } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
 import { createTask } from "./core/commands.js";
+import { APP_VERSION, APP_LABEL } from "./version.js";
 
 // I18N
 const I18N = {
@@ -38,9 +39,6 @@ window.I18N = I18N;
 
 // Expose state globally for addons compatibility
 try { window.state = state; } catch (_) {}
-
-// App version (SemVer-like label used in UI)
-let APP_VERSION = "Atlas_of_life_v0.2.7.5";
 
 // ephemeral UI state
 const ui = {
@@ -1054,9 +1052,8 @@ async function init() {
   if (!ok) initDemoData();
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
-  // Don't override APP_VERSION from CHANGELOG - use the hardcoded version
-  if (brandEl) brandEl.textContent = APP_VERSION;
-  document.title = APP_VERSION + " (modular)";
+  if (brandEl) brandEl.textContent = APP_LABEL;
+  document.title = APP_LABEL;
   renderSidebar();
   setupHeader();
   setupQuickAdd();
