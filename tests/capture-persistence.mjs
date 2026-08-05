@@ -285,4 +285,46 @@ const t18c = captureInbox('\n\n\n', opts());
 assert(t18c.length === 0, 'Test 18c: newlines should not create item');
 console.log('✓ Test 18: empty records not saved');
 
+// Test 19-22: Draft tests
+const { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft, normalizeCaptureDraft } = await import('../js/capture/draft.js');
+
+// Test 19: draft serializes and deserializes
+resetState();
+const draftData = { text: 'Черновик записи', userHint: 'task', inputType: 'voice' };
+const savedDraft = saveCaptureDraft(draftData);
+assert(savedDraft === true, 'Test 19: saveCaptureDraft should return true');
+const loadedDraft = loadCaptureDraft();
+assert(loadedDraft !== null, 'Test 19: draft should be loaded');
+assert(loadedDraft.text === 'Черновик записи', 'Test 19: draft text should match');
+assert(loadedDraft.userHint === 'task', 'Test 19: draft userHint should match');
+assert(loadedDraft.inputType === 'voice', 'Test 19: draft inputType should match');
+assert(typeof loadedDraft.updatedAt === 'number', 'Test 19: draft should have updatedAt');
+console.log('✓ Test 19: draft serializes and deserializes');
+
+// Test 20: draft restores text and hint
+resetState();
+saveCaptureDraft({ text: 'Тест восстановления', userHint: 'thought', inputType: 'text' });
+const restoredDraft = loadCaptureDraft();
+assert(restoredDraft.text === 'Тест восстановления', 'Test 20: text should be restored');
+assert(restoredDraft.userHint === 'thought', 'Test 20: userHint should be restored');
+console.log('✓ Test 20: draft restores text and hint');
+
+// Test 21: successful save clears draft
+resetState();
+saveCaptureDraft({ text: 'Для очистки', userHint: null, inputType: 'text' });
+assert(loadCaptureDraft() !== null, 'Test 21: draft should exist before clear');
+clearCaptureDraft();
+assert(loadCaptureDraft() === null, 'Test 21: draft should be null after clear');
+console.log('✓ Test 21: successful save clears draft');
+
+// Test 22: normalizeCaptureDraft handles invalid input
+assert(normalizeCaptureDraft(null) === null, 'Test 22a: null should return null');
+assert(normalizeCaptureDraft({}) === null, 'Test 22b: empty object should return null');
+assert(normalizeCaptureDraft({ text: '' }) === null, 'Test 22c: empty text should return null');
+assert(normalizeCaptureDraft({ text: '  ' }) === null, 'Test 22d: whitespace text should return null');
+const normalized = normalizeCaptureDraft({ text: 'Нормализация', userHint: 'invalid', inputType: 'voice' });
+assert(normalized.userHint === null, 'Test 22e: invalid userHint should be null');
+assert(normalized.inputType === 'voice', 'Test 22f: valid inputType should pass');
+console.log('✓ Test 22: normalizeCaptureDraft handles invalid input');
+
 console.log('\n✅ All capture persistence tests passed.');

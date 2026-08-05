@@ -29,12 +29,12 @@
           rows="4"
         ></textarea>
         <div class="capture-hints">
-          <button type="button" class="capture-hint" data-hint="task">Задача</button>
-          <button type="button" class="capture-hint" data-hint="thought">Мысль</button>
-          <button type="button" class="capture-hint" data-hint="note">Заметка</button>
+          <button type="button" class="capture-hint" data-hint="task" aria-pressed="false">Задача</button>
+          <button type="button" class="capture-hint" data-hint="thought" aria-pressed="false">Мысль</button>
+          <button type="button" class="capture-hint" data-hint="note" aria-pressed="false">Заметка</button>
         </div>
         <div class="capture-actions">
-          <button type="button" class="capture-btn capture-btn-mic" id="btnMic" aria-label="Голосовой ввод" title="Голосовой ввод">
+          <button type="button" class="capture-btn capture-btn-mic" id="btnMic" aria-label="Голосовой ввод" aria-pressed="false" title="Голосовой ввод">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
               <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
@@ -63,10 +63,13 @@
         <div class="inbox-count" id="inboxCount">0 записей</div>
       </div>
       <div class="inbox-list" id="inboxList"></div>
+      <div class="inbox-actions-bottom">
+        <button type="button" class="capture-btn capture-btn-save" id="btnNewCapture">+ Новая запись</button>
+      </div>
     </main>
 
     <nav class="capture-nav">
-      <button type="button" class="capture-nav-btn active" id="navCapture" data-view="capture" aria-label="Экран захвата">
+      <button type="button" class="capture-nav-btn active" id="navCapture" data-view="capture" aria-label="Экран захвата" aria-current="page">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 5v14M5 12h14"/>
         </svg>

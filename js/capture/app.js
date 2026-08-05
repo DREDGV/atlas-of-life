@@ -5,8 +5,10 @@ import { captureInbox, deleteInbox, undoDeleteInbox } from '../core/commands.js'
 import { getInboxItems } from '../features/inbox/index.js';
 import { getDeviceId } from '../core/device.js';
 import { APP_VERSION } from '../version.js';
+import { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft } from './draft.js';
 
 const RECENT_LIMIT = 8;
+const DRAFT_DEBOUNCE_MS = 400;
 
 let currentView = 'capture';
 let currentUserHint = null;
@@ -16,6 +18,7 @@ let recognition = null;
 let lastRemoval = null;
 let toastTimer = null;
 let storageOk = true;
+let draftSaveTimer = null;
 
 function safeSetText(el, text) {
   if (el) el.textContent = text;
@@ -81,6 +84,19 @@ function updateCounter() {
   safeSetText(document.getElementById('counter'), String(count));
 }
 
+function scheduleDraftSave() {
+  if (draftSaveTimer) clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => {
+    const textarea = document.getElementById('captureText');
+    const text = safeGetValue(textarea).trim();
+    if (text) {
+      saveCaptureDraft({ text, userHint: currentUserHint, inputType: currentInputType });
+    } else {
+      clearCaptureDraft();
+    }
+  }, DRAFT_DEBOUNCE_MS);
+}
+
 function renderRecentItems() {
   const container = document.getElementById('recentList');
   if (!container) return;
@@ -102,6 +118,19 @@ function renderRecentItems() {
     const textEl = document.createElement('div');
     textEl.className = 'capture-card-text';
     textEl.textContent = item.rawText || item.text;
+
+    const fullText = item.rawText || item.text || '';
+    const isLong = fullText.length > 120 || fullText.split('\n').length > 3;
+    if (isLong) {
+      card.setAttribute('aria-expanded', 'false');
+      textEl.classList.add('capture-card-text--collapsed');
+      card.addEventListener('click', () => {
+        const expanded = card.getAttribute('aria-expanded') === 'true';
+        card.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        textEl.classList.toggle('capture-card-text--collapsed', !expanded);
+        textEl.classList.toggle('capture-card-text--expanded', expanded);
+      });
+    }
 
     const meta = document.createElement('div');
     meta.className = 'capture-card-meta';
@@ -227,13 +256,17 @@ function navigateTo(view) {
     captureView.hidden = false;
     inboxView.hidden = true;
     navCapture.classList.add('active');
+    navCapture.setAttribute('aria-current', 'page');
     navInbox.classList.remove('active');
+    navInbox.removeAttribute('aria-current');
     renderRecentItems();
   } else {
     captureView.hidden = true;
     inboxView.hidden = false;
     navCapture.classList.remove('active');
+    navCapture.removeAttribute('aria-current');
     navInbox.classList.add('active');
+    navInbox.setAttribute('aria-current', 'page');
     renderInboxList();
   }
   window.location.hash = view;
@@ -243,13 +276,28 @@ function selectHint(hint) {
   const buttons = document.querySelectorAll('.capture-hint');
   if (currentUserHint === hint) {
     currentUserHint = null;
-    buttons.forEach(btn => btn.classList.remove('active'));
+    buttons.forEach(btn => {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-pressed', 'false');
+    });
   } else {
     currentUserHint = hint;
     buttons.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.hint === hint);
+      const isActive = btn.dataset.hint === hint;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
   }
+  scheduleDraftSave();
+}
+
+function restoreHintUI() {
+  const buttons = document.querySelectorAll('.capture-hint');
+  buttons.forEach(btn => {
+    const isActive = btn.dataset.hint === currentUserHint;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
 }
 
 function saveCapture() {
@@ -279,13 +327,17 @@ function saveCapture() {
 
     if (created.length > 0) {
       textarea.value = '';
+      clearCaptureDraft();
       currentUserHint = null;
       currentInputType = 'text';
-      document.querySelectorAll('.capture-hint').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.capture-hint').forEach(btn => {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-pressed', 'false');
+      });
       updateStatus('Сохранено на этом устройстве');
       updateCounter();
       renderRecentItems();
-      showToast('Сохранено');
+      showToast('Запись сохранена во Входящих');
     }
   } catch (err) {
     updateStatus('Не удалось сохранить');
@@ -313,6 +365,7 @@ function initVoice() {
   recognition.onstart = () => {
     isRecording = true;
     btnMic.classList.add('recording');
+    btnMic.setAttribute('aria-pressed', 'true');
     safeSetText(voiceStatus, 'Слушаю…');
   };
 
@@ -334,6 +387,7 @@ function initVoice() {
       textarea.value = current ? current + ' ' + final : final;
       currentInputType = 'voice';
       safeSetText(voiceStatus, 'Проверьте текст');
+      scheduleDraftSave();
     } else if (interim) {
       safeSetText(voiceStatus, 'Распознаю…');
     }
@@ -342,6 +396,7 @@ function initVoice() {
   recognition.onerror = (event) => {
     isRecording = false;
     btnMic.classList.remove('recording');
+    btnMic.setAttribute('aria-pressed', 'false');
     if (event.error === 'not-allowed') {
       safeSetText(voiceStatus, 'Доступ к микрофону запрещён. Разрешите в настройках браузера.');
     } else {
@@ -352,6 +407,7 @@ function initVoice() {
   recognition.onend = () => {
     isRecording = false;
     btnMic.classList.remove('recording');
+    btnMic.setAttribute('aria-pressed', 'false');
   };
 
   btnMic.addEventListener('click', () => {
@@ -365,6 +421,20 @@ function initVoice() {
       }
     }
   });
+}
+
+function restoreDraft() {
+  const draft = loadCaptureDraft();
+  if (!draft || !draft.text) return;
+
+  const textarea = document.getElementById('captureText');
+  if (textarea) {
+    textarea.value = draft.text;
+  }
+  currentUserHint = draft.userHint;
+  currentInputType = draft.inputType;
+  restoreHintUI();
+  showToast('Черновик восстановлен', 3000);
 }
 
 function init() {
@@ -383,14 +453,14 @@ function init() {
       const ok = loadState();
       if (!ok) {
         storageOk = false;
-        updateStatus('Локальные данные не удалось прочитать');
-        showToast('Данные повреждены. Новые записи временно не сохраняются.', 8000);
+        updateStatus('Локальные данные Atlas не удалось прочитать');
+        showToast('Запись сохранена только как черновик.', 8000);
         document.getElementById('btnSave').disabled = true;
       }
     } catch (e) {
       storageOk = false;
-      updateStatus('Локальные данные не удалось прочитать');
-      showToast('Данные повреждены. Новые записи временно не сохраняются.', 8000);
+      updateStatus('Локальные данные Atlas не удалось прочитать');
+      showToast('Запись сохранена только как черновик.', 8000);
       document.getElementById('btnSave').disabled = true;
     }
   }
@@ -398,8 +468,15 @@ function init() {
   safeSetText(document.getElementById('version'), APP_VERSION);
   updateCounter();
 
+  restoreDraft();
+
   document.getElementById('btnSave').addEventListener('click', saveCapture);
   document.getElementById('btnAllInbox').addEventListener('click', () => navigateTo('inbox'));
+  document.getElementById('btnNewCapture').addEventListener('click', () => {
+    navigateTo('capture');
+    const textarea = document.getElementById('captureText');
+    if (textarea) textarea.focus();
+  });
 
   document.getElementById('navCapture').addEventListener('click', () => navigateTo('capture'));
   document.getElementById('navInbox').addEventListener('click', () => navigateTo('inbox'));
@@ -408,7 +485,9 @@ function init() {
     btn.addEventListener('click', () => selectHint(btn.dataset.hint));
   });
 
-  document.getElementById('captureText').addEventListener('keydown', (e) => {
+  const textarea = document.getElementById('captureText');
+  textarea.addEventListener('input', scheduleDraftSave);
+  textarea.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
       saveCapture();

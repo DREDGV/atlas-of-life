@@ -313,12 +313,26 @@ body {
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  cursor: default;
+}
+
+.capture-card-text--collapsed {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.capture-card-text--expanded {
+  display: block;
+  cursor: pointer;
+}
+
+.capture-card[aria-expanded] {
+  cursor: pointer;
 }
 
 .capture-card-meta {
@@ -512,6 +526,16 @@ body {
   padding: 4px 8px;
   min-height: 44px;
   min-width: 44px;
+}
+
+.inbox-actions-bottom {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.inbox-actions-bottom .capture-btn-save {
+  width: 100%;
 }
 
 .capture-toast {
