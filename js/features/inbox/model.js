@@ -13,16 +13,53 @@ export function getInboxItems(){
   return [...ensureInbox()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
+const VALID_INPUT_TYPES = new Set(['text', 'voice']);
+const VALID_USER_HINTS = new Set(['task', 'thought', 'note']);
+const VALID_STATUSES = new Set(['new', 'reviewed', 'processed', 'discarded']);
+const VALID_SOURCES = new Set(['desktop-capture', 'mobile-capture']);
+
+function normalizeInputType(value){
+  return VALID_INPUT_TYPES.has(value) ? value : 'text';
+}
+
+function normalizeUserHint(value){
+  return VALID_USER_HINTS.has(value) ? value : null;
+}
+
+function normalizeStatus(value){
+  return VALID_STATUSES.has(value) ? value : 'new';
+}
+
+function normalizeSource(value){
+  return VALID_SOURCES.has(value) ? value : 'desktop-capture';
+}
+
 export function addInboxLines(text, options = {}){
-  const lines = String(text || '')
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean);
+  const rawText = String(text || '');
+  const splitLines = options.splitLines !== false;
+  const lines = splitLines
+    ? rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    : [rawText.trim()];
+
+  if (lines.length === 0) return [];
+
   const now = options.now ?? Date.now();
   const idFactory = options.idFactory || ((index) => `${makeId()}-${index}`);
+  const inputType = normalizeInputType(options.inputType);
+  const source = normalizeSource(options.source);
+  const status = normalizeStatus(options.status);
+  const userHint = normalizeUserHint(options.userHint);
+  const deviceId = options.deviceId || null;
+
   const created = lines.map((line, index) => ({
     id: idFactory(index),
     text: line,
+    rawText: line,
+    inputType,
+    source,
+    status,
+    userHint,
+    deviceId,
     createdAt: now,
     updatedAt: now,
   }));
