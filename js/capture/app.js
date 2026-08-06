@@ -4,8 +4,10 @@ import adapter from '../storageAdapter.js';
 import { captureInbox, deleteInbox, undoDeleteInbox } from '../core/commands.js';
 import { getInboxItems } from '../features/inbox/index.js';
 import { getDeviceId } from '../core/device.js';
-import { APP_VERSION } from '../version.js';
+import { APP_VERSION, APP_LABEL } from '../version.js';
 import { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft } from './draft.js';
+import { registerCaptureServiceWorker, initInstallExperience, isStandalone, getServiceWorkerStatus } from './pwa.js';
+import { initShareTarget, applyShareDraft } from './share-target.js';
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
@@ -38,7 +40,7 @@ function updateClearDraftVisibility() {
   }
 }
 
-function showToast(message, duration = 3000) {
+export function showToast(message, duration = 3000) {
   const toast = document.getElementById('toast');
   if (!toast) return;
   toast.replaceChildren();
@@ -258,33 +260,6 @@ function formatTime(ts) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
-function navigateTo(view) {
-  currentView = view;
-  const captureView = document.getElementById('captureView');
-  const inboxView = document.getElementById('inboxView');
-  const navCapture = document.getElementById('navCapture');
-  const navInbox = document.getElementById('navInbox');
-
-  if (view === 'capture') {
-    captureView.hidden = false;
-    inboxView.hidden = true;
-    navCapture.classList.add('active');
-    navCapture.setAttribute('aria-current', 'page');
-    navInbox.classList.remove('active');
-    navInbox.removeAttribute('aria-current');
-    renderRecentItems();
-  } else {
-    captureView.hidden = true;
-    inboxView.hidden = false;
-    navCapture.classList.remove('active');
-    navCapture.removeAttribute('aria-current');
-    navInbox.classList.add('active');
-    navInbox.setAttribute('aria-current', 'page');
-    renderInboxList();
-  }
-  window.location.hash = view;
-}
-
 function selectHint(hint) {
   const buttons = document.querySelectorAll('.capture-hint');
   if (currentUserHint === hint) {
@@ -487,6 +462,25 @@ function init() {
 
   restoreDraft();
 
+  const shareDraft = initShareTarget();
+  if (shareDraft) {
+    const existing = loadCaptureDraft();
+    const result = applyShareDraft(shareDraft, existing);
+    if (result.action === 'replace') {
+      const textarea = document.getElementById('captureText');
+      textarea.value = result.draft.text;
+      currentUserHint = result.draft.userHint;
+      currentInputType = result.draft.inputType;
+      hasDraft = true;
+      saveCaptureDraft(result.draft);
+      restoreHintUI();
+      updateClearDraftVisibility();
+      showToast('Получено через «Поделиться». Проверьте запись перед сохранением.', 5000);
+    } else if (result.action === 'choice') {
+      showShareChoiceDialog(result.draft, result.existing);
+    }
+  }
+
   document.getElementById('btnSave').addEventListener('click', saveCapture);
   document.getElementById('btnAllInbox').addEventListener('click', () => navigateTo('inbox'));
   document.getElementById('btnNewCapture').addEventListener('click', () => {
@@ -516,6 +510,9 @@ function init() {
   document.getElementById('navCapture').addEventListener('click', () => navigateTo('capture'));
   document.getElementById('navInbox').addEventListener('click', () => navigateTo('inbox'));
 
+  document.getElementById('btnInfo').addEventListener('click', () => navigateTo('info'));
+  document.getElementById('btnBackFromInfo').addEventListener('click', () => navigateTo('capture'));
+
   document.querySelectorAll('.capture-hint').forEach(btn => {
     btn.addEventListener('click', () => selectHint(btn.dataset.hint));
   });
@@ -533,20 +530,141 @@ function init() {
   });
 
   initVoice();
+  initOnlineStatus();
+  registerCaptureServiceWorker();
+  initInstallExperience();
 
-  const hash = window.location.hash.slice(1);
-  if (hash === 'inbox') {
-    navigateTo('inbox');
-  } else {
+  const params = new URLSearchParams(window.location.search);
+  const action = params.get('action');
+  if (action === 'new') {
     navigateTo('capture');
+    clearShareParamsFromUrl();
+  } else {
+    const hash = window.location.hash.slice(1);
+    if (hash === 'inbox') {
+      navigateTo('inbox');
+    } else if (hash === 'info') {
+      navigateTo('info');
+    } else {
+      navigateTo('capture');
+    }
   }
 
   window.addEventListener('hashchange', () => {
     const h = window.location.hash.slice(1);
-    if (h === 'inbox' || h === 'capture') {
+    if (h === 'inbox' || h === 'capture' || h === 'info') {
       navigateTo(h);
     }
   });
+}
+
+function clearShareParamsFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('action');
+    window.history.replaceState({}, '', url.pathname + url.hash);
+  } catch (_) {}
+}
+
+function initOnlineStatus() {
+  const updateOnlineStatus = () => {
+    const online = navigator.onLine;
+    const statusEl = document.getElementById('status');
+    if (online) {
+      safeSetText(statusEl, 'Онлайн · локальные записи сохранены');
+      statusEl.classList.remove('offline');
+    } else {
+      safeSetText(statusEl, 'Офлайн · записи сохраняются на устройстве');
+      statusEl.classList.add('offline');
+    }
+  };
+
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
+}
+
+function showShareChoiceDialog(shareDraft, existingDraft) {
+  const textarea = document.getElementById('captureText');
+  const hasExisting = existingDraft && existingDraft.text;
+  
+  if (!hasExisting) {
+    textarea.value = shareDraft.text;
+    currentUserHint = shareDraft.userHint;
+    currentInputType = shareDraft.inputType;
+    hasDraft = true;
+    saveCaptureDraft(shareDraft);
+    restoreHintUI();
+    updateClearDraftVisibility();
+    showToast('Получено через «Поделиться». Проверьте запись перед сохранением.', 5000);
+    return;
+  }
+
+  const choice = confirm(
+    'Получен текст через «Поделиться».\n\n' +
+    'OK — Добавить к черновику\n' +
+    'Отмена — Заменить черновик'
+  );
+  
+  if (choice) {
+    textarea.value = existingDraft.text + '\n\n' + shareDraft.text;
+  } else {
+    textarea.value = shareDraft.text;
+    currentUserHint = shareDraft.userHint;
+  }
+  currentInputType = shareDraft.inputType;
+  hasDraft = true;
+  saveCaptureDraft({ text: textarea.value, userHint: currentUserHint, inputType: currentInputType });
+  restoreHintUI();
+  updateClearDraftVisibility();
+  showToast('Получено через «Поделиться». Проверьте запись перед сохранением.', 5000);
+}
+
+function updateInfoPanel() {
+  const versionEl = document.getElementById('infoVersion');
+  const statusEl = document.getElementById('infoStatus');
+  const swEl = document.getElementById('infoSW');
+  const inboxEl = document.getElementById('infoInbox');
+  
+  safeSetText(versionEl, `Версия: ${APP_VERSION}`);
+  safeSetText(statusEl, navigator.onLine ? 'Онлайн' : 'Офлайн');
+  safeSetText(swEl, `Service Worker: ${getServiceWorkerStatus()}`);
+  
+  const count = Array.isArray(state.inbox) ? state.inbox.length : 0;
+  safeSetText(inboxEl, `Записей в Inbox: ${count}`);
+}
+
+function navigateTo(view) {
+  currentView = view;
+  const captureView = document.getElementById('captureView');
+  const inboxView = document.getElementById('inboxView');
+  const infoView = document.getElementById('infoView');
+  const navCapture = document.getElementById('navCapture');
+  const navInbox = document.getElementById('navInbox');
+
+  captureView.hidden = view !== 'capture';
+  inboxView.hidden = view !== 'inbox';
+  infoView.hidden = view !== 'info';
+
+  if (view === 'capture' || view === 'info') {
+    navCapture.classList.add('active');
+    navCapture.setAttribute('aria-current', 'page');
+    navInbox.classList.remove('active');
+    navInbox.removeAttribute('aria-current');
+  } else if (view === 'inbox') {
+    navCapture.classList.remove('active');
+    navCapture.removeAttribute('aria-current');
+    navInbox.classList.add('active');
+    navInbox.setAttribute('aria-current', 'page');
+  }
+
+  if (view === 'capture') renderRecentItems();
+  if (view === 'inbox') renderInboxList();
+  if (view === 'info') updateInfoPanel();
+
+  if (view !== 'info') {
+    window.location.hash = view;
+  }
 }
 
 init();
