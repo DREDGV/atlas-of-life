@@ -309,13 +309,13 @@ assert(restoredDraft.text === 'Тест восстановления', 'Test 20:
 assert(restoredDraft.userHint === 'thought', 'Test 20: userHint should be restored');
 console.log('✓ Test 20: draft restores text and hint');
 
-// Test 21: successful save clears draft
+// Test 21: clearCaptureDraft removes saved draft
 resetState();
 saveCaptureDraft({ text: 'Для очистки', userHint: null, inputType: 'text' });
 assert(loadCaptureDraft() !== null, 'Test 21: draft should exist before clear');
 clearCaptureDraft();
 assert(loadCaptureDraft() === null, 'Test 21: draft should be null after clear');
-console.log('✓ Test 21: successful save clears draft');
+console.log('✓ Test 21: clearCaptureDraft removes saved draft');
 
 // Test 22: normalizeCaptureDraft handles invalid input
 assert(normalizeCaptureDraft(null) === null, 'Test 22a: null should return null');

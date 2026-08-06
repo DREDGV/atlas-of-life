@@ -19,6 +19,7 @@ let lastRemoval = null;
 let toastTimer = null;
 let storageOk = true;
 let draftSaveTimer = null;
+let hasDraft = false;
 
 function safeSetText(el, text) {
   if (el) el.textContent = text;
@@ -26,6 +27,15 @@ function safeSetText(el, text) {
 
 function safeGetValue(el) {
   return el ? el.value : '';
+}
+
+function updateClearDraftVisibility() {
+  const btn = document.getElementById('btnClearDraft');
+  if (btn) {
+    const textarea = document.getElementById('captureText');
+    const hasText = textarea && safeGetValue(textarea).trim().length > 0;
+    btn.hidden = !hasText && !hasDraft;
+  }
 }
 
 function showToast(message, duration = 3000) {
@@ -90,10 +100,13 @@ function scheduleDraftSave() {
     const textarea = document.getElementById('captureText');
     const text = safeGetValue(textarea).trim();
     if (text) {
+      hasDraft = true;
       saveCaptureDraft({ text, userHint: currentUserHint, inputType: currentInputType });
     } else {
+      hasDraft = false;
       clearCaptureDraft();
     }
+    updateClearDraftVisibility();
   }, DRAFT_DEBOUNCE_MS);
 }
 
@@ -328,12 +341,14 @@ function saveCapture() {
     if (created.length > 0) {
       textarea.value = '';
       clearCaptureDraft();
+      hasDraft = false;
       currentUserHint = null;
       currentInputType = 'text';
       document.querySelectorAll('.capture-hint').forEach(btn => {
         btn.classList.remove('active');
         btn.setAttribute('aria-pressed', 'false');
       });
+      updateClearDraftVisibility();
       updateStatus('Сохранено на этом устройстве');
       updateCounter();
       renderRecentItems();
@@ -433,14 +448,16 @@ function restoreDraft() {
   }
   currentUserHint = draft.userHint;
   currentInputType = draft.inputType;
+  hasDraft = true;
   restoreHintUI();
+  updateClearDraftVisibility();
   showToast('Черновик восстановлен', 3000);
 }
 
 function init() {
   let raw = null;
   try {
-    raw = adapter.load();
+    raw = localStorage.getItem(adapter.key);
   } catch (e) {
     storageOk = false;
     updateStatus('Локальное хранилище недоступно');
@@ -478,6 +495,24 @@ function init() {
     if (textarea) textarea.focus();
   });
 
+  document.getElementById('btnClearDraft').addEventListener('click', () => {
+    const textarea = document.getElementById('captureText');
+    const text = safeGetValue(textarea).trim();
+    if (!text) return;
+    if (!confirm('Очистить черновик?')) return;
+    textarea.value = '';
+    clearCaptureDraft();
+    currentUserHint = null;
+    currentInputType = 'text';
+    hasDraft = false;
+    document.querySelectorAll('.capture-hint').forEach(btn => {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-pressed', 'false');
+    });
+    updateClearDraftVisibility();
+    showToast('Черновик очищен');
+  });
+
   document.getElementById('navCapture').addEventListener('click', () => navigateTo('capture'));
   document.getElementById('navInbox').addEventListener('click', () => navigateTo('inbox'));
 
@@ -486,7 +521,10 @@ function init() {
   });
 
   const textarea = document.getElementById('captureText');
-  textarea.addEventListener('input', scheduleDraftSave);
+  textarea.addEventListener('input', () => {
+    scheduleDraftSave();
+    updateClearDraftVisibility();
+  });
   textarea.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();

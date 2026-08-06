@@ -262,6 +262,29 @@ body {
   line-height: 1.4;
 }
 
+.capture-clear-draft {
+  background: none;
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 12px;
+  cursor: pointer;
+  align-self: flex-start;
+  min-height: 36px;
+  transition: all 0.2s;
+}
+
+.capture-clear-draft:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.capture-clear-draft[hidden] {
+  display: none;
+}
+
 .capture-recent {
   margin-top: 24px;
 }
