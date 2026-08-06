@@ -1,4 +1,5 @@
 const CACHE_NAME = 'atlas-capture-0.9.0-alpha.2';
+
 const PRECACHE_ASSETS = [
   './',
   './index.html',
@@ -17,14 +18,28 @@ const PRECACHE_ASSETS = [
   '../js/features/inbox/model.js',
   '../js/features/inbox/index.js',
   '../js/version.js',
-  './icons/icon-192.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
 ];
+
+let precacheUrls = null;
+
+function getPrecacheUrls() {
+  if (!precacheUrls) {
+    precacheUrls = new Set(
+      PRECACHE_ASSETS.map(
+        path => new URL(path, self.registration.scope).href
+      )
+    );
+  }
+  return precacheUrls;
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -42,32 +57,37 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-
+  
   if (request.method !== 'GET') return;
-  if (url.origin !== location.origin) return;
+  
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
 
-  if (url.pathname.endsWith('/capture/') || url.pathname.endsWith('/capture/index.html')) {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
-          return response;
-        })
-        .catch(() => caches.match(request))
-    );
+  if (request.mode === 'navigate') {
+    const scope = self.registration.scope;
+    if (url.href.startsWith(scope)) {
+      event.respondWith(
+        fetch(request)
+          .then(response => {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+            return response;
+          })
+          .catch(() => caches.match(new URL('./index.html', scope).href))
+      );
+    }
     return;
   }
 
-  if (url.pathname.startsWith('/js/capture/') || 
-      url.pathname.startsWith('/styles/') ||
-      url.pathname.startsWith('/capture/icons/')) {
+  const allowedUrls = getPrecacheUrls();
+  if (allowedUrls.has(url.href)) {
     event.respondWith(
       caches.match(request).then(cached => {
         const fetchPromise = fetch(request).then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
           return response;
         }).catch(() => cached);
         return cached || fetchPromise;

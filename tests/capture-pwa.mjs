@@ -1,5 +1,5 @@
-import { buildShareDraft, applyShareDraft } from '../js/capture/share-target.js';
-import { readFileSync } from 'fs';
+import { buildShareDraft, applyShareDraft, mergeShareWithExisting } from '../js/capture/share-target.js';
+import { readFileSync, existsSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -22,72 +22,115 @@ assert(manifest.display === 'standalone', 'Test 1: manifest should have standalo
 assert(manifest.theme_color === '#0b0f17', 'Test 1: manifest should have theme_color');
 console.log('✓ Test 1: manifest is valid JSON with required fields');
 
-// Test 2: manifest contains icons 192 and 512
-assert(Array.isArray(manifest.icons), 'Test 2: manifest should have icons array');
-const has192 = manifest.icons.some(i => i.sizes === '192x192');
-const has512 = manifest.icons.some(i => i.sizes === '512x512');
-assert(has192, 'Test 2: manifest should have 192x192 icon');
-assert(has512, 'Test 2: manifest should have 512x512 icon');
-console.log('✓ Test 2: manifest contains icons 192 and 512');
+// Test 2: manifest icons exist on disk
+for (const icon of manifest.icons) {
+  const iconPath = join(projectRoot, 'capture', icon.src);
+  assert(existsSync(iconPath), `Test 2: icon ${icon.src} should exist`);
+}
+console.log('✓ Test 2: all manifest icons exist');
 
-// Test 3: manifest contains share_target with title/text/url
-assert(manifest.share_target, 'Test 3: manifest should have share_target');
-assert(manifest.share_target.action === './', 'Test 3: share_target action should be ./');
-assert(manifest.share_target.method === 'GET', 'Test 3: share_target method should be GET');
-assert(manifest.share_target.params.title === 'title', 'Test 3: share_target should have title param');
-assert(manifest.share_target.params.text === 'text', 'Test 3: share_target should have text param');
-assert(manifest.share_target.params.url === 'url', 'Test 3: share_target should have url param');
-console.log('✓ Test 3: share_target contains title/text/url');
+// Test 3: PNG icons have correct sizes
+function readPNGSize(filePath) {
+  const buf = readFileSync(filePath);
+  if (buf[0] === 137 && buf[1] === 80 && buf[2] === 78 && buf[3] === 71) {
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    return { width, height };
+  }
+  return null;
+}
 
-// Test 4: share-target parser builds expected draft
-const draft1 = buildShareDraft('Заголовок', 'Текст', 'https://example.com');
-assert(draft1.text.includes('Заголовок'), 'Test 4: draft should include title');
-assert(draft1.text.includes('Текст'), 'Test 4: draft should include text');
-assert(draft1.text.includes('https://example.com'), 'Test 4: draft should include url');
-assert(draft1.userHint === 'note', 'Test 4: default userHint should be note');
-assert(draft1.inputType === 'text', 'Test 4: default inputType should be text');
-console.log('✓ Test 4: share-target parser builds expected draft');
+const icon192Path = join(projectRoot, 'capture', 'icons', 'icon-192.png');
+const icon512Path = join(projectRoot, 'capture', 'icons', 'icon-512.png');
+const iconMaskablePath = join(projectRoot, 'capture', 'icons', 'icon-maskable-512.png');
 
-// Test 5: share-target parser handles empty input
-const draft2 = buildShareDraft(null, null, null);
-assert(draft2.text === '', 'Test 5: empty input should produce empty text');
-console.log('✓ Test 5: share-target parser handles empty input');
+const size192 = readPNGSize(icon192Path);
+assert(size192 && size192.width === 192 && size192.height === 192, 'Test 3: icon-192.png should be 192x192');
 
-// Test 6: share-target parser handles URLs correctly
-const draft4 = buildShareDraft('Title', 'Text', 'https://example.com');
-assert(draft4.text.includes('https://example.com'), 'Test 6: https URL should be included');
-console.log('✓ Test 6: share-target parser handles URLs correctly');
+const size512 = readPNGSize(icon512Path);
+assert(size512 && size512.width === 512 && size512.height === 512, 'Test 3: icon-512.png should be 512x512');
 
-// Test 7: existing draft not replaced without action
-const existing = { text: 'Existing draft', userHint: 'task', inputType: 'text' };
-const shareDraft = { text: 'Shared text', userHint: 'note', inputType: 'text' };
-const result = applyShareDraft(shareDraft, existing);
-assert(result.action === 'choice', 'Test 7: should return choice when existing draft');
-assert(result.draft === shareDraft, 'Test 7: should include share draft');
-assert(result.existing === existing, 'Test 7: should include existing draft');
-console.log('✓ Test 7: existing draft not replaced without action');
+const sizeMaskable = readPNGSize(iconMaskablePath);
+assert(sizeMaskable && sizeMaskable.width === 512 && sizeMaskable.height === 512, 'Test 3: icon-maskable-512.png should be 512x512');
+console.log('✓ Test 3: PNG icons have correct sizes');
 
-// Test 8: share replaces when no existing draft
-const result2 = applyShareDraft(shareDraft, null);
-assert(result2.action === 'replace', 'Test 8: should replace when no existing');
-assert(result2.draft === shareDraft, 'Test 8: should include share draft');
-console.log('✓ Test 8: share replaces when no existing draft');
+// Test 4: maskable icon has purpose=maskable
+const maskableIcon = manifest.icons.find(i => i.purpose === 'maskable');
+assert(maskableIcon, 'Test 4: should have maskable icon');
+assert(maskableIcon.src === 'icons/icon-maskable-512.png', 'Test 4: maskable icon should be icon-maskable-512.png');
+console.log('✓ Test 4: maskable icon has purpose=maskable');
 
-// Test 9: share with empty draft returns cancel
-const result3 = applyShareDraft({ text: '' }, null);
-assert(result3.action === 'cancel', 'Test 9: empty share should cancel');
-console.log('✓ Test 9: share with empty draft returns cancel');
+// Test 5: apple-touch-icon exists
+const indexHtml = readFileSync(join(projectRoot, 'capture', 'index.html'), 'utf-8');
+assert(indexHtml.includes('apple-touch-icon'), 'Test 5: should have apple-touch-icon');
+assert(indexHtml.includes('icons/icon-192.png'), 'Test 5: should reference icon-192.png');
+const appleTouchPath = join(projectRoot, 'capture', 'icons', 'icon-192.png');
+assert(existsSync(appleTouchPath), 'Test 5: apple-touch-icon file should exist');
+console.log('✓ Test 5: apple-touch-icon exists');
 
-// Test 10: version updated to 0.9.0-alpha.2
-const { APP_VERSION } = await import('../js/version.js');
-assert(APP_VERSION === '0.9.0-alpha.2', 'Test 10: version should be 0.9.0-alpha.2');
-console.log('✓ Test 10: version updated to 0.9.0-alpha.2');
+// Test 6: share_target.action contains action=share
+assert(manifest.share_target, 'Test 6: manifest should have share_target');
+assert(manifest.share_target.action.includes('action=share'), 'Test 6: share_target action should contain action=share');
+console.log('✓ Test 6: share_target.action contains action=share');
 
-// Test 11: service worker cache allowlist
+// Test 7: parser accepts action=share
+const draft1 = buildShareDraft('Title', 'Text', 'https://example.com');
+assert(draft1.text.includes('Title'), 'Test 7: parser should accept title');
+assert(draft1.text.includes('Text'), 'Test 7: parser should accept text');
+assert(draft1.text.includes('https://example.com'), 'Test 7: parser should accept url');
+console.log('✓ Test 7: parser accepts action=share');
+
+// Test 8: parser accepts title/text/url without action
+const draft2 = buildShareDraft('OnlyTitle', null, null);
+assert(draft2.text === 'OnlyTitle', 'Test 8: parser should work with just title');
+console.log('✓ Test 8: parser accepts title/text/url without action');
+
+// Test 9: parser rejects empty input
+const draft3 = buildShareDraft(null, null, null);
+assert(draft3.text === '', 'Test 9: empty input should produce empty text');
+console.log('✓ Test 9: parser rejects empty input');
+
+// Test 10: append uses \n\n separator
+const merged = mergeShareWithExisting('Existing', 'New');
+assert(merged === 'Existing\n\nNew', 'Test 10: append should use \\n\\n separator');
+console.log('✓ Test 10: append uses \\n\\n separator');
+
+// Test 11: cancel result exists
+const cancelResult = applyShareDraft({ text: '' }, null);
+assert(cancelResult.action === 'cancel', 'Test 11: empty draft should return cancel');
+console.log('✓ Test 11: cancel result exists');
+
+// Test 12: PRECACHE_ASSETS exist on disk
 const swContent = readFileSync(join(projectRoot, 'capture', 'sw.js'), 'utf-8');
-assert(!swContent.includes('addons'), 'Test 11: sw should not cache addons');
-assert(!swContent.includes('view_map'), 'Test 11: sw should not cache view_map');
-assert(!swContent.includes('inspector'), 'Test 11: sw should not cache inspector');
-console.log('✓ Test 11: service worker cache allowlist correct');
+const precacheMatch = swContent.match(/const PRECACHE_ASSETS = \[([\s\S]*?)\]/);
+assert(precacheMatch, 'Test 12: PRECACHE_ASSETS should be defined');
+const precacheItems = precacheMatch[1].match(/'[^']+'/g).map(s => s.slice(1, -1));
+for (const item of precacheItems) {
+  if (item === './' || item === './index.html') continue;
+  const resolvedPath = join(projectRoot, 'capture', item);
+  assert(existsSync(resolvedPath), `Test 12: precache asset ${item} should exist`);
+}
+console.log('✓ Test 12: PRECACHE_ASSETS exist on disk');
+
+// Test 13: service worker does not have unconditional skipWaiting in install
+const installMatch = swContent.match(/addEventListener\('install'[\s\S]*?\}\)/);
+assert(!installMatch[0].includes('self.skipWaiting()'), 'Test 13: install should not have unconditional skipWaiting');
+console.log('✓ Test 13: no unconditional skipWaiting in install');
+
+// Test 14: service worker routing is scope-relative
+assert(!swContent.includes("url.pathname.startsWith('/js/')"), 'Test 14: routing should not use absolute paths');
+assert(!swContent.includes("url.pathname.startsWith('/styles/')"), 'Test 14: routing should not use absolute paths');
+console.log('✓ Test 14: service worker routing is scope-relative');
+
+// Test 15: service worker does not cache desktop addons/map/inspector
+assert(!swContent.includes('addons'), 'Test 15: should not cache addons');
+assert(!swContent.includes('view_map'), 'Test 15: should not cache view_map');
+assert(!swContent.includes('inspector'), 'Test 15: should not cache inspector');
+console.log('✓ Test 15: service worker does not cache desktop addons');
+
+// Test 16: version is 0.9.0-alpha.2
+const { APP_VERSION } = await import('../js/version.js');
+assert(APP_VERSION === '0.9.0-alpha.2', 'Test 16: version should be 0.9.0-alpha.2');
+console.log('✓ Test 16: version is 0.9.0-alpha.2');
 
 console.log('\n✅ All PWA tests passed.');

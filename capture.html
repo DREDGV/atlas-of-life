@@ -6,7 +6,11 @@
   <title>Atlas Capture</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%232dd4bf'/%3E%3C/svg%3E" />
   <script>
-    window.location.replace('./capture/' + window.location.hash);
+    (function() {
+      var search = window.location.search || '';
+      var hash = window.location.hash || '';
+      window.location.replace('./capture/' + search + hash);
+    })();
   </script>
 </head>
 <body>

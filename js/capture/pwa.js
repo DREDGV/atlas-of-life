@@ -4,25 +4,30 @@ const INSTALL_DISMISS_DAYS = 7;
 
 let deferredInstallEvent = null;
 let registration = null;
+let showToastCallback = null;
+let flushDraftCallback = null;
 
-export function registerCaptureServiceWorker() {
+export function registerCaptureServiceWorker(options = {}) {
+  showToastCallback = options.showToast || null;
+  flushDraftCallback = options.flushDraft || null;
+
   if (!('serviceWorker' in navigator)) return Promise.resolve(null);
-  
+
   return navigator.serviceWorker.register(SW_PATH, { scope: './' })
     .then(reg => {
       registration = reg;
-      
+
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
-        
+
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
             showUpdateAvailable();
           }
         });
       });
-      
+
       return reg;
     })
     .catch(() => null);
@@ -32,7 +37,7 @@ export function initInstallExperience() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallEvent = e;
-    
+
     if (!isInstallDismissed()) {
       showInstallButton();
     }
@@ -41,7 +46,7 @@ export function initInstallExperience() {
   window.addEventListener('appinstalled', () => {
     deferredInstallEvent = null;
     hideInstallButton();
-    showInstallSuccess();
+    if (showToastCallback) showToastCallback('Atlas Capture установлен');
   });
 
   const btnInstall = document.getElementById('btnInstall');
@@ -78,6 +83,9 @@ export function showUpdateAvailable() {
 
   if (btnUpdate) {
     btnUpdate.addEventListener('click', () => {
+      if (flushDraftCallback) {
+        flushDraftCallback();
+      }
       if (registration && registration.waiting) {
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
@@ -85,13 +93,13 @@ export function showUpdateAvailable() {
         window.location.reload();
       }, { once: true });
       banner.hidden = true;
-    });
+    }, { once: true });
   }
 
   if (btnLater) {
     btnLater.addEventListener('click', () => {
       banner.hidden = true;
-    });
+    }, { once: true });
   }
 }
 
@@ -111,12 +119,6 @@ function hideInstallButton() {
   if (banner) banner.hidden = true;
 }
 
-function showInstallSuccess() {
-  import('./app.js').then(mod => {
-    if (mod.showToast) mod.showToast('Atlas Capture установлен');
-  }).catch(() => {});
-}
-
 function dismissInstall() {
   try {
     const dismissUntil = Date.now() + INSTALL_DISMISS_DAYS * 24 * 60 * 60 * 1000;
@@ -134,7 +136,7 @@ function isInstallDismissed() {
 }
 
 export function isStandalone() {
-  return window.matchMedia('(display-mode: standalone)').matches || 
+  return window.matchMedia('(display-mode: standalone)').matches ||
          window.navigator.standalone === true;
 }
 

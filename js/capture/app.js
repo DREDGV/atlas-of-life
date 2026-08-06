@@ -7,7 +7,7 @@ import { getDeviceId } from '../core/device.js';
 import { APP_VERSION, APP_LABEL } from '../version.js';
 import { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft } from './draft.js';
 import { registerCaptureServiceWorker, initInstallExperience, isStandalone, getServiceWorkerStatus } from './pwa.js';
-import { initShareTarget, applyShareDraft } from './share-target.js';
+import { initShareTarget, applyShareDraft, mergeShareWithExisting } from './share-target.js';
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
@@ -531,7 +531,16 @@ function init() {
 
   initVoice();
   initOnlineStatus();
-  registerCaptureServiceWorker();
+  registerCaptureServiceWorker({
+    showToast,
+    flushDraft: () => {
+      const textarea = document.getElementById('captureText');
+      const text = safeGetValue(textarea).trim();
+      if (text) {
+        saveCaptureDraft({ text, userHint: currentUserHint, inputType: currentInputType });
+      }
+    }
+  });
   initInstallExperience();
 
   const params = new URLSearchParams(window.location.search);
@@ -585,10 +594,36 @@ function initOnlineStatus() {
 }
 
 function showShareChoiceDialog(shareDraft, existingDraft) {
-  const textarea = document.getElementById('captureText');
-  const hasExisting = existingDraft && existingDraft.text;
-  
-  if (!hasExisting) {
+  const dialog = document.getElementById('shareDialog');
+  if (!dialog) return;
+
+  const btnAppend = document.getElementById('btnShareAppend');
+  const btnReplace = document.getElementById('btnShareReplace');
+  const btnCancel = document.getElementById('btnShareCancel');
+
+  function cleanup() {
+    btnAppend.removeEventListener('click', onAppend);
+    btnReplace.removeEventListener('click', onReplace);
+    btnCancel.removeEventListener('click', onCancel);
+    dialog.close();
+  }
+
+  function onAppend() {
+    const textarea = document.getElementById('captureText');
+    const merged = mergeShareWithExisting(existingDraft.text, shareDraft.text);
+    textarea.value = merged;
+    currentUserHint = existingDraft.userHint || shareDraft.userHint;
+    currentInputType = shareDraft.inputType;
+    hasDraft = true;
+    saveCaptureDraft({ text: merged, userHint: currentUserHint, inputType: currentInputType });
+    restoreHintUI();
+    updateClearDraftVisibility();
+    showToast('Текст добавлен к черновику', 3000);
+    cleanup();
+  }
+
+  function onReplace() {
+    const textarea = document.getElementById('captureText');
     textarea.value = shareDraft.text;
     currentUserHint = shareDraft.userHint;
     currentInputType = shareDraft.inputType;
@@ -596,28 +631,20 @@ function showShareChoiceDialog(shareDraft, existingDraft) {
     saveCaptureDraft(shareDraft);
     restoreHintUI();
     updateClearDraftVisibility();
-    showToast('Получено через «Поделиться». Проверьте запись перед сохранением.', 5000);
-    return;
+    showToast('Черновик заменён', 3000);
+    cleanup();
   }
 
-  const choice = confirm(
-    'Получен текст через «Поделиться».\n\n' +
-    'OK — Добавить к черновику\n' +
-    'Отмена — Заменить черновик'
-  );
-  
-  if (choice) {
-    textarea.value = existingDraft.text + '\n\n' + shareDraft.text;
-  } else {
-    textarea.value = shareDraft.text;
-    currentUserHint = shareDraft.userHint;
+  function onCancel() {
+    showToast('Текст не принят', 2000);
+    cleanup();
   }
-  currentInputType = shareDraft.inputType;
-  hasDraft = true;
-  saveCaptureDraft({ text: textarea.value, userHint: currentUserHint, inputType: currentInputType });
-  restoreHintUI();
-  updateClearDraftVisibility();
-  showToast('Получено через «Поделиться». Проверьте запись перед сохранением.', 5000);
+
+  btnAppend.addEventListener('click', onAppend);
+  btnReplace.addEventListener('click', onReplace);
+  btnCancel.addEventListener('click', onCancel);
+
+  dialog.showModal();
 }
 
 function updateInfoPanel() {
