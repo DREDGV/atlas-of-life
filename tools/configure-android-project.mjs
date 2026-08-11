@@ -55,15 +55,26 @@ if (!next.includes(`versionCode ${versionCode}`) ||
 await writeFile(gradlePath, next, 'utf8');
 
 const currentManifest = await readFile(manifestPath, 'utf8');
-const nextManifest = currentManifest.includes('android:windowSoftInputMode="adjustResize"')
-  ? currentManifest
-  : currentManifest.replace(
+const recordAudioPermission = '<uses-permission android:name="android.permission.RECORD_AUDIO" />';
+let nextManifest = currentManifest;
+
+if (!nextManifest.includes(recordAudioPermission)) {
+  nextManifest = nextManifest.replace(
+    '<uses-permission android:name="android.permission.INTERNET" />',
+    `<uses-permission android:name="android.permission.INTERNET" />\n    ${recordAudioPermission}`
+  );
+}
+
+if (!nextManifest.includes('android:windowSoftInputMode="adjustResize"')) {
+  nextManifest = nextManifest.replace(
       '<activity\n            android:configChanges',
       '<activity\n            android:windowSoftInputMode="adjustResize"\n            android:configChanges'
     );
+}
 
-if (!nextManifest.includes('android:windowSoftInputMode="adjustResize"')) {
-  throw new Error('Could not configure Android keyboard resize behavior.');
+if (!nextManifest.includes(recordAudioPermission) ||
+    !nextManifest.includes('android:windowSoftInputMode="adjustResize"')) {
+  throw new Error('Could not configure required Android manifest entries.');
 }
 
 await writeFile(manifestPath, nextManifest, 'utf8');
