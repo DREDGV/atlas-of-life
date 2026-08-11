@@ -39,8 +39,10 @@ export function appendOperation(input, options = {}){
   };
   const log = ensureOperationLog();
   log.push(operation);
-  if (log.length > OPERATION_LOG_LIMIT) {
-    log.splice(0, log.length - OPERATION_LOG_LIMIT);
+  while (log.length > OPERATION_LOG_LIMIT) {
+    const acknowledgedIndex = log.findIndex(entry => entry?.syncStatus === 'synced');
+    if (acknowledgedIndex < 0) break;
+    log.splice(acknowledgedIndex, 1);
   }
   return operation;
 }

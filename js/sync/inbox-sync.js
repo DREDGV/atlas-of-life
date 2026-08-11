@@ -47,11 +47,13 @@ export async function runInboxSyncCycle(options = {}){
   });
 
   let acknowledgedOperationIds = [];
+  let pushConflicts = [];
   if (batch.operations.length > 0) {
     const pushResult = await transport.push(batch);
     acknowledgedOperationIds = Array.isArray(pushResult?.acknowledgedOperationIds)
       ? pushResult.acknowledgedOperationIds
       : [];
+    pushConflicts = Array.isArray(pushResult?.conflicts) ? pushResult.conflicts : [];
   }
 
   const pullResult = await transport.pull({
@@ -73,9 +75,9 @@ export async function runInboxSyncCycle(options = {}){
     });
     const changed = acknowledged > 0 || merged.added.length > 0;
 
-    if (changed) {
-      await persist({ nextCursor: merged.nextCursor });
-    }
+    // Persist the cursor and the last successful contact even when every
+    // remote record was an already-known duplicate.
+    await persist({ nextCursor: merged.nextCursor, changed });
 
     return {
       pushed: batch.operations.length,
@@ -83,6 +85,7 @@ export async function runInboxSyncCycle(options = {}){
       received: merged.added.length,
       duplicates: merged.duplicateIds,
       conflicts: merged.conflicts,
+      pushConflicts,
       nextCursor: merged.nextCursor,
       changed,
     };

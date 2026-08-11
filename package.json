@@ -7,6 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "start:sync": "node --no-warnings server/start.js",
+    "test:sync": "node --no-warnings tests/inbox-sync-server.mjs && node --no-warnings tests/inbox-sync-e2e.mjs",
     "build:android-web": "node tools/build-android-web.mjs",
     "test:android-prep": "node tests/android-prep.mjs",
     "android:add": "npm run build:android-web && npx cap add android && node tools/configure-android-project.mjs",

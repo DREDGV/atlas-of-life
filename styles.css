@@ -172,3 +172,16 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
   .inbox-row{align-items:flex-start;flex-direction:column}
   .inbox-row-actions{width:100%;justify-content:flex-end}
 }
+
+.atlas-sync-dialog{width:min(520px,calc(100vw - 32px));border:1px solid var(--panel-2);border-radius:16px;background:var(--panel);color:var(--text);padding:0;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+.atlas-sync-dialog::backdrop{background:rgba(2,6,23,.72);backdrop-filter:blur(3px)}
+.atlas-sync-form{display:flex;flex-direction:column;gap:14px;padding:22px}
+.atlas-sync-form h2,.atlas-sync-form p{margin:0}
+.atlas-sync-form p{color:var(--muted);line-height:1.45}
+.atlas-sync-field{display:flex;flex-direction:column;gap:6px;color:var(--muted)}
+.atlas-sync-field input{box-sizing:border-box;width:100%;border:1px solid var(--panel-2);border-radius:10px;background:var(--panel-2);color:var(--text);padding:11px 12px;font:inherit}
+.atlas-sync-enabled{display:flex;align-items:center;gap:9px}
+.atlas-sync-error{color:var(--danger,#ff6b6b)}
+.atlas-sync-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+.atlas-sync-actions button{border:1px solid var(--panel-2);border-radius:10px;background:var(--panel-2);color:var(--text);padding:9px 15px;cursor:pointer}
+.atlas-sync-actions button.primary{border-color:var(--accent);background:var(--accent);color:#06111d}

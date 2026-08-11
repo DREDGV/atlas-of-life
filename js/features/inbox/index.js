@@ -1,4 +1,4 @@
-export { initInbox, openInboxCapture, openInboxList } from './view.js';
+export { initInbox, openInboxCapture, openInboxList, refreshInbox } from './view.js';
 export {
   addInboxLines,
   convertInboxItemToTask,

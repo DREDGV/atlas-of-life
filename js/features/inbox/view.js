@@ -201,3 +201,8 @@ export function initInbox(options = {}){
     }
   });
 }
+
+export function refreshInbox(){
+  updateCounter();
+  if (root && !root.hidden) openInboxList();
+}

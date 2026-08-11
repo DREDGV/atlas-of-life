@@ -1,0 +1,26 @@
+name: atlas-sync
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/sync/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - atlas_sync_data:/data
+    mem_limit: 256m
+    cpus: 0.50
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  atlas_sync_data:
+    name: atlas_sync_data

@@ -8,6 +8,8 @@ import { APP_VERSION, APP_LABEL } from '../version.js';
 import { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft } from './draft.js';
 import { registerCaptureServiceWorker, initInstallExperience, isStandalone, getServiceWorkerStatus, initCapacitorNative } from './pwa.js';
 import { initShareTarget, applyShareDraft, mergeShareWithExisting } from './share-target.js';
+import { createInboxSyncRuntime } from '../sync/runtime.js';
+import { openInboxSyncSetup } from '../sync/setup-dialog.js';
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
@@ -25,6 +27,7 @@ let storageOk = true;
 let draftSaveTimer = null;
 let hasDraft = false;
 let micPermissionRequested = false;
+let inboxSyncRuntime = null;
 
 function safeSetText(el, text) {
   if (el) el.textContent = text;
@@ -379,6 +382,7 @@ function saveCapture() {
       renderRecentItems();
       hapticSuccess();
       animateFabSaved();
+      inboxSyncRuntime?.syncNow('capture').catch(() => {});
       showToast('Запись сохранена во Входящих');
     }
   } catch (err) {
@@ -535,6 +539,44 @@ async function initVoice() {
   });
 }
 
+function initInboxSyncCapture(){
+  const backButton = document.getElementById('btnBackFromInfo');
+  const infoNote = document.querySelector('.info-note');
+  if (infoNote) infoNote.textContent = 'Записи сохраняются локально и отправляются на сервер после включения синхронизации.';
+  const settingsButton = document.createElement('button');
+  settingsButton.type = 'button';
+  settingsButton.id = 'btnSyncSettings';
+  settingsButton.className = 'capture-btn capture-btn-secondary';
+  settingsButton.textContent = 'Настроить синхронизацию';
+  backButton?.parentElement?.insertBefore(settingsButton, backButton);
+
+  inboxSyncRuntime = createInboxSyncRuntime({
+    onStatus(status){
+      const labels = {
+        disabled: 'Локально',
+        offline: 'Офлайн',
+        syncing: 'Синхронизация…',
+        synced: 'Синхронизировано',
+        conflict: 'Конфликт синхронизации',
+        error: 'Ошибка синхронизации',
+      };
+      updateStatus(labels[status.phase] || 'Локально');
+      if (status.result?.received > 0) {
+        updateCounter();
+        renderRecentItems();
+        if (currentView === 'inbox') renderInboxList();
+      }
+    },
+  });
+
+  settingsButton.addEventListener('click', async () => {
+    const saved = await openInboxSyncSetup();
+    if (saved) inboxSyncRuntime.syncNow('settings').catch(() => {});
+  });
+  inboxSyncRuntime.start();
+  try { window.atlasSync = inboxSyncRuntime; } catch (_) {}
+}
+
 function restoreDraft() {
   const draft = loadCaptureDraft();
   if (!draft || !draft.text) return;
@@ -653,6 +695,7 @@ function init() {
 
   initVoice();
   initOnlineStatus();
+  initInboxSyncCapture();
   initKeyboardViewport();
   initCapacitorNative();
 

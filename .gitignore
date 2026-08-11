@@ -13,3 +13,4 @@
 /atlas-logs-export.json
 /.playwright-cli/
 /output/playwright/
+/deploy/sync/.env
