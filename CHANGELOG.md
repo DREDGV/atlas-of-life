@@ -28,7 +28,7 @@
 ### Изменено
 - **Голосовой ввод**: микрофон запрашивает разрешение через диалог, а не системный prompt
 - **Карточки Inbox**: визуальное выделение типа записи цветом и иконкой
-- **Capacitor плагины**: добавлены @capacitor/status-bar, splash-screen и haptics
+- **Capacitor плагины**: добавлены @capacitor/status-bar, keyboard, splash-screen и haptics
 
 ---
 
