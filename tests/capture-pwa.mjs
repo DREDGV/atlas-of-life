@@ -128,9 +128,18 @@ assert(!swContent.includes('view_map'), 'Test 15: should not cache view_map');
 assert(!swContent.includes('inspector'), 'Test 15: should not cache inspector');
 console.log('✓ Test 15: service worker does not cache desktop addons');
 
-// Test 16: version is 0.9.0-alpha.2
+// Test 16: version is 0.9.0-alpha.3
 const { APP_VERSION } = await import('../js/version.js');
-assert(APP_VERSION === '0.9.0-alpha.2', 'Test 16: version should be 0.9.0-alpha.2');
-console.log('✓ Test 16: version is 0.9.0-alpha.2');
+assert(APP_VERSION === '0.9.0-alpha.3', 'Test 16: version should be 0.9.0-alpha.3');
+console.log('✓ Test 16: version is 0.9.0-alpha.3');
+
+// Test 17: Inbox renderer only uses values defined in its own scope
+const captureAppContent = readFileSync(join(projectRoot, 'js', 'capture', 'app.js'), 'utf-8');
+const inboxStart = captureAppContent.indexOf('function renderInboxList()');
+const inboxEnd = captureAppContent.indexOf('function navigateTo(view)');
+assert(inboxStart >= 0 && inboxEnd > inboxStart, 'Test 17: Inbox renderer should be present');
+const inboxRenderer = captureAppContent.slice(inboxStart, inboxEnd);
+assert(!inboxRenderer.includes('hintType'), 'Test 17: Inbox renderer must not use an undefined hintType');
+console.log('✓ Test 17: Inbox renderer does not reference undefined hintType');
 
 console.log('\n✅ All PWA tests passed.');

@@ -147,3 +147,32 @@ export function getServiceWorkerStatus() {
   if (registration.active) return 'активен';
   return 'устанавливается';
 }
+
+export async function initCapacitorNative() {
+  try {
+    const Cap = window.Capacitor;
+    if (!Cap || !Cap.isNativePlatform || !Cap.isNativePlatform()) return;
+
+    const Plugins = Cap.Plugins;
+
+    // StatusBar
+    if (Plugins.StatusBar) {
+      try {
+        await Plugins.StatusBar.setStyle({ style: 'DARK' });
+        await Plugins.StatusBar.setBackgroundColor({ color: '#0b0f17' });
+      } catch (_) {}
+    }
+
+    // Haptics reference
+    if (Plugins.Haptics) {
+      window.__capHaptics = Plugins.Haptics;
+    }
+
+    // Splash Screen — hide after init
+    if (Plugins.SplashScreen) {
+      try {
+        await Plugins.SplashScreen.hide();
+      } catch (_) {}
+    }
+  } catch (_) {}
+}

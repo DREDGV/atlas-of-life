@@ -66,6 +66,9 @@ jobs:
       - name: Generate Android project
         run: npx cap add android
 
+      - name: Configure Android package version
+        run: node tools/configure-android-project.mjs
+
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon

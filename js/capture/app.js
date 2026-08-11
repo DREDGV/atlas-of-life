@@ -6,11 +6,13 @@ import { getInboxItems } from '../features/inbox/index.js';
 import { getDeviceId } from '../core/device.js';
 import { APP_VERSION, APP_LABEL } from '../version.js';
 import { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft } from './draft.js';
-import { registerCaptureServiceWorker, initInstallExperience, isStandalone, getServiceWorkerStatus } from './pwa.js';
+import { registerCaptureServiceWorker, initInstallExperience, isStandalone, getServiceWorkerStatus, initCapacitorNative } from './pwa.js';
 import { initShareTarget, applyShareDraft, mergeShareWithExisting } from './share-target.js';
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
+const HINT_LABELS = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
+const HINT_ICONS = { task: '✓', thought: '◆', note: '¶' };
 
 let currentView = 'capture';
 let currentUserHint = null;
@@ -22,9 +24,30 @@ let toastTimer = null;
 let storageOk = true;
 let draftSaveTimer = null;
 let hasDraft = false;
+let micPermissionRequested = false;
 
 function safeSetText(el, text) {
   if (el) el.textContent = text;
+}
+
+function hapticLight() {
+  try {
+    if (window.__capHaptics) {
+      window.__capHaptics.impact({ style: 'LIGHT' });
+    } else if (navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+  } catch (_) {}
+}
+
+function hapticSuccess() {
+  try {
+    if (window.__capHaptics) {
+      window.__capHaptics.notification({ type: 'SUCCESS' });
+    } else if (navigator.vibrate) {
+      navigator.vibrate([10, 30, 10]);
+    }
+  } catch (_) {}
 }
 
 function safeGetValue(el) {
@@ -127,8 +150,9 @@ function renderRecentItems() {
   }
 
   items.forEach(item => {
+    const hintType = item.userHint || '';
     const card = document.createElement('div');
-    card.className = 'capture-card';
+    card.className = 'capture-card' + (hintType ? ` capture-card--${hintType}` : '');
 
     const textEl = document.createElement('div');
     textEl.className = 'capture-card-text';
@@ -154,18 +178,20 @@ function renderRecentItems() {
     time.className = 'capture-card-time';
     time.textContent = formatTime(item.createdAt);
 
-    const typeIcon = document.createElement('span');
-    typeIcon.className = 'capture-card-type';
-    typeIcon.textContent = item.inputType === 'voice' ? '🎤' : '📝';
-
-    const hint = document.createElement('span');
-    hint.className = 'capture-card-hint';
-    if (item.userHint) {
-      const hintLabels = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
-      hint.textContent = hintLabels[item.userHint] || '';
+    if (hintType) {
+      const badge = document.createElement('span');
+      badge.className = `capture-card-badge capture-card-badge--${hintType}`;
+      badge.textContent = HINT_LABELS[hintType] || '';
+      meta.appendChild(badge);
     }
 
-    meta.append(time, typeIcon, hint);
+    if (item.inputType === 'voice') {
+      const voiceBadge = document.createElement('span');
+      voiceBadge.className = 'capture-card-badge capture-card-badge--voice';
+      voiceBadge.textContent = '🎤 голос';
+      meta.appendChild(voiceBadge);
+    }
+
     card.append(textEl, meta);
     container.appendChild(card);
   });
@@ -192,8 +218,12 @@ function renderInboxList() {
   }
 
   items.forEach(item => {
+    const raw = (item.userHint || '').toLowerCase();
+    const labelMap = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
+    const label = labelMap[raw] || raw || '';
+
     const row = document.createElement('div');
-    row.className = 'inbox-row';
+    row.className = 'inbox-row capture-card' + (raw ? ` capture-card--${raw}` : '');
 
     const body = document.createElement('div');
     body.className = 'inbox-row-body';
@@ -208,20 +238,26 @@ function renderInboxList() {
     const time = document.createElement('span');
     time.textContent = formatTime(item.createdAt);
 
-    const typeIcon = document.createElement('span');
-    typeIcon.textContent = item.inputType === 'voice' ? '🎤' : '📝';
-
     const source = document.createElement('span');
     source.className = 'inbox-row-source';
     source.textContent = item.source === 'mobile-capture' ? 'Мобильный' : 'Десктоп';
 
-    const hint = document.createElement('span');
-    if (item.userHint) {
-      const hintLabels = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
-      hint.textContent = hintLabels[item.userHint];
+    meta.append(time, source);
+
+    if (raw) {
+      const badge = document.createElement('span');
+      badge.className = `capture-card-badge capture-card-badge--${raw}`;
+      badge.textContent = label;
+      meta.appendChild(badge);
     }
 
-    meta.append(time, typeIcon, source, hint);
+    if (item.inputType === 'voice') {
+      const voiceBadge = document.createElement('span');
+      voiceBadge.className = 'capture-card-badge capture-card-badge--voice';
+      voiceBadge.textContent = '🎤';
+      meta.appendChild(voiceBadge);
+    }
+
     body.append(textEl, meta);
 
     const actions = document.createElement('div');
@@ -234,6 +270,7 @@ function renderInboxList() {
     deleteBtn.title = 'Удалить запись';
     deleteBtn.textContent = '🗑';
     deleteBtn.addEventListener('click', () => {
+      hapticLight();
       lastRemoval = deleteInbox(item.id);
       if (lastRemoval) {
         updateCounter();
@@ -258,6 +295,17 @@ function formatTime(ts) {
     return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   }
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
+function animateFabSaved() {
+  const fab = document.getElementById('btnSave');
+  if (!fab) return;
+  fab.classList.add('capture-fab--saved');
+  fab.disabled = true;
+  setTimeout(() => {
+    fab.classList.remove('capture-fab--saved');
+    fab.disabled = false;
+  }, 600);
 }
 
 function selectHint(hint) {
@@ -327,6 +375,8 @@ function saveCapture() {
       updateStatus('Сохранено на этом устройстве');
       updateCounter();
       renderRecentItems();
+      hapticSuccess();
+      animateFabSaved();
       showToast('Запись сохранена во Входящих');
     }
   } catch (err) {
@@ -335,10 +385,120 @@ function saveCapture() {
   }
 }
 
-function initVoice() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+function checkMicPermission() {
+  if (!navigator.permissions || !navigator.permissions.query) return Promise.resolve('prompt');
+  return navigator.permissions.query({ name: 'microphone' }).then(result => result.state).catch(() => 'prompt');
+}
+
+function requestMicAccess() {
+  if (!navigator.mediaDevices?.getUserMedia) return Promise.resolve('unsupported');
+  return navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      stream.getTracks().forEach(t => t.stop());
+      return 'granted';
+    })
+    .catch(() => 'denied');
+}
+
+function showMicPermissionDialog() {
+  return new Promise(resolve => {
+    const dialog = document.getElementById('micDialog');
+    if (!dialog) { resolve(false); return; }
+
+    const btnAllow = document.getElementById('btnMicAllow');
+    const btnDeny = document.getElementById('btnMicDeny');
+
+    function cleanup() {
+      btnAllow.removeEventListener('click', onAllow);
+      btnDeny.removeEventListener('click', onDeny);
+      dialog.close();
+    }
+
+    function onAllow() { cleanup(); resolve(true); }
+    function onDeny() { cleanup(); resolve(false); }
+
+    btnAllow.addEventListener('click', onAllow);
+    btnDeny.addEventListener('click', onDeny);
+    dialog.showModal();
+  });
+}
+
+function startVoiceRecognition() {
   const btnMic = document.getElementById('btnMic');
   const voiceStatus = document.getElementById('voiceStatus');
+
+  if (!recognition) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      safeSetText(voiceStatus, 'Голосовой ввод не поддерживается этим браузером.');
+      return;
+    }
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      btnMic.classList.add('recording');
+      btnMic.setAttribute('aria-pressed', 'true');
+      safeSetText(voiceStatus, 'Слушаю…');
+      hapticLight();
+    };
+
+    recognition.onresult = (event) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          final += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+
+      const textarea = document.getElementById('captureText');
+      if (final) {
+        const current = safeGetValue(textarea);
+        textarea.value = current ? current + ' ' + final : final;
+        currentInputType = 'voice';
+        safeSetText(voiceStatus, 'Проверьте текст');
+        scheduleDraftSave();
+      } else if (interim) {
+        safeSetText(voiceStatus, 'Распознаю…');
+      }
+    };
+
+    recognition.onerror = (event) => {
+      isRecording = false;
+      btnMic.classList.remove('recording');
+      btnMic.setAttribute('aria-pressed', 'false');
+      if (event.error === 'not-allowed') {
+        safeSetText(voiceStatus, 'Доступ к микрофону запрещён.');
+      } else {
+        safeSetText(voiceStatus, 'Ошибка распознавания');
+      }
+    };
+
+    recognition.onend = () => {
+      isRecording = false;
+      btnMic.classList.remove('recording');
+      btnMic.setAttribute('aria-pressed', 'false');
+    };
+  }
+
+  try {
+    recognition.start();
+  } catch (e) {
+    safeSetText(voiceStatus, 'Не удалось запустить распознавание');
+  }
+}
+
+async function initVoice() {
+  const btnMic = document.getElementById('btnMic');
+  const voiceStatus = document.getElementById('voiceStatus');
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
     btnMic.disabled = true;
@@ -347,68 +507,28 @@ function initVoice() {
     return;
   }
 
-  recognition = new SpeechRecognition();
-  recognition.lang = 'ru-RU';
-  recognition.continuous = false;
-  recognition.interimResults = true;
-
-  recognition.onstart = () => {
-    isRecording = true;
-    btnMic.classList.add('recording');
-    btnMic.setAttribute('aria-pressed', 'true');
-    safeSetText(voiceStatus, 'Слушаю…');
-  };
-
-  recognition.onresult = (event) => {
-    let interim = '';
-    let final = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        final += transcript;
-      } else {
-        interim += transcript;
-      }
-    }
-
-    const textarea = document.getElementById('captureText');
-    if (final) {
-      const current = safeGetValue(textarea);
-      textarea.value = current ? current + ' ' + final : final;
-      currentInputType = 'voice';
-      safeSetText(voiceStatus, 'Проверьте текст');
-      scheduleDraftSave();
-    } else if (interim) {
-      safeSetText(voiceStatus, 'Распознаю…');
-    }
-  };
-
-  recognition.onerror = (event) => {
-    isRecording = false;
-    btnMic.classList.remove('recording');
-    btnMic.setAttribute('aria-pressed', 'false');
-    if (event.error === 'not-allowed') {
-      safeSetText(voiceStatus, 'Доступ к микрофону запрещён. Разрешите в настройках браузера.');
-    } else {
-      safeSetText(voiceStatus, 'Ошибка распознавания');
-    }
-  };
-
-  recognition.onend = () => {
-    isRecording = false;
-    btnMic.classList.remove('recording');
-    btnMic.setAttribute('aria-pressed', 'false');
-  };
-
-  btnMic.addEventListener('click', () => {
+  btnMic.addEventListener('click', async () => {
     if (isRecording) {
       recognition.stop();
-    } else {
-      try {
-        recognition.start();
-      } catch (e) {
-        safeSetText(voiceStatus, 'Не удалось запустить распознавание');
+      return;
+    }
+
+    const status = await checkMicPermission();
+    if (status === 'granted') {
+      startVoiceRecognition();
+    } else if (!micPermissionRequested) {
+      const approved = await showMicPermissionDialog();
+      if (approved) {
+        micPermissionRequested = true;
+        const result = await requestMicAccess();
+        if (result === 'granted') {
+          startVoiceRecognition();
+        } else {
+          safeSetText(voiceStatus, 'Не удалось получить доступ к микрофону.');
+        }
       }
+    } else {
+      safeSetText(voiceStatus, 'Доступ к микрофону запрещён. Разрешите в настройках устройства.');
     }
   });
 }
@@ -531,6 +651,16 @@ function init() {
 
   initVoice();
   initOnlineStatus();
+  initCapacitorNative();
+
+  // Autofocus textarea on capture view
+  if (currentView === 'capture') {
+    const textarea = document.getElementById('captureText');
+    if (textarea) {
+      setTimeout(() => textarea.focus(), 100);
+    }
+  }
+
   registerCaptureServiceWorker({
     showToast,
     flushDraft: () => {
@@ -685,7 +815,14 @@ function navigateTo(view) {
     navInbox.setAttribute('aria-current', 'page');
   }
 
-  if (view === 'capture') renderRecentItems();
+  const fab = document.getElementById('btnSave');
+  if (fab) fab.style.display = view === 'capture' ? '' : 'none';
+
+  if (view === 'capture') {
+    renderRecentItems();
+    const textarea = document.getElementById('captureText');
+    if (textarea) setTimeout(() => textarea.focus(), 100);
+  }
   if (view === 'inbox') renderInboxList();
   if (view === 'info') updateInfoPanel();
 

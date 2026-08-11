@@ -1,5 +1,20 @@
 {
   "appId": "com.dredgv.atlas.capture",
   "appName": "Atlas Capture",
-  "webDir": "dist/android"
+  "webDir": "dist/android",
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 1200,
+      "backgroundColor": "#0b0f17",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": true
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0b0f17"
+    }
+  }
 }
