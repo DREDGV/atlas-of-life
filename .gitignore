@@ -6,6 +6,10 @@
 !/.vscode/settings.json
 /dist/
 /build/
+/android/
+*.jks
+*.keystore
+*.p12
 /atlas-logs-export.json
 /.playwright-cli/
 /output/playwright/

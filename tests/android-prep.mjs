@@ -10,6 +10,7 @@ function assert(condition, message) {
 
 const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'));
 const config = JSON.parse(readFileSync(join(projectRoot, 'capacitor.config.json'), 'utf8'));
+const androidConfigurator = readFileSync(join(projectRoot, 'tools', 'configure-android-project.mjs'), 'utf8');
 
 assert(packageJson.engines.node === '>=22', 'Android build must require Node.js 22+.');
 assert(packageJson.dependencies['@capacitor/core'] === '8.5.0', 'Capacitor core must be pinned.');
@@ -24,6 +25,8 @@ assert(config.webDir === 'dist/android', 'Capacitor webDir must use the generate
 assert(config.plugins?.SplashScreen, 'Splash Screen plugin configuration is required.');
 assert(config.plugins?.StatusBar, 'Status Bar plugin configuration is required.');
 assert(!config.plugins?.NavigationBar, 'NavigationBar must not be configured without its plugin dependency.');
+assert(androidConfigurator.includes('ATLAS_STABLE_SIGNING'), 'Android builds must support stable signing.');
+assert(androidConfigurator.includes('ATLAS_ANDROID_KEYSTORE_PATH'), 'Android signing must use an injected keystore path.');
 
 for (const relativePath of [
   'capture.html',

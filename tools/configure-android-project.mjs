@@ -13,11 +13,41 @@ if (!Number.isSafeInteger(versionCode) || versionCode < 1) {
 }
 
 const current = await readFile(gradlePath, 'utf8');
-const next = current
+let next = current
   .replace(/^\s*versionCode\s+\d+\s*$/m, `        versionCode ${versionCode}`)
   .replace(/^\s*versionName\s+"[^"]*"\s*$/m, `        versionName "${packageJson.version}"`);
 
-if (next === current || !next.includes(`versionName "${packageJson.version}"`)) {
+const signingMarker = 'ATLAS_STABLE_SIGNING';
+if (!next.includes(signingMarker)) {
+  const signingConfig = `android {
+    // ${signingMarker}: use one private key for installable updates from CI.
+    signingConfigs {
+        atlas {
+            def atlasKeystorePath = System.getenv("ATLAS_ANDROID_KEYSTORE_PATH")
+            if (atlasKeystorePath) {
+                storeFile file(atlasKeystorePath)
+                storePassword System.getenv("ATLAS_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ATLAS_ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ATLAS_ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+`;
+  next = next.replace('android {', signingConfig);
+  next = next.replace(
+    '    buildTypes {',
+    `    buildTypes {
+        debug {
+            if (System.getenv("ATLAS_ANDROID_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.atlas
+            }
+        }`
+  );
+}
+
+if (!next.includes(`versionCode ${versionCode}`) ||
+    !next.includes(`versionName "${packageJson.version}"`) ||
+    !next.includes(signingMarker)) {
   throw new Error('Could not configure Android version metadata.');
 }
 
