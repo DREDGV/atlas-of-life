@@ -111,7 +111,9 @@ function showToastWithUndo(message) {
 }
 
 function updateStatus(text) {
-  safeSetText(document.getElementById('status'), text);
+  const status = document.getElementById('status');
+  safeSetText(status, text);
+  if (status) status.title = text;
 }
 
 function updateCounter() {
@@ -372,7 +374,7 @@ function saveCapture() {
         btn.setAttribute('aria-pressed', 'false');
       });
       updateClearDraftVisibility();
-      updateStatus('Сохранено на этом устройстве');
+      updateStatus('Сохранено');
       updateCounter();
       renderRecentItems();
       hapticSuccess();
@@ -380,7 +382,7 @@ function saveCapture() {
       showToast('Запись сохранена во Входящих');
     }
   } catch (err) {
-    updateStatus('Не удалось сохранить');
+    updateStatus('Ошибка сохранения');
     showToast('Ошибка сохранения');
   }
 }
@@ -555,7 +557,7 @@ function init() {
     raw = localStorage.getItem(adapter.key);
   } catch (e) {
     storageOk = false;
-    updateStatus('Локальное хранилище недоступно');
+    updateStatus('Хранилище недоступно');
     showToast('Новые записи временно не сохраняются.', 8000);
     document.getElementById('btnSave').disabled = true;
   }
@@ -565,13 +567,13 @@ function init() {
       const ok = loadState();
       if (!ok) {
         storageOk = false;
-        updateStatus('Локальные данные Atlas не удалось прочитать');
+        updateStatus('Ошибка данных');
         showToast('Запись сохранена только как черновик.', 8000);
         document.getElementById('btnSave').disabled = true;
       }
     } catch (e) {
       storageOk = false;
-      updateStatus('Локальные данные Atlas не удалось прочитать');
+      updateStatus('Ошибка данных');
       showToast('Запись сохранена только как черновик.', 8000);
       document.getElementById('btnSave').disabled = true;
     }
@@ -651,6 +653,7 @@ function init() {
 
   initVoice();
   initOnlineStatus();
+  initKeyboardViewport();
   initCapacitorNative();
 
   // Autofocus textarea on capture view
@@ -710,10 +713,12 @@ function initOnlineStatus() {
     const online = navigator.onLine;
     const statusEl = document.getElementById('status');
     if (online) {
-      safeSetText(statusEl, 'Онлайн · локальные записи сохранены');
+      safeSetText(statusEl, 'Локально');
+      statusEl.title = 'Онлайн · записи пока сохраняются только на этом устройстве';
       statusEl.classList.remove('offline');
     } else {
-      safeSetText(statusEl, 'Офлайн · записи сохраняются на устройстве');
+      safeSetText(statusEl, 'Офлайн');
+      statusEl.title = 'Офлайн · записи сохраняются на этом устройстве';
       statusEl.classList.add('offline');
     }
   };
@@ -721,6 +726,29 @@ function initOnlineStatus() {
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
   updateOnlineStatus();
+}
+
+function initKeyboardViewport() {
+  const viewport = window.visualViewport;
+  const app = document.getElementById('app');
+  if (!viewport || !app) return;
+
+  const updateKeyboardOffset = () => {
+    const keyboardOffset = Math.max(
+      0,
+      Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
+    );
+    const keyboardOpen = keyboardOffset > 80;
+    document.documentElement.style.setProperty(
+      '--keyboard-offset',
+      keyboardOpen ? `${keyboardOffset}px` : '0px'
+    );
+    app.classList.toggle('keyboard-open', keyboardOpen);
+  };
+
+  viewport.addEventListener('resize', updateKeyboardOffset);
+  viewport.addEventListener('scroll', updateKeyboardOffset);
+  updateKeyboardOffset();
 }
 
 function showShareChoiceDialog(shareDraft, existingDraft) {

@@ -27,6 +27,7 @@ assert(config.plugins?.StatusBar, 'Status Bar plugin configuration is required.'
 assert(!config.plugins?.NavigationBar, 'NavigationBar must not be configured without its plugin dependency.');
 assert(androidConfigurator.includes('ATLAS_STABLE_SIGNING'), 'Android builds must support stable signing.');
 assert(androidConfigurator.includes('ATLAS_ANDROID_KEYSTORE_PATH'), 'Android signing must use an injected keystore path.');
+assert(androidConfigurator.includes('android:windowSoftInputMode="adjustResize"'), 'Android keyboard must resize the capture viewport.');
 
 for (const relativePath of [
   'capture.html',

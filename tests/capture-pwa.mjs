@@ -142,4 +142,9 @@ const inboxRenderer = captureAppContent.slice(inboxStart, inboxEnd);
 assert(!inboxRenderer.includes('hintType'), 'Test 17: Inbox renderer must not use an undefined hintType');
 console.log('✓ Test 17: Inbox renderer does not reference undefined hintType');
 
+// Test 18: mobile keyboard keeps the save action inside the visible viewport
+assert(captureAppContent.includes('window.visualViewport'), 'Test 18: visual viewport handling should be present');
+assert(captureAppContent.includes('--keyboard-offset'), 'Test 18: keyboard offset should be propagated to CSS');
+console.log('✓ Test 18: keyboard viewport handling is present');
+
 console.log('\n✅ All PWA tests passed.');

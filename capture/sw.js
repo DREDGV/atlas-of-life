@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atlas-capture-0.9.0-alpha.3';
+const CACHE_NAME = 'atlas-capture-0.9.0-alpha.3-r2';
 
 const PRECACHE_ASSETS = [
   './',

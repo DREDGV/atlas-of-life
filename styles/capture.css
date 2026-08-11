@@ -17,6 +17,7 @@
   --header-height: 56px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --keyboard-offset: 0px;
 }
 
 *, *::before, *::after {
@@ -71,6 +72,7 @@ body {
   font-size: 18px;
   font-weight: 700;
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .capture-version {
@@ -79,13 +81,34 @@ body {
   padding: 2px 8px;
   background: var(--bg-input);
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .capture-status {
   flex: 1;
+  min-width: 0;
   text-align: right;
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 400px) {
+  .capture-header {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+
+  .capture-brand {
+    font-size: 16px;
+  }
+
+  .capture-version {
+    padding-inline: 6px;
+    font-size: 10px;
+  }
 }
 
 .capture-counter {
@@ -228,6 +251,15 @@ body {
 .capture-fab--saved {
   background: var(--green);
   transform: scale(1.1);
+}
+
+.capture-app.keyboard-open .capture-fab {
+  bottom: calc(var(--keyboard-offset) + var(--safe-bottom) + 16px);
+}
+
+.capture-app.keyboard-open .capture-nav {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 @media (min-width: 480px) {

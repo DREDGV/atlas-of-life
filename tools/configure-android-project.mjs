@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
 const gradlePath = join(projectRoot, 'android', 'app', 'build.gradle');
+const manifestPath = join(projectRoot, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
 const requestedCode = process.env.ATLAS_ANDROID_VERSION_CODE || process.env.GITHUB_RUN_NUMBER || '1';
 const versionCode = Number.parseInt(requestedCode, 10);
 
@@ -52,4 +53,18 @@ if (!next.includes(`versionCode ${versionCode}`) ||
 }
 
 await writeFile(gradlePath, next, 'utf8');
+
+const currentManifest = await readFile(manifestPath, 'utf8');
+const nextManifest = currentManifest.includes('android:windowSoftInputMode="adjustResize"')
+  ? currentManifest
+  : currentManifest.replace(
+      '<activity\n            android:configChanges',
+      '<activity\n            android:windowSoftInputMode="adjustResize"\n            android:configChanges'
+    );
+
+if (!nextManifest.includes('android:windowSoftInputMode="adjustResize"')) {
+  throw new Error('Could not configure Android keyboard resize behavior.');
+}
+
+await writeFile(manifestPath, nextManifest, 'utf8');
 console.log(`Android package version configured: ${packageJson.version} (code ${versionCode}).`);
