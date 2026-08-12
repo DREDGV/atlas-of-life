@@ -28,8 +28,9 @@ bash /root/atlas-sync-upload/deploy/vds/install-atlas-sync.sh \
   /root/node-v22.22.0-linux-x64.tar.xz
 ```
 
-The installer generates the shared bearer token once and preserves it on
-later deployments. Never paste the token into issue, chat, or service logs.
+The installer generates the server bootstrap credential once and preserves it
+on later deployments. It is used only to pair the first device or recover
+access. Never paste it into issue, chat, client settings, or service logs.
 
 ## HTTPS
 
@@ -64,3 +65,24 @@ ss -ltnp | grep ':8787 '
 Port 8787 must remain bound to `127.0.0.1`; Apache is the only public entry
 point. The current API synchronizes immutable Inbox captures only. It does not
 yet synchronize deletions, tasks, domains, projects, or complete Atlas state.
+
+## Pair the first device
+
+Create a short-lived code without displaying the bootstrap credential:
+
+```bash
+set -a
+source /etc/atlas-sync/atlas-sync.env
+set +a
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer ${ATLAS_SYNC_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  --data '{}' \
+  https://atlas.31.28.27.96.sslip.io/v1/pair/codes
+unset ATLAS_SYNC_TOKEN
+```
+
+Enter the returned eight-digit code in Atlas within five minutes. The code is
+single-use. The paired device receives its own credential and can create codes
+for other devices. Device credentials are stored as SHA-256 hashes in SQLite
+and can be revoked independently.

@@ -1,4 +1,5 @@
 export const INBOX_SYNC_CONFIG_KEY = 'atlas_inbox_sync_config_v1';
+export const DEFAULT_INBOX_SYNC_ENDPOINT = 'https://atlas.31.28.27.96.sslip.io';
 
 function normalizeEndpoint(value){
   const input = String(value || '').trim();
@@ -13,17 +14,24 @@ function normalizeEndpoint(value){
 }
 
 export function normalizeInboxSyncConfig(value){
+  const token = String(value?.token || '').trim();
+  const legacySharedCredential = /^[a-f0-9]{64}$/i.test(token);
   return {
-    enabled: value?.enabled === true,
-    endpoint: normalizeEndpoint(value?.endpoint),
-    token: String(value?.token || '').trim(),
+    enabled: value?.enabled === true && !legacySharedCredential,
+    endpoint: normalizeEndpoint(value?.endpoint) || DEFAULT_INBOX_SYNC_ENDPOINT,
+    token: legacySharedCredential ? '' : token,
   };
 }
 
 export function loadInboxSyncConfig(storage = globalThis.localStorage){
   try {
     const raw = storage?.getItem(INBOX_SYNC_CONFIG_KEY);
-    return normalizeInboxSyncConfig(raw ? JSON.parse(raw) : null);
+    const parsed = raw ? JSON.parse(raw) : null;
+    const normalized = normalizeInboxSyncConfig(parsed);
+    if (raw && parsed?.token && !normalized.token) {
+      storage?.setItem(INBOX_SYNC_CONFIG_KEY, JSON.stringify(normalized));
+    }
+    return normalized;
   } catch (_) {
     return normalizeInboxSyncConfig(null);
   }

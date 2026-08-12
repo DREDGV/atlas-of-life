@@ -1,7 +1,6 @@
 # Atlas Inbox Sync on a VDS
 
-Status: working Inbox push/pull implementation; disabled until a server address
-and token are configured on each device.
+Status: working Inbox push/pull implementation with short-code device pairing.
 
 ## Current boundary
 
@@ -40,6 +39,10 @@ record.
 ## API
 
 - `GET /health` - public health check without capture contents.
+- `POST /v1/pair/codes` - creates a single-use 8-digit code; requires an
+  existing device credential or the server bootstrap credential.
+- `POST /v1/pair/claim` - exchanges a valid code for a device credential.
+- `POST /v1/devices/revoke-self` - revokes the caller's device credential.
 - `POST /v1/inbox/push` - bearer-authenticated operation batch.
 - `GET /v1/inbox/pull?after=<cursor>&limit=<1..200>` - bearer-authenticated
   cursor pull.
@@ -57,8 +60,9 @@ powershell -ExecutionPolicy Bypass -File tools\verify-baseline.ps1
 The end-to-end test starts the real HTTP API with a temporary SQLite database,
 pushes a phone capture, pulls it into a desktop state, pushes a desktop capture,
 pulls it into the phone state, repeats the cycle, and verifies no duplicates.
-The server test also verifies authentication, conflict handling, and persistence
-across a process restart.
+The server tests also verify authentication, conflict handling, persistence
+across a process restart, one-time and expiring pairing codes, pairing attempt
+limits, hashed credentials, device-ID binding, and immediate self-revocation.
 
 ## Isolated VDS deployment
 
@@ -90,14 +94,36 @@ location / {
 }
 ```
 
-Configure the resulting HTTPS URL and the same alpha token through the
-"Синхронизация" dialog in both applications.
+The production HTTPS endpoint is built into both applications. The bootstrap
+credential remains server-side. To connect the first device, create one short
+code locally on the VDS without printing the credential:
+
+```bash
+set -a
+source /etc/atlas-sync/atlas-sync.env
+set +a
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer ${ATLAS_SYNC_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  --data '{}' \
+  https://atlas.31.28.27.96.sslip.io/v1/pair/codes
+unset ATLAS_SYNC_TOKEN
+```
+
+Enter the returned 8-digit code in Atlas Studio within five minutes. Once one
+device is connected, it can generate another single-use code from the
+"Синхронизация" dialog. Each device receives its own 256-bit credential; only
+its SHA-256 hash is stored on the server. Disconnecting a device revokes that
+credential immediately.
 
 ## Current security and product limitations
 
-- Alpha uses one shared bearer token stored in each device's local storage and
-  the server environment. Per-device pairing, hashed credentials, and
-  revocation are the next authentication increment.
+- The server bootstrap credential still exists for initial recovery and must
+  remain only in `/etc/atlas-sync/atlas-sync.env`; account-based recovery and a
+  full device-management screen are not implemented yet.
+- Pairing codes are numeric for easy entry, expire after five minutes, are
+  single-use, and have a per-client attempt limit. QR scanning is not yet
+  implemented.
 - Remote delete and Inbox processing status are not synchronized yet.
 - Domain, project, task, and full-state synchronization are not enabled.
 - Android background execution while the app is closed is not enabled.

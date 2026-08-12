@@ -56,3 +56,40 @@ export function createInboxHttpTransport(options = {}){
     },
   };
 }
+
+export function claimInboxDevice(options = {}){
+  const endpoint = normalizeEndpoint(options.endpoint);
+  return requestJson(`${endpoint}/v1/pair/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code: String(options.code || '').replace(/\D/g, ''),
+      deviceId: String(options.deviceId || ''),
+      deviceName: String(options.deviceName || ''),
+    }),
+  });
+}
+
+export function createInboxPairingCode(options = {}){
+  const endpoint = normalizeEndpoint(options.endpoint);
+  const token = String(options.token || '').trim();
+  if (!token) throw new Error('Sync token is required');
+  return requestJson(`${endpoint}/v1/pair/codes`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  });
+}
+
+export function revokeInboxDevice(options = {}){
+  const endpoint = normalizeEndpoint(options.endpoint);
+  const token = String(options.token || '').trim();
+  if (!token) throw new Error('Sync token is required');
+  return requestJson(`${endpoint}/v1/devices/revoke-self`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
