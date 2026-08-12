@@ -14,3 +14,6 @@
 /.playwright-cli/
 /output/playwright/
 /deploy/sync/.env
+/deploy/vds/*.zip
+/deploy/vds/node-*.tar.xz
+/deploy/vds/atlas-sync-upload.tar.gz
