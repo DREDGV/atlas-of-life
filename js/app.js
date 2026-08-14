@@ -15,9 +15,11 @@ import {
 import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
-import { initInbox } from "./features/inbox/index.js";
+import { initInbox, refreshInbox } from "./features/inbox/index.js";
 import { createTask } from "./core/commands.js";
 import { APP_VERSION, APP_LABEL } from "./version.js";
+import { createInboxSyncRuntime } from "./sync/runtime.js";
+import { openInboxSyncSetup } from "./sync/setup-dialog.js";
 
 // I18N
 const I18N = {
@@ -39,6 +41,41 @@ window.I18N = I18N;
 
 // Expose state globally for addons compatibility
 try { window.state = state; } catch (_) {}
+
+let inboxSyncRuntime = null;
+
+function initInboxSync(){
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'btnSync';
+  button.className = 'chip';
+  button.textContent = 'Синх: выкл';
+  button.title = 'Настроить синхронизацию Atlas';
+  const about = document.getElementById('btnAbout');
+  about?.parentElement?.insertBefore(button, about);
+
+  inboxSyncRuntime = createInboxSyncRuntime({
+    onStatus(status){
+      const labels = {
+        disabled: 'Синх: выкл',
+        offline: 'Синх: офлайн',
+        syncing: 'Синх…',
+        synced: 'Синх: готово',
+        conflict: 'Синх: конфликт',
+        error: 'Синх: ошибка',
+      };
+      button.textContent = labels[status.phase] || 'Синх';
+      button.title = status.error?.message || 'Настроить синхронизацию Atlas';
+      if (status.result?.received > 0) refreshInbox();
+    },
+  });
+  button.addEventListener('click', async () => {
+    const saved = await openInboxSyncSetup();
+    if (saved) inboxSyncRuntime.syncNow('settings').catch(() => {});
+  });
+  inboxSyncRuntime.start();
+  try { window.atlasSync = inboxSyncRuntime; } catch (_) {}
+}
 
 // ephemeral UI state
 const ui = {
@@ -1064,8 +1101,10 @@ async function init() {
       layoutMap();
       drawMap();
       updateWip();
+      inboxSyncRuntime?.syncNow('local-change').catch(() => {});
     },
   });
+  initInboxSync();
   // ensure header chips reflect persisted view
   try {
     $$(".chip").forEach((c) => {

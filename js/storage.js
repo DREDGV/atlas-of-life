@@ -4,12 +4,12 @@ import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
   if (!Array.isArray(entries)) return [];
-  return entries
+  const normalized = entries
     .filter(entry => entry && typeof entry === 'object' && entry.id && entry.type)
     .map(entry => ({
       schema: Number(entry.schema) || 1,
@@ -22,8 +22,29 @@ function normalizeOperationLog(entries){
       baseVersion: entry.baseVersion ?? null,
       payload: entry.payload ?? null,
       syncStatus: entry.syncStatus || 'pending',
-    }))
-    .slice(-OPERATION_LOG_LIMIT);
+    }));
+
+  // Never discard an operation which has not reached durable server storage.
+  // Prune the oldest acknowledged entries first; a large pending queue is
+  // allowed to exceed the soft limit and will fail-fast on localStorage quota.
+  let excess = Math.max(0, normalized.length - OPERATION_LOG_LIMIT);
+  return normalized.filter(entry => {
+    if (excess > 0 && entry.syncStatus === 'synced') {
+      excess -= 1;
+      return false;
+    }
+    return true;
+  });
+}
+
+function normalizeSyncState(value){
+  const cursor = String(value?.cursor ?? '0');
+  const lastSyncAt = Number(value?.lastSyncAt);
+  return {
+    endpoint: typeof value?.endpoint === 'string' && value.endpoint ? value.endpoint : null,
+    cursor: /^\d+$/.test(cursor) ? cursor : '0',
+    lastSyncAt: Number.isFinite(lastSyncAt) && lastSyncAt > 0 ? lastSyncAt : null,
+  };
 }
 
 function normalizeInboxEntries(entries){
@@ -87,6 +108,11 @@ const MIGRATIONS = [
     ...data,
     operationLog: normalizeOperationLog(data?.operationLog),
   }),
+  // 4 -> 5: persist the pull cursor atomically with Inbox and operation acks.
+  (data) => ({
+    ...data,
+    sync: normalizeSyncState(data?.sync),
+  }),
 ];
 
 function normalizeEntities(entities, options = {}){
@@ -119,6 +145,7 @@ export function loadState(){
     state.tasks = normalizeEntities(data.tasks);
     state.inbox = normalizeInboxEntries(data.inbox);
     state.operationLog = normalizeOperationLog(data.operationLog);
+    state.sync = normalizeSyncState(data.sync);
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -144,6 +171,7 @@ export function loadState(){
       data.tasks = state.tasks;
       data.inbox = state.inbox;
       data.operationLog = state.operationLog;
+      data.sync = state.sync;
       adapter.save(JSON.stringify(data));
     }
     return true;
@@ -163,6 +191,7 @@ export function saveState(){
       tasks: normalizeEntities(state.tasks),
       inbox: normalizeInboxEntries(state.inbox),
       operationLog: normalizeOperationLog(state.operationLog),
+      sync: normalizeSyncState(state.sync),
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,
@@ -204,6 +233,7 @@ export function exportJson(){
     tasks: normalizeEntities(state.tasks),
     inbox: normalizeInboxEntries(state.inbox),
     operationLog: normalizeOperationLog(state.operationLog),
+    sync: normalizeSyncState(state.sync),
     maxEdges: state.maxEdges,
     showLinks: !!state.showLinks,
     showAging: !!state.showAging,
@@ -242,6 +272,7 @@ export function importJson(file){
         state.tasks = normalizeEntities(data.tasks);
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
+        state.sync = normalizeSyncState(data.sync);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         if(typeof data.showLinks==='boolean') state.showLinks = data.showLinks; else state.showLinks = true;
         if(typeof data.showAging==='boolean') state.showAging = data.showAging; else state.showAging = true;
@@ -279,6 +310,7 @@ export function importJsonV26(file){
         state.tasks = normalizeEntities(data.tasks);
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
+        state.sync = normalizeSyncState(data.sync);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         state.showLinks = typeof data.showLinks==='boolean' ? data.showLinks : true;
         state.showAging = typeof data.showAging==='boolean' ? data.showAging : true;

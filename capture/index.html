@@ -45,7 +45,6 @@
               <line x1="8" y1="23" x2="16" y2="23"/>
             </svg>
           </button>
-          <button type="button" class="capture-btn capture-btn-save" id="btnSave">Сохранить</button>
         </div>
         <div class="capture-voice-status" id="voiceStatus"></div>
         <div class="capture-voice-note">Atlas не сохраняет аудиозапись. Распознавание выполняется средствами браузера.</div>
@@ -79,7 +78,7 @@
         <div class="info-status" id="infoStatus"></div>
         <div class="info-sw" id="infoSW"></div>
         <div class="info-inbox" id="infoInbox"></div>
-        <div class="info-note">Синхронизация между устройствами пока не реализована.</div>
+        <div class="info-note">Записи сохраняются локально и синхронизируются после подключения устройства.</div>
         <button type="button" class="capture-btn capture-btn-secondary" id="btnBackFromInfo">Назад</button>
       </div>
     </main>
@@ -95,6 +94,12 @@
       <button type="button" class="capture-btn capture-btn-small" id="btnUpdate">Обновить</button>
       <button type="button" class="capture-btn capture-btn-small capture-btn-secondary" id="btnUpdateLater">Позже</button>
     </div>
+
+    <button type="button" class="capture-fab" id="btnSave" aria-label="Сохранить запись">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
 
     <nav class="capture-nav">
       <button type="button" class="capture-nav-btn active" id="navCapture" data-view="capture" aria-label="Экран захвата" aria-current="page">
@@ -123,6 +128,25 @@
         <button type="button" class="capture-btn" id="btnShareAppend">Добавить</button>
         <button type="button" class="capture-btn" id="btnShareReplace">Заменить</button>
         <button type="button" class="capture-btn capture-btn-secondary" id="btnShareCancel">Не принимать</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="micDialog" class="capture-dialog">
+    <div class="capture-dialog-content">
+      <div class="mic-dialog-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </div>
+      <h3>Доступ к микрофону</h3>
+      <p>Atlas использует микрофон для голосового ввода. Распознавание выполняется средствами браузера, аудиозапись не сохраняется.</p>
+      <div class="capture-dialog-actions">
+        <button type="button" class="capture-btn" id="btnMicAllow">Разрешить</button>
+        <button type="button" class="capture-btn capture-btn-secondary" id="btnMicDeny">Не сейчас</button>
       </div>
     </div>
   </dialog>

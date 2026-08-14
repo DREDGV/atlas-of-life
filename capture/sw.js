@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atlas-capture-0.9.0-alpha.2';
+const CACHE_NAME = 'atlas-capture-0.9.0-alpha.3-r3';
 
 const PRECACHE_ASSETS = [
   './',
@@ -15,6 +15,12 @@ const PRECACHE_ASSETS = [
   '../js/core/commands.js',
   '../js/core/device.js',
   '../js/core/operations.js',
+  '../js/sync/config.js',
+  '../js/sync/http-transport.js',
+  '../js/sync/inbox-protocol.js',
+  '../js/sync/inbox-sync.js',
+  '../js/sync/runtime.js',
+  '../js/sync/setup-dialog.js',
   '../js/features/inbox/model.js',
   '../js/features/inbox/index.js',
   '../js/version.js',

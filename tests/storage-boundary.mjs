@@ -32,12 +32,16 @@ state.tasks = [{
 }];
 state.inbox = [];
 state.operationLog = [];
+state.sync = { endpoint: 'https://sync.example.test', cursor: '42', lastSyncAt: 123456 };
 
 saveState();
 const stored = JSON.parse(memory.get('atlas_v2_data'));
 assert(!('_type' in stored.domains[0]), 'Domain UI type must not cross the storage boundary');
 assert(!('_type' in stored.projects[0]), 'Project UI type must not cross the storage boundary');
 assert(!('_type' in stored.tasks[0]), 'Task UI type must not cross the storage boundary');
+assert(stored.sync.cursor === '42', 'Server cursor must be stored with Atlas state');
+assert(stored.sync.endpoint === 'https://sync.example.test', 'Server cursor must be tied to its endpoint');
+assert(stored.sync.lastSyncAt === 123456, 'Last successful sync time must be stored');
 
 stored.domains[0]._type = 'domain';
 stored.projects[0]._type = 'project';
@@ -47,5 +51,7 @@ assert(loadState(), 'Stored state must load');
 assert(!('_type' in state.domains[0]), 'Domain UI type must be removed while loading');
 assert(!('_type' in state.projects[0]), 'Project UI type must be removed while loading');
 assert(!('_type' in state.tasks[0]), 'Task UI type must be removed while loading');
+assert(state.sync.cursor === '42', 'Server cursor must survive reload');
+assert(state.sync.endpoint === 'https://sync.example.test', 'Server endpoint must survive reload');
 
 console.log('Storage boundary test passed.');

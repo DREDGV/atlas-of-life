@@ -11,6 +11,7 @@ export const state = {
   tasks:[],
   inbox:[],
   operationLog:[],
+  sync:{ endpoint:null, cursor:'0', lastSyncAt:null },
   maxEdges:300
 };
 

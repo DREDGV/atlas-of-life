@@ -17,6 +17,7 @@
   --header-height: 56px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --keyboard-offset: 0px;
 }
 
 *, *::before, *::after {
@@ -71,6 +72,7 @@ body {
   font-size: 18px;
   font-weight: 700;
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .capture-version {
@@ -79,13 +81,34 @@ body {
   padding: 2px 8px;
   background: var(--bg-input);
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .capture-status {
   flex: 1;
+  min-width: 0;
   text-align: right;
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 400px) {
+  .capture-header {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+
+  .capture-brand {
+    font-size: 16px;
+  }
+
+  .capture-version {
+    padding-inline: 6px;
+    font-size: 10px;
+  }
 }
 
 .capture-counter {
@@ -186,6 +209,63 @@ body {
 .capture-actions {
   display: flex;
   gap: 12px;
+}
+
+/* FAB — floating save button */
+.capture-fab {
+  position: fixed;
+  bottom: calc(var(--nav-height) + var(--safe-bottom) + 20px);
+  right: 20px;
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  border: none;
+  background: var(--accent);
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(45, 212, 191, 0.35), 0 2px 6px rgba(0,0,0,0.3);
+  cursor: pointer;
+  z-index: 120;
+  transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.capture-fab:active {
+  transform: scale(0.92);
+  box-shadow: 0 2px 8px rgba(45, 212, 191, 0.25);
+}
+
+.capture-fab:hover {
+  box-shadow: 0 6px 20px rgba(45, 212, 191, 0.45), 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.capture-fab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.capture-fab--saved {
+  background: var(--green);
+  transform: scale(1.1);
+}
+
+.capture-app.keyboard-open .capture-fab {
+  bottom: calc(var(--keyboard-offset) + var(--safe-bottom) + 16px);
+}
+
+.capture-app.keyboard-open .capture-nav {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media (min-width: 480px) {
+  .capture-fab {
+    right: calc(50% - 240px + 20px);
+  }
 }
 
 .capture-btn {
@@ -326,10 +406,61 @@ body {
 }
 
 .capture-card {
-  padding: 12px;
+  padding: 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
+  border-left: 4px solid var(--border);
+  transition: border-color 0.2s, transform 0.1s;
+  position: relative;
+}
+
+.capture-card:active {
+  transform: scale(0.985);
+}
+
+.capture-card--task {
+  border-left-color: var(--green);
+}
+
+.capture-card--thought {
+  border-left-color: var(--amber);
+}
+
+.capture-card--note {
+  border-left-color: var(--purple);
+}
+
+.capture-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.capture-card-badge--task {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--green);
+}
+
+.capture-card-badge--thought {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--amber);
+}
+
+.capture-card-badge--note {
+  background: rgba(167, 139, 250, 0.12);
+  color: var(--purple);
+}
+
+.capture-card-badge--voice {
+  background: rgba(45, 212, 191, 0.1);
+  color: var(--accent);
 }
 
 .capture-card-text {
@@ -460,11 +591,17 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px;
+  padding: 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
+  border-left: 4px solid var(--border);
+  transition: border-color 0.2s;
 }
+
+.inbox-row.capture-card--task { border-left-color: var(--green); }
+.inbox-row.capture-card--thought { border-left-color: var(--amber); }
+.inbox-row.capture-card--note { border-left-color: var(--purple); }
 
 .inbox-row-body {
   flex: 1;
@@ -765,3 +902,34 @@ body {
     flex-direction: row;
   }
 }
+
+.mic-dialog-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.atlas-sync-dialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--border);border-radius:18px;background:var(--bg-card);color:var(--text);padding:0;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.atlas-sync-dialog::backdrop{background:rgba(2,6,23,.75);backdrop-filter:blur(3px)}
+.atlas-sync-form{display:flex;flex-direction:column;gap:14px;padding:20px}
+.atlas-sync-form h2,.atlas-sync-form p{margin:0}
+.atlas-sync-form p{color:var(--text-muted);line-height:1.45}
+.atlas-sync-field{display:flex;flex-direction:column;gap:6px;color:var(--text-muted)}
+.atlas-sync-field input{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:12px;background:var(--bg-input);color:var(--text);padding:12px;font:inherit}
+.atlas-sync-enabled{display:flex;align-items:center;gap:9px}
+.atlas-sync-error{color:#fb7185}
+.atlas-sync-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+.atlas-sync-actions button{border:1px solid var(--border);border-radius:12px;background:var(--bg-input);color:var(--text);padding:10px 15px;font:inherit}
+.atlas-sync-actions button.primary{border-color:var(--accent);background:var(--accent);color:#051715}
+.atlas-sync-pairing{display:flex;flex-direction:column;gap:12px}
+.atlas-sync-pairing button{border:1px solid var(--border);border-radius:12px;background:var(--bg-input);color:var(--text);padding:12px 15px;font:inherit}
+.atlas-sync-pairing button.danger{color:#fb7185}
+.atlas-sync-connected{color:#5eead4;font-weight:600}
+.atlas-sync-code-input{box-sizing:border-box;width:100%;border:1px solid var(--accent);border-radius:14px;background:var(--bg-input);color:var(--text);padding:14px;text-align:center;font:700 1.6rem ui-monospace,monospace;letter-spacing:.16em}
+.atlas-sync-code-result{border:1px solid var(--accent);border-radius:14px;background:rgba(45,212,191,.08);padding:14px;text-align:center;color:#5eead4;font:700 1.8rem ui-monospace,monospace;letter-spacing:.16em;user-select:all}
