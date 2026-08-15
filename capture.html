@@ -3,91 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0f17" />
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
   <title>Atlas Capture</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%232dd4bf'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="styles/capture.css" />
+  <script>
+    (function() {
+      var search = window.location.search || '';
+      var hash = window.location.hash || '';
+      window.location.replace('./capture/' + search + hash);
+    })();
+  </script>
 </head>
 <body>
-  <div id="app" class="capture-app">
-    <header class="capture-header">
-      <div class="capture-brand">Atlas Capture</div>
-      <div class="capture-version" id="version"></div>
-      <div class="capture-status" id="status">Локальный режим</div>
-      <div class="capture-counter" id="counter">0</div>
-    </header>
-
-    <main class="capture-content" id="captureView">
-      <div class="capture-input-group">
-        <textarea
-          id="captureText"
-          class="capture-textarea"
-          placeholder="Что сохранить?"
-          rows="4"
-        ></textarea>
-        <div class="capture-hints">
-          <button type="button" class="capture-hint" data-hint="task" aria-pressed="false">Задача</button>
-          <button type="button" class="capture-hint" data-hint="thought" aria-pressed="false">Мысль</button>
-          <button type="button" class="capture-hint" data-hint="note" aria-pressed="false">Заметка</button>
-        </div>
-        <div class="capture-actions">
-          <button type="button" class="capture-btn capture-btn-mic" id="btnMic" aria-label="Голосовой ввод" aria-pressed="false" title="Голосовой ввод">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              <line x1="12" y1="19" x2="12" y2="23"/>
-              <line x1="8" y1="23" x2="16" y2="23"/>
-            </svg>
-          </button>
-          <button type="button" class="capture-btn capture-btn-save" id="btnSave">Сохранить</button>
-        </div>
-        <div class="capture-voice-status" id="voiceStatus"></div>
-        <div class="capture-voice-note">Atlas не сохраняет аудиозапись. Распознавание выполняется средствами браузера.</div>
-        <button type="button" class="capture-clear-draft" id="btnClearDraft" hidden>Очистить черновик</button>
-      </div>
-
-      <div class="capture-recent">
-        <div class="capture-recent-header">
-          <h3>Последние записи</h3>
-          <button type="button" class="capture-link" id="btnAllInbox">Все входящие</button>
-        </div>
-        <div class="capture-recent-list" id="recentList"></div>
-      </div>
-    </main>
-
-    <main class="capture-content" id="inboxView" hidden>
-      <div class="inbox-header">
-        <h2>Входящие</h2>
-        <div class="inbox-count" id="inboxCount">0 записей</div>
-      </div>
-      <div class="inbox-list" id="inboxList"></div>
-      <div class="inbox-actions-bottom">
-        <button type="button" class="capture-btn capture-btn-save" id="btnNewCapture">+ Новая запись</button>
-      </div>
-    </main>
-
-    <nav class="capture-nav">
-      <button type="button" class="capture-nav-btn active" id="navCapture" data-view="capture" aria-label="Экран захвата" aria-current="page">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-        Захват
-      </button>
-      <button type="button" class="capture-nav-btn" id="navInbox" data-view="inbox" aria-label="Список входящих">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 12h-6l-2 3h-4l-2-3H2"/>
-          <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
-        </svg>
-        Входящие
-      </button>
-    </nav>
-  </div>
-
-  <div class="capture-toast" id="toast" hidden></div>
-
-  <script type="module" src="js/capture/app.js"></script>
+  <p>Перенаправление на <a href="./capture/">Atlas Capture</a>...</p>
 </body>
 </html>
