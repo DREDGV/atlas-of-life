@@ -1,0 +1,79 @@
+name: Android debug APK
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'capture/**'
+      - 'js/**'
+      - 'styles/**'
+      - 'tools/build-android-web.mjs'
+      - 'tests/android-prep.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/android-debug.yml'
+  push:
+    branches:
+      - feat/android-capture-shell
+    paths:
+      - 'capture/**'
+      - 'js/**'
+      - 'styles/**'
+      - 'tools/build-android-web.mjs'
+      - 'tests/android-prep.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/android-debug.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Android preparation
+        run: npm run test:android-prep
+
+      - name: Prepare web bundle
+        run: npm run build:android-web
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-capture-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
