@@ -12,6 +12,7 @@ const PRECACHE_ASSETS = [
   '../js/state.js',
   '../js/storage.js',
   '../js/storageAdapter.js',
+  '../js/utils/analytics.js',
   '../js/core/commands.js',
   '../js/core/device.js',
   '../js/core/operations.js',

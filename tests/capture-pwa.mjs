@@ -128,21 +128,42 @@ assert(!swContent.includes('view_map'), 'Test 15: should not cache view_map');
 assert(!swContent.includes('inspector'), 'Test 15: should not cache inspector');
 console.log('✓ Test 15: service worker does not cache desktop addons');
 
-// Test 16: Mobile Capture imports the Inbox model without the desktop view
-const captureAppContent = readFileSync(join(projectRoot, 'js', 'capture', 'app.js'), 'utf-8');
+// Test 16: the complete Mobile Capture import graph is precached without desktop Inbox UI
+const captureEntry = join(projectRoot, 'js', 'capture', 'app.js');
+
+function collectStaticImportGraph(filePath, visited = new Set()) {
+  if (visited.has(filePath)) return visited;
+  visited.add(filePath);
+
+  const source = readFileSync(filePath, 'utf-8');
+  const importPattern = /(?:import|export)\\s+(?:[^'"]*?\\s+from\\s+)?['"]([^'"]+)['"]/g;
+
+  for (const match of source.matchAll(importPattern)) {
+    if (!match[1].startsWith('.')) continue;
+    collectStaticImportGraph(join(dirname(filePath), match[1]), visited);
+  }
+
+  return visited;
+}
+
+const captureGraph = collectStaticImportGraph(captureEntry);
+const precachePaths = new Set(
+  precacheItems.map(item => join(projectRoot, 'capture', item))
+);
+const missingCaptureModules = [...captureGraph].filter(filePath => !precachePaths.has(filePath));
+
 assert(
-  captureAppContent.includes("from '../features/inbox/model.js'"),
-  'Test 16: Mobile Capture should import the Inbox model directly'
+  missingCaptureModules.length === 0,
+  `Test 16: missing Capture modules in precache: ${missingCaptureModules.join(', ')}`
 );
 assert(
-  !captureAppContent.includes("from '../features/inbox/index.js'"),
-  'Test 16: Mobile Capture should not import the desktop Inbox view'
+  ![...captureGraph].some(filePath =>
+    filePath.endsWith(join('features', 'inbox', 'index.js')) ||
+    filePath.endsWith(join('features', 'inbox', 'view.js'))
+  ),
+  'Test 16: Mobile Capture import graph should not contain desktop Inbox UI'
 );
-assert(
-  !swContent.includes('../js/features/inbox/index.js'),
-  'Test 16: service worker should not precache the desktop Inbox view'
-);
-console.log('✓ Test 16: Mobile Capture excludes the desktop Inbox view');
+console.log('✓ Test 16: complete Mobile Capture import graph is isolated and precached');
 
 // Test 17: version is 0.9.0-alpha.2
 const { APP_VERSION } = await import('../js/version.js');
