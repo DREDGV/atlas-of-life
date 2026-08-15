@@ -4,22 +4,31 @@ import adapter from '../storageAdapter.js';
 import { captureInbox, deleteInbox, undoDeleteInbox } from '../core/commands.js';
 import { getInboxItems } from '../features/inbox/model.js';
 import { getDeviceId } from '../core/device.js';
-import { APP_VERSION, APP_LABEL } from '../version.js';
+import { APP_VERSION } from '../version.js';
 import { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft } from './draft.js';
-import { registerCaptureServiceWorker, initInstallExperience, isStandalone, getServiceWorkerStatus } from './pwa.js';
-import { initShareTarget, applyShareDraft, mergeShareWithExisting } from './share-target.js';
+import { registerCaptureServiceWorker, initInstallExperience, getServiceWorkerStatus } from './pwa.js';
+import { initShareTarget, applyShareDraft, mergeShareDrafts, resolveShortcutEntryPoint } from './share-target.js';
+import {
+  VOICE_STATES,
+  appendFinalTranscript,
+  createVoiceController,
+  queryMicrophonePermission,
+} from './voice.js';
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
+const MIC_INTRO_KEY = 'atlas_capture_mic_intro_v1';
 
 let currentView = 'capture';
 let currentUserHint = null;
 let currentInputType = 'text';
-let isRecording = false;
-let recognition = null;
+let currentEntryPoint = 'app';
+let voiceController = null;
+let microphonePermission = 'unknown';
 let lastRemoval = null;
 let toastTimer = null;
 let storageOk = true;
+let draftStorageOk = true;
 let draftSaveTimer = null;
 let hasDraft = false;
 
@@ -99,17 +108,34 @@ function updateCounter() {
 function scheduleDraftSave() {
   if (draftSaveTimer) clearTimeout(draftSaveTimer);
   draftSaveTimer = setTimeout(() => {
-    const textarea = document.getElementById('captureText');
-    const text = safeGetValue(textarea).trim();
-    if (text) {
-      hasDraft = true;
-      saveCaptureDraft({ text, userHint: currentUserHint, inputType: currentInputType });
-    } else {
-      hasDraft = false;
-      clearCaptureDraft();
-    }
-    updateClearDraftVisibility();
+    draftSaveTimer = null;
+    flushCaptureDraft();
   }, DRAFT_DEBOUNCE_MS);
+}
+
+export function flushCaptureDraft() {
+  if (draftSaveTimer) {
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = null;
+  }
+
+  const text = safeGetValue(document.getElementById('captureText'));
+  if (!text.trim()) {
+    hasDraft = false;
+    draftStorageOk = clearCaptureDraft();
+    updateClearDraftVisibility();
+    return draftStorageOk;
+  }
+
+  hasDraft = true;
+  draftStorageOk = saveCaptureDraft({
+    text,
+    userHint: currentUserHint,
+    inputType: currentInputType,
+    entryPoint: currentEntryPoint,
+  });
+  updateClearDraftVisibility();
+  return draftStorageOk;
 }
 
 function renderRecentItems() {
@@ -290,13 +316,16 @@ function restoreHintUI() {
 
 function saveCapture() {
   if (!storageOk) {
-    showToast('Хранилище недоступно');
+    const draftSaved = flushCaptureDraft();
+    showToast(draftSaved
+      ? 'Не удалось сохранить во Входящие. Текст оставлен в черновике.'
+      : 'Не удалось сохранить запись. Текст оставлен на экране — скопируйте его перед закрытием.', 8000);
     return;
   }
 
   const textarea = document.getElementById('captureText');
-  const text = safeGetValue(textarea).trim();
-  if (!text) {
+  const text = safeGetValue(textarea);
+  if (!text.trim()) {
     textarea.focus();
     return;
   }
@@ -310,6 +339,7 @@ function saveCapture() {
       status: 'new',
       userHint: currentUserHint,
       deviceId: getDeviceId(),
+      entryPoint: currentEntryPoint,
       splitLines: false,
     });
 
@@ -319,6 +349,7 @@ function saveCapture() {
       hasDraft = false;
       currentUserHint = null;
       currentInputType = 'text';
+      currentEntryPoint = 'app';
       document.querySelectorAll('.capture-hint').forEach(btn => {
         btn.classList.remove('active');
         btn.setAttribute('aria-pressed', 'false');
@@ -331,85 +362,171 @@ function saveCapture() {
     }
   } catch (err) {
     updateStatus('Не удалось сохранить');
-    showToast('Ошибка сохранения');
+    const draftSaved = flushCaptureDraft();
+    showToast(draftSaved
+      ? 'Не удалось сохранить во Входящие. Текст оставлен в черновике.'
+      : 'Не удалось сохранить запись. Текст оставлен на экране — скопируйте его перед закрытием.', 8000);
   }
 }
 
-function initVoice() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const btnMic = document.getElementById('btnMic');
-  const voiceStatus = document.getElementById('voiceStatus');
+const VOICE_STATUS_TEXT = {
+  [VOICE_STATES.UNSUPPORTED]: 'Голосовой ввод недоступен в этом браузере. Текстовые записи продолжают работать.',
+  [VOICE_STATES.IDLE]: '',
+  [VOICE_STATES.REQUESTING]: 'Запрашиваю доступ…',
+  [VOICE_STATES.LISTENING]: 'Слушаю…',
+  [VOICE_STATES.PROCESSING]: 'Распознаю…',
+  [VOICE_STATES.RESULT]: 'Проверьте текст',
+  [VOICE_STATES.NO_SPEECH]: 'Речь не распознана. Попробуйте ещё раз.',
+  [VOICE_STATES.DENIED]: 'Микрофон отключён. Разрешите доступ в настройках сайта / браузера.',
+  [VOICE_STATES.AUDIO_ERROR]: 'Не удалось получить доступ к микрофону.',
+  [VOICE_STATES.NETWORK_ERROR]: 'Для голосового распознавания сейчас нет соединения.',
+  [VOICE_STATES.LANGUAGE_ERROR]: 'Русский язык распознавания сейчас недоступен.',
+  [VOICE_STATES.GENERIC_ERROR]: 'Не удалось распознать речь.',
+  [VOICE_STATES.ABORTED]: 'Голосовой ввод остановлен.',
+};
 
-  if (!SpeechRecognition) {
-    btnMic.disabled = true;
-    btnMic.title = 'Голосовой ввод не поддерживается этим браузером';
-    safeSetText(voiceStatus, 'Голосовой ввод не поддерживается этим браузером.');
+function updateVoiceUI(state) {
+  const btnMic = document.getElementById('btnMic');
+  const listening = state === VOICE_STATES.LISTENING;
+  btnMic.classList.toggle('recording', listening);
+  btnMic.setAttribute('aria-pressed', listening ? 'true' : 'false');
+  safeSetText(document.getElementById('voiceStatus'), VOICE_STATUS_TEXT[state] || '');
+}
+
+function hasSeenMicIntro() {
+  try {
+    return localStorage.getItem(MIC_INTRO_KEY) === 'seen';
+  } catch (_) {
+    return false;
+  }
+}
+
+function markMicIntroSeen() {
+  try {
+    localStorage.setItem(MIC_INTRO_KEY, 'seen');
+  } catch (_) {}
+}
+
+function showMicIntroDialog() {
+  const dialog = document.getElementById('micIntroDialog');
+  if (!dialog) return Promise.resolve(true);
+  markMicIntroSeen();
+
+  return new Promise(resolve => {
+    const btnContinue = document.getElementById('btnMicIntroContinue');
+    const btnLater = document.getElementById('btnMicIntroLater');
+
+    function finish(shouldContinue) {
+      btnContinue.removeEventListener('click', onContinue);
+      btnLater.removeEventListener('click', onLater);
+      dialog.removeEventListener('cancel', onCancel);
+      if (dialog.open) dialog.close();
+      resolve(shouldContinue);
+    }
+    function onContinue() { finish(true); }
+    function onLater() { finish(false); }
+    function onCancel(event) {
+      event.preventDefault();
+      finish(false);
+    }
+
+    btnContinue.addEventListener('click', onContinue);
+    btnLater.addEventListener('click', onLater);
+    dialog.addEventListener('cancel', onCancel);
+    dialog.showModal();
+  });
+}
+
+function showMicDeniedDialog() {
+  const dialog = document.getElementById('micDeniedDialog');
+  if (!dialog || dialog.open) return;
+  const btnHelp = document.getElementById('btnMicDeniedHelp');
+  const btnText = document.getElementById('btnMicUseText');
+  const help = document.getElementById('micDeniedInstructions');
+
+  help.hidden = true;
+  function cleanup() {
+    btnHelp.removeEventListener('click', onHelp);
+    btnText.removeEventListener('click', onText);
+  }
+  function onHelp() {
+    help.hidden = false;
+    help.focus();
+  }
+  function onText() {
+    cleanup();
+    dialog.close();
+    document.getElementById('captureText').focus();
+  }
+
+  btnHelp.addEventListener('click', onHelp);
+  btnText.addEventListener('click', onText);
+  dialog.addEventListener('close', cleanup, { once: true });
+  dialog.showModal();
+}
+
+async function refreshMicrophonePermission() {
+  microphonePermission = await queryMicrophonePermission(navigator);
+  return microphonePermission;
+}
+
+async function beginVoiceSession() {
+  if (!voiceController?.isSupported()) return;
+  const permission = await refreshMicrophonePermission();
+  if (permission === 'denied') {
+    updateVoiceUI(VOICE_STATES.DENIED);
+    showMicDeniedDialog();
     return;
   }
 
-  recognition = new SpeechRecognition();
-  recognition.lang = 'ru-RU';
-  recognition.continuous = false;
-  recognition.interimResults = true;
-
-  recognition.onstart = () => {
-    isRecording = true;
-    btnMic.classList.add('recording');
-    btnMic.setAttribute('aria-pressed', 'true');
-    safeSetText(voiceStatus, 'Слушаю…');
-  };
-
-  recognition.onresult = (event) => {
-    let interim = '';
-    let final = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        final += transcript;
-      } else {
-        interim += transcript;
-      }
+  if (!hasSeenMicIntro()) {
+    const shouldContinue = await showMicIntroDialog();
+    if (!shouldContinue) {
+      updateVoiceUI(VOICE_STATES.IDLE);
+      document.getElementById('btnMic').focus();
+      return;
     }
+  }
 
-    const textarea = document.getElementById('captureText');
-    if (final) {
-      const current = safeGetValue(textarea);
-      textarea.value = current ? current + ' ' + final : final;
+  voiceController.start();
+}
+
+function initVoice() {
+  const btnMic = document.getElementById('btnMic');
+  voiceController = createVoiceController({
+    lang: 'ru-RU',
+    scope: window,
+    onState: updateVoiceUI,
+    onInterim: () => safeSetText(document.getElementById('voiceStatus'), 'Распознаю…'),
+    onFinal: transcript => {
+      const textarea = document.getElementById('captureText');
+      textarea.value = appendFinalTranscript(safeGetValue(textarea), transcript);
       currentInputType = 'voice';
-      safeSetText(voiceStatus, 'Проверьте текст');
-      scheduleDraftSave();
-    } else if (interim) {
-      safeSetText(voiceStatus, 'Распознаю…');
-    }
-  };
-
-  recognition.onerror = (event) => {
-    isRecording = false;
-    btnMic.classList.remove('recording');
-    btnMic.setAttribute('aria-pressed', 'false');
-    if (event.error === 'not-allowed') {
-      safeSetText(voiceStatus, 'Доступ к микрофону запрещён. Разрешите в настройках браузера.');
-    } else {
-      safeSetText(voiceStatus, 'Ошибка распознавания');
-    }
-  };
-
-  recognition.onend = () => {
-    isRecording = false;
-    btnMic.classList.remove('recording');
-    btnMic.setAttribute('aria-pressed', 'false');
-  };
-
-  btnMic.addEventListener('click', () => {
-    if (isRecording) {
-      recognition.stop();
-    } else {
-      try {
-        recognition.start();
-      } catch (e) {
-        safeSetText(voiceStatus, 'Не удалось запустить распознавание');
+      flushCaptureDraft();
+    },
+    onError: state => {
+      if (state === VOICE_STATES.DENIED) {
+        microphonePermission = 'denied';
+        showMicDeniedDialog();
       }
+    },
+  });
+
+  if (!voiceController.isSupported()) {
+    btnMic.disabled = true;
+    btnMic.title = 'Голосовой ввод недоступен в этом браузере';
+    updateVoiceUI(VOICE_STATES.UNSUPPORTED);
+    return;
+  }
+
+  updateVoiceUI(VOICE_STATES.IDLE);
+  btnMic.addEventListener('click', () => {
+    const state = voiceController.getState();
+    if ([VOICE_STATES.REQUESTING, VOICE_STATES.LISTENING, VOICE_STATES.PROCESSING].includes(state)) {
+      voiceController.stop();
+      return;
     }
+    beginVoiceSession();
   });
 }
 
@@ -423,6 +540,7 @@ function restoreDraft() {
   }
   currentUserHint = draft.userHint;
   currentInputType = draft.inputType;
+  currentEntryPoint = draft.entryPoint;
   hasDraft = true;
   restoreHintUI();
   updateClearDraftVisibility();
@@ -471,8 +589,9 @@ function init() {
       textarea.value = result.draft.text;
       currentUserHint = result.draft.userHint;
       currentInputType = result.draft.inputType;
+      currentEntryPoint = result.draft.entryPoint;
       hasDraft = true;
-      saveCaptureDraft(result.draft);
+      flushCaptureDraft();
       restoreHintUI();
       updateClearDraftVisibility();
       showToast('Получено через «Поделиться». Проверьте запись перед сохранением.', 5000);
@@ -498,6 +617,7 @@ function init() {
     clearCaptureDraft();
     currentUserHint = null;
     currentInputType = 'text';
+    currentEntryPoint = 'app';
     hasDraft = false;
     document.querySelectorAll('.capture-hint').forEach(btn => {
       btn.classList.remove('active');
@@ -529,23 +649,28 @@ function init() {
     }
   });
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      flushCaptureDraft();
+    } else {
+      refreshMicrophonePermission();
+    }
+  });
+  window.addEventListener('pagehide', flushCaptureDraft);
+  window.addEventListener('beforeunload', flushCaptureDraft);
+
   initVoice();
   initOnlineStatus();
   registerCaptureServiceWorker({
     showToast,
-    flushDraft: () => {
-      const textarea = document.getElementById('captureText');
-      const text = safeGetValue(textarea).trim();
-      if (text) {
-        saveCaptureDraft({ text, userHint: currentUserHint, inputType: currentInputType });
-      }
-    }
+    flushDraft: flushCaptureDraft,
   });
   initInstallExperience();
 
   const params = new URLSearchParams(window.location.search);
   const action = params.get('action');
   if (action === 'new') {
+    currentEntryPoint = resolveShortcutEntryPoint(loadCaptureDraft());
     navigateTo('capture');
     clearShareParamsFromUrl();
   } else {
@@ -580,10 +705,10 @@ function initOnlineStatus() {
     const online = navigator.onLine;
     const statusEl = document.getElementById('status');
     if (online) {
-      safeSetText(statusEl, 'Онлайн · локальные записи сохранены');
+      safeSetText(statusEl, 'Онлайн · текстовые записи сохраняются локально');
       statusEl.classList.remove('offline');
     } else {
-      safeSetText(statusEl, 'Офлайн · записи сохраняются на устройстве');
+      safeSetText(statusEl, 'Офлайн · текстовые записи работают. Голос может быть недоступен.');
       statusEl.classList.add('offline');
     }
   };
@@ -610,12 +735,13 @@ function showShareChoiceDialog(shareDraft, existingDraft) {
 
   function onAppend() {
     const textarea = document.getElementById('captureText');
-    const merged = mergeShareWithExisting(existingDraft.text, shareDraft.text);
-    textarea.value = merged;
-    currentUserHint = existingDraft.userHint || shareDraft.userHint;
-    currentInputType = shareDraft.inputType;
+    const merged = mergeShareDrafts(existingDraft, shareDraft);
+    textarea.value = merged.text;
+    currentUserHint = merged.userHint;
+    currentInputType = merged.inputType;
+    currentEntryPoint = merged.entryPoint;
     hasDraft = true;
-    saveCaptureDraft({ text: merged, userHint: currentUserHint, inputType: currentInputType });
+    flushCaptureDraft();
     restoreHintUI();
     updateClearDraftVisibility();
     showToast('Текст добавлен к черновику', 3000);
@@ -627,8 +753,9 @@ function showShareChoiceDialog(shareDraft, existingDraft) {
     textarea.value = shareDraft.text;
     currentUserHint = shareDraft.userHint;
     currentInputType = shareDraft.inputType;
+    currentEntryPoint = shareDraft.entryPoint;
     hasDraft = true;
-    saveCaptureDraft(shareDraft);
+    flushCaptureDraft();
     restoreHintUI();
     updateClearDraftVisibility();
     showToast('Черновик заменён', 3000);
@@ -647,21 +774,35 @@ function showShareChoiceDialog(shareDraft, existingDraft) {
   dialog.showModal();
 }
 
-function updateInfoPanel() {
+async function updateInfoPanel() {
   const versionEl = document.getElementById('infoVersion');
   const statusEl = document.getElementById('infoStatus');
+  const storageEl = document.getElementById('infoStorage');
   const swEl = document.getElementById('infoSW');
-  const inboxEl = document.getElementById('infoInbox');
+  const voiceEl = document.getElementById('infoVoice');
+  const microphoneEl = document.getElementById('infoMicrophone');
+
+  await refreshMicrophonePermission();
+  const permissionLabels = {
+    granted: 'Разрешено',
+    prompt: 'Требуется запрос',
+    denied: 'Запрещено',
+    unknown: 'Неизвестно',
+  };
   
   safeSetText(versionEl, `Версия: ${APP_VERSION}`);
-  safeSetText(statusEl, navigator.onLine ? 'Онлайн' : 'Офлайн');
+  safeSetText(statusEl, `Сеть: ${navigator.onLine ? 'Онлайн' : 'Офлайн'}`);
+  safeSetText(storageEl, `Storage: ${storageOk && draftStorageOk ? 'Доступно' : 'Ошибка'}`);
   safeSetText(swEl, `Service Worker: ${getServiceWorkerStatus()}`);
-  
-  const count = Array.isArray(state.inbox) ? state.inbox.length : 0;
-  safeSetText(inboxEl, `Записей в Inbox: ${count}`);
+  safeSetText(voiceEl, `Voice: ${voiceController?.isSupported() ? 'Поддерживается' : 'Не поддерживается'}`);
+  safeSetText(microphoneEl, `Microphone: ${permissionLabels[microphonePermission]}`);
 }
 
 function navigateTo(view) {
+  if (currentView === 'capture' && view !== 'capture') {
+    const text = safeGetValue(document.getElementById('captureText'));
+    if (text.trim()) flushCaptureDraft();
+  }
   currentView = view;
   const captureView = document.getElementById('captureView');
   const inboxView = document.getElementById('inboxView');

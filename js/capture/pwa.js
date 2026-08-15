@@ -83,8 +83,11 @@ export function showUpdateAvailable() {
 
   if (btnUpdate) {
     btnUpdate.addEventListener('click', () => {
-      if (flushDraftCallback) {
-        flushDraftCallback();
+      if (flushDraftCallback && flushDraftCallback() === false) {
+        if (showToastCallback) {
+          showToastCallback('Не удалось сохранить черновик. Обновление отложено.', 6000);
+        }
+        return;
       }
       if (registration && registration.waiting) {
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -143,7 +146,7 @@ export function isStandalone() {
 export function getServiceWorkerStatus() {
   if (!('serviceWorker' in navigator)) return 'не поддерживается';
   if (!registration) return 'не зарегистрирован';
-  if (registration.active && registration.waiting) return 'ождает обновления';
+  if (registration.active && registration.waiting) return 'ожидает обновления';
   if (registration.active) return 'активен';
   return 'устанавливается';
 }
