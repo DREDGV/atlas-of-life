@@ -2,7 +2,7 @@ import { state } from '../state.js';
 import { loadState } from '../storage.js';
 import adapter from '../storageAdapter.js';
 import { captureInbox, deleteInbox, undoDeleteInbox } from '../core/commands.js';
-import { getInboxItems } from '../features/inbox/index.js';
+import { getInboxItems } from '../features/inbox/model.js';
 import { getDeviceId } from '../core/device.js';
 import { APP_VERSION, APP_LABEL } from '../version.js';
 import { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft } from './draft.js';

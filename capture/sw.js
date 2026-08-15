@@ -16,7 +16,6 @@ const PRECACHE_ASSETS = [
   '../js/core/device.js',
   '../js/core/operations.js',
   '../js/features/inbox/model.js',
-  '../js/features/inbox/index.js',
   '../js/version.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

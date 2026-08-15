@@ -128,9 +128,25 @@ assert(!swContent.includes('view_map'), 'Test 15: should not cache view_map');
 assert(!swContent.includes('inspector'), 'Test 15: should not cache inspector');
 console.log('✓ Test 15: service worker does not cache desktop addons');
 
-// Test 16: version is 0.9.0-alpha.2
+// Test 16: Mobile Capture imports the Inbox model without the desktop view
+const captureAppContent = readFileSync(join(projectRoot, 'js', 'capture', 'app.js'), 'utf-8');
+assert(
+  captureAppContent.includes("from '../features/inbox/model.js'"),
+  'Test 16: Mobile Capture should import the Inbox model directly'
+);
+assert(
+  !captureAppContent.includes("from '../features/inbox/index.js'"),
+  'Test 16: Mobile Capture should not import the desktop Inbox view'
+);
+assert(
+  !swContent.includes('../js/features/inbox/index.js'),
+  'Test 16: service worker should not precache the desktop Inbox view'
+);
+console.log('✓ Test 16: Mobile Capture excludes the desktop Inbox view');
+
+// Test 17: version is 0.9.0-alpha.2
 const { APP_VERSION } = await import('../js/version.js');
-assert(APP_VERSION === '0.9.0-alpha.2', 'Test 16: version should be 0.9.0-alpha.2');
-console.log('✓ Test 16: version is 0.9.0-alpha.2');
+assert(APP_VERSION === '0.9.0-alpha.2', 'Test 17: version should be 0.9.0-alpha.2');
+console.log('✓ Test 17: version is 0.9.0-alpha.2');
 
 console.log('\n✅ All PWA tests passed.');
