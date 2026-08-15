@@ -1,5 +1,5 @@
 import { state } from '../js/state.js';
-import { addInboxLines } from '../js/features/inbox/model.js';
+import { addInboxLines, getInboxItems } from '../js/features/inbox/model.js';
 import { captureInbox, deleteInbox, undoDeleteInbox } from '../js/core/commands.js';
 import { loadState, saveState } from '../js/storage.js';
 import adapter from '../js/storageAdapter.js';
@@ -107,6 +107,7 @@ assert(t10.length === 1, 'Test 10: old call should work');
 assert(t10[0].text === 'Старый вызов', 'Test 10: text should be saved');
 assert(t10[0].inputType === 'text', 'Test 10: default inputType should be text');
 assert(t10[0].source === 'desktop-capture', 'Test 10: default source should be desktop-capture');
+assert(t10[0].entryPoint === 'app', 'Test 10: default entryPoint should be app');
 console.log('✓ Test 10: old captureInbox(text) works');
 
 // Test 11: desktop splitLines creates multiple items
@@ -136,6 +137,7 @@ const t13 = captureInbox('Многострочная\nпроверка\nсохр
   status: 'new',
   userHint: 'thought',
   deviceId: 'device-save',
+  entryPoint: 'share',
   splitLines: false,
   persist: true,
   now: 2000,
@@ -158,6 +160,9 @@ assert(restored.source === 'mobile-capture', 'Test 13: source after reload');
 assert(restored.status === 'new', 'Test 13: status after reload');
 assert(restored.userHint === 'thought', 'Test 13: userHint after reload');
 assert(restored.deviceId === 'device-save', 'Test 13: deviceId after reload');
+assert(restored.entryPoint === 'share', 'Test 13: entryPoint after reload');
+const captureOperation = state.operationLog.find(operation => operation.type === 'inbox.capture');
+assert(captureOperation?.payload?.entryPoint === 'share', 'Test 13: operation payload should include entryPoint');
 console.log('✓ Test 13: extra fields survive full save/load cycle');
 
 // Test 14: storage error fully rolls back mobile record
@@ -285,12 +290,31 @@ const t18c = captureInbox('\n\n\n', opts());
 assert(t18c.length === 0, 'Test 18c: newlines should not create item');
 console.log('✓ Test 18: empty records not saved');
 
+// Test 18d: entryPoint normalization and exact non-split text
+resetState();
+const appEntry = captureInbox('App', opts({ entryPoint: 'app' }));
+const shareEntry = captureInbox('Share', opts({ entryPoint: 'share', now: 1001, idFactory: () => 'share' }));
+const shortcutEntry = captureInbox('Shortcut', opts({ entryPoint: 'shortcut', now: 1002, idFactory: () => 'shortcut' }));
+const unknownEntry = captureInbox('Unknown', opts({ entryPoint: 'widget', now: 1003, idFactory: () => 'unknown' }));
+assert(appEntry[0].entryPoint === 'app', 'Test 18d: app entryPoint');
+assert(shareEntry[0].entryPoint === 'share', 'Test 18d: share entryPoint');
+assert(shortcutEntry[0].entryPoint === 'shortcut', 'Test 18d: shortcut entryPoint');
+assert(unknownEntry[0].entryPoint === 'app', 'Test 18d: unknown entryPoint should normalize to app');
+const exactText = '  первая строка\nвторая строка  ';
+const exactEntry = captureInbox(exactText, opts({ splitLines: false, now: 1004, idFactory: () => 'exact' }));
+assert(exactEntry[0].rawText === exactText, 'Test 18d: non-split rawText should remain exact');
+console.log('✓ Test 18d: entryPoint and exact non-split text');
+
+state.inbox = [{ id: 'legacy', text: 'Старая запись', createdAt: 1 }];
+assert(getInboxItems()[0].entryPoint === 'app', 'Test 18e: old Inbox item should normalize entryPoint to app');
+console.log('✓ Test 18e: old Inbox item compatibility');
+
 // Test 19-22: Draft tests
 const { loadCaptureDraft, saveCaptureDraft, clearCaptureDraft, normalizeCaptureDraft } = await import('../js/capture/draft.js');
 
 // Test 19: draft serializes and deserializes
 resetState();
-const draftData = { text: 'Черновик записи', userHint: 'task', inputType: 'voice' };
+const draftData = { text: 'Черновик записи', userHint: 'task', inputType: 'voice', entryPoint: 'shortcut' };
 const savedDraft = saveCaptureDraft(draftData);
 assert(savedDraft === true, 'Test 19: saveCaptureDraft should return true');
 const loadedDraft = loadCaptureDraft();
@@ -298,6 +322,7 @@ assert(loadedDraft !== null, 'Test 19: draft should be loaded');
 assert(loadedDraft.text === 'Черновик записи', 'Test 19: draft text should match');
 assert(loadedDraft.userHint === 'task', 'Test 19: draft userHint should match');
 assert(loadedDraft.inputType === 'voice', 'Test 19: draft inputType should match');
+assert(loadedDraft.entryPoint === 'shortcut', 'Test 19: draft entryPoint should match');
 assert(typeof loadedDraft.updatedAt === 'number', 'Test 19: draft should have updatedAt');
 console.log('✓ Test 19: draft serializes and deserializes');
 
@@ -325,6 +350,19 @@ assert(normalizeCaptureDraft({ text: '  ' }) === null, 'Test 22d: whitespace tex
 const normalized = normalizeCaptureDraft({ text: 'Нормализация', userHint: 'invalid', inputType: 'voice' });
 assert(normalized.userHint === null, 'Test 22e: invalid userHint should be null');
 assert(normalized.inputType === 'voice', 'Test 22f: valid inputType should pass');
+assert(normalized.entryPoint === 'app', 'Test 22g: old draft should default entryPoint to app');
 console.log('✓ Test 22: normalizeCaptureDraft handles invalid input');
+
+// Test 23: exact draft text and backward-compatible entryPoint
+resetState();
+const exactDraftText = '  строка один\nстрока два\n  ';
+assert(saveCaptureDraft({ text: exactDraftText, inputType: 'text', entryPoint: 'share' }), 'Test 23: exact draft should save');
+const exactDraft = loadCaptureDraft();
+assert(exactDraft.text === exactDraftText, 'Test 23: outer whitespace and newlines should survive save/load');
+assert(exactDraft.entryPoint === 'share', 'Test 23: entryPoint should survive save/load');
+memory.set('atlas_capture_draft_v1', JSON.stringify({ text: 'Старый черновик', inputType: 'text' }));
+const oldDraft = loadCaptureDraft();
+assert(oldDraft.entryPoint === 'app', 'Test 23: old draft without entryPoint should default to app');
+console.log('✓ Test 23: exact draft text and backward compatibility');
 
 console.log('\n✅ All capture persistence tests passed.');
