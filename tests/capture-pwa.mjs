@@ -151,6 +151,108 @@ assert(
 );
 console.log('✓ Test 13: no unconditional skipWaiting in install');
 
+// Test 13b: a failed flush keeps Update retryable without duplicate handlers
+class FakeButton {
+  constructor() {
+    this.onclick = null;
+    this.listeners = [];
+  }
+
+  addEventListener(type, handler, options = {}) {
+    if (type === 'click') this.listeners.push({ handler, once: Boolean(options.once) });
+  }
+
+  click() {
+    if (this.onclick) this.onclick();
+    for (const listener of [...this.listeners]) {
+      listener.handler();
+      if (listener.once) {
+        this.listeners = this.listeners.filter(candidate => candidate !== listener);
+      }
+    }
+  }
+}
+
+const originalGlobals = {
+  document: Object.getOwnPropertyDescriptor(globalThis, 'document'),
+  navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+  window: Object.getOwnPropertyDescriptor(globalThis, 'window'),
+};
+const updateBanner = { hidden: true };
+const updateButton = new FakeButton();
+const laterButton = new FakeButton();
+const updateMessages = [];
+const updateToasts = [];
+let flushAttempts = 0;
+let controllerChangeListeners = 0;
+const updateRegistration = {
+  waiting: { postMessage: message => updateMessages.push(message) },
+  addEventListener() {},
+};
+
+Object.defineProperty(globalThis, 'document', {
+  configurable: true,
+  value: {
+    getElementById(id) {
+      return {
+        updateBanner,
+        btnUpdate: updateButton,
+        btnUpdateLater: laterButton,
+      }[id] || null;
+    },
+  },
+});
+Object.defineProperty(globalThis, 'navigator', {
+  configurable: true,
+  value: {
+    serviceWorker: {
+      controller: {},
+      register: async () => updateRegistration,
+      addEventListener(type) {
+        if (type === 'controllerchange') controllerChangeListeners += 1;
+      },
+    },
+  },
+});
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: { location: { reload() {} } },
+});
+
+try {
+  const retryModule = await import('../js/capture/pwa.js?update-retry-regression');
+  await retryModule.registerCaptureServiceWorker({
+    flushDraft() {
+      flushAttempts += 1;
+      return flushAttempts > 1;
+    },
+    showToast(message) {
+      updateToasts.push(message);
+    },
+  });
+
+  retryModule.showUpdateAvailable();
+  retryModule.showUpdateAvailable();
+  updateButton.click();
+  assert(flushAttempts === 1, 'Test 13b: duplicate banner setup must not duplicate update handlers');
+  assert(updateMessages.length === 0, 'Test 13b: failed flush must not send SKIP_WAITING');
+  assert(updateBanner.hidden === false, 'Test 13b: banner should stay visible after failed flush');
+  assert(updateToasts.length === 1, 'Test 13b: failed flush should explain the delay');
+
+  updateButton.click();
+  assert(flushAttempts === 2, 'Test 13b: Update should retry the draft flush');
+  assert(updateMessages.length === 1, 'Test 13b: successful retry should send SKIP_WAITING once');
+  assert(updateMessages[0].type === 'SKIP_WAITING', 'Test 13b: successful retry should request activation');
+  assert(controllerChangeListeners === 1, 'Test 13b: successful update should register one reload listener');
+  assert(updateBanner.hidden === true, 'Test 13b: banner should hide after successful retry');
+} finally {
+  for (const [name, descriptor] of Object.entries(originalGlobals)) {
+    if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+    else delete globalThis[name];
+  }
+}
+console.log('✓ Test 13b: failed draft flush keeps Update retryable without duplicate handlers');
+
 // Test 14: service worker routing is scope-relative
 assert(!swContent.includes("url.pathname.startsWith('/js/')"), 'Test 14: routing should not use absolute paths');
 assert(!swContent.includes("url.pathname.startsWith('/styles/')"), 'Test 14: routing should not use absolute paths');

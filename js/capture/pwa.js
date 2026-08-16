@@ -6,6 +6,7 @@ let deferredInstallEvent = null;
 let registration = null;
 let showToastCallback = null;
 let flushDraftCallback = null;
+let updateInProgress = false;
 
 export function registerCaptureServiceWorker(options = {}) {
   showToastCallback = options.showToast || null;
@@ -82,7 +83,8 @@ export function showUpdateAvailable() {
   const btnLater = document.getElementById('btnUpdateLater');
 
   if (btnUpdate) {
-    btnUpdate.addEventListener('click', () => {
+    btnUpdate.onclick = () => {
+      if (updateInProgress) return;
       if (flushDraftCallback && flushDraftCallback() === false) {
         if (showToastCallback) {
           showToastCallback('Не удалось сохранить черновик. Обновление отложено.', 6000);
@@ -90,19 +92,20 @@ export function showUpdateAvailable() {
         return;
       }
       if (registration && registration.waiting) {
+        updateInProgress = true;
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         window.location.reload();
       }, { once: true });
       banner.hidden = true;
-    }, { once: true });
+    };
   }
 
   if (btnLater) {
-    btnLater.addEventListener('click', () => {
+    btnLater.onclick = () => {
       banner.hidden = true;
-    }, { once: true });
+    };
   }
 }
 
