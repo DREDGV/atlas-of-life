@@ -31,6 +31,7 @@ export function buildShareDraft(title, text, url) {
     text: combined,
     userHint: 'note',
     inputType: 'text',
+    entryPoint: 'share',
   };
 }
 
@@ -46,6 +47,24 @@ export function applyShareDraft(draft, existingDraft) {
 
 export function mergeShareWithExisting(existingText, sharedText) {
   return existingText + '\n\n' + sharedText;
+}
+
+export function mergeShareDrafts(existingDraft, sharedDraft) {
+  return {
+    text: mergeShareWithExisting(existingDraft.text, sharedDraft.text),
+    userHint: existingDraft.userHint || sharedDraft.userHint || null,
+    inputType: existingDraft.inputType === 'voice' ? 'voice' : 'text',
+    entryPoint: 'share',
+  };
+}
+
+export function resolveShortcutEntryPoint(existingDraft) {
+  if (existingDraft?.text?.trim()) {
+    return ['app', 'share', 'shortcut'].includes(existingDraft.entryPoint)
+      ? existingDraft.entryPoint
+      : 'app';
+  }
+  return 'shortcut';
 }
 
 function sanitizeText(value) {

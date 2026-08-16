@@ -15,6 +15,25 @@
 
 ---
 
+## 0.9.0-alpha.3 - 2026-08-16
+
+### Добавлено
+- **Voice controller**: модульная state machine для browser speech с понятными состояниями и ошибками
+- **Microphone UX**: проверка permission перед каждой сессией, одноразовое объяснение Atlas и denied-инструкция
+- **Capture provenance**: `entryPoint` для обычного запуска, Android Share и manifest shortcut
+- **Диагностика**: статусы Voice, Microphone, Storage, сети и Service Worker
+
+### Исправлено
+- **Надёжность черновика**: единый немедленный flush при final voice result, background, pagehide, обновлении SW и ошибке сохранения
+- **Точность текста**: черновик сохраняет исходные пробелы и переносы строк; final transcript не дублируется
+- **Совместимость**: старые черновики и Inbox-записи без `entryPoint` безопасно получают значение `app`
+
+### Изменено
+- **Версия**: обновлена до `0.9.0-alpha.3`
+- **PWA cache**: новый voice-модуль включён в полный offline import graph
+
+---
+
 ## 0.9.0-alpha.2 - 2026-08-06
 
 ### Добавлено

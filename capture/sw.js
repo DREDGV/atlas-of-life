@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atlas-capture-0.9.0-alpha.2';
+const CACHE_NAME = 'atlas-capture-0.9.0-alpha.3';
 
 const PRECACHE_ASSETS = [
   './',
@@ -9,6 +9,7 @@ const PRECACHE_ASSETS = [
   '../js/capture/draft.js',
   '../js/capture/pwa.js',
   '../js/capture/share-target.js',
+  '../js/capture/voice.js',
   '../js/state.js',
   '../js/storage.js',
   '../js/storageAdapter.js',

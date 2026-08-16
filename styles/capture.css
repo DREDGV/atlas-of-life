@@ -650,8 +650,10 @@ body {
 
 .info-version,
 .info-status,
+.info-storage,
 .info-sw,
-.info-inbox {
+.info-voice,
+.info-microphone {
   font-size: 14px;
   color: var(--text-muted);
 }
@@ -751,6 +753,17 @@ body {
   font-size: 14px;
   color: var(--text-muted);
   margin: 0;
+}
+
+.capture-dialog-help {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  line-height: 1.5;
+}
+
+.capture-dialog-help[hidden] {
+  display: none;
 }
 
 .capture-dialog-actions {

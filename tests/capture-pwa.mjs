@@ -1,4 +1,10 @@
-import { buildShareDraft, applyShareDraft, mergeShareWithExisting } from '../js/capture/share-target.js';
+import {
+  buildShareDraft,
+  applyShareDraft,
+  mergeShareDrafts,
+  mergeShareWithExisting,
+  resolveShortcutEntryPoint,
+} from '../js/capture/share-target.js';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -78,6 +84,7 @@ const draft1 = buildShareDraft('Title', 'Text', 'https://example.com');
 assert(draft1.text.includes('Title'), 'Test 7: parser should accept title');
 assert(draft1.text.includes('Text'), 'Test 7: parser should accept text');
 assert(draft1.text.includes('https://example.com'), 'Test 7: parser should accept url');
+assert(draft1.entryPoint === 'share', 'Test 7: shared draft should have share entryPoint');
 console.log('✓ Test 7: parser accepts action=share');
 
 // Test 8: parser accepts title/text/url without action
@@ -100,6 +107,28 @@ const cancelResult = applyShareDraft({ text: '' }, null);
 assert(cancelResult.action === 'cancel', 'Test 11: empty draft should return cancel');
 console.log('✓ Test 11: cancel result exists');
 
+// Test 11b: Share append/replace/reject provenance and shortcut rules
+const existingVoiceDraft = {
+  text: 'Existing',
+  userHint: 'thought',
+  inputType: 'voice',
+  entryPoint: 'app',
+};
+const sharedDraft = buildShareDraft('', 'Shared', '');
+const mergedDraft = mergeShareDrafts(existingVoiceDraft, sharedDraft);
+assert(mergedDraft.text === 'Existing\n\nShared', 'Test 11b: append should merge text');
+assert(mergedDraft.userHint === 'thought', 'Test 11b: append should preserve existing userHint');
+assert(mergedDraft.inputType === 'voice', 'Test 11b: append should preserve existing voice inputType');
+assert(mergedDraft.entryPoint === 'share', 'Test 11b: append should use share entryPoint');
+const replaceResult = applyShareDraft(sharedDraft, null);
+assert(replaceResult.draft.entryPoint === 'share', 'Test 11b: replace should use share entryPoint');
+const choiceResult = applyShareDraft(sharedDraft, existingVoiceDraft);
+assert(choiceResult.existing === existingVoiceDraft, 'Test 11b: reject path should preserve existing draft object');
+assert(resolveShortcutEntryPoint(null) === 'shortcut', 'Test 11b: shortcut without draft should use shortcut');
+assert(resolveShortcutEntryPoint(existingVoiceDraft) === 'app', 'Test 11b: shortcut should not replace existing provenance');
+assert(resolveShortcutEntryPoint({ ...existingVoiceDraft, entryPoint: 'share' }) === 'share', 'Test 11b: shortcut should preserve share draft provenance');
+console.log('✓ Test 11b: Share and shortcut provenance rules');
+
 // Test 12: PRECACHE_ASSETS exist on disk
 const swContent = readFileSync(join(projectRoot, 'capture', 'sw.js'), 'utf-8');
 const precacheMatch = swContent.match(/const PRECACHE_ASSETS = \[([\s\S]*?)\]/);
@@ -115,7 +144,114 @@ console.log('✓ Test 12: PRECACHE_ASSETS exist on disk');
 // Test 13: service worker does not have unconditional skipWaiting in install
 const installMatch = swContent.match(/addEventListener\('install'[\s\S]*?\}\)/);
 assert(!installMatch[0].includes('self.skipWaiting()'), 'Test 13: install should not have unconditional skipWaiting');
+const pwaModuleContent = readFileSync(join(projectRoot, 'js', 'capture', 'pwa.js'), 'utf-8');
+assert(
+  pwaModuleContent.includes('flushDraftCallback() === false'),
+  'Test 13: failed draft flush should postpone a user-confirmed update',
+);
 console.log('✓ Test 13: no unconditional skipWaiting in install');
+
+// Test 13b: a failed flush keeps Update retryable without duplicate handlers
+class FakeButton {
+  constructor() {
+    this.onclick = null;
+    this.listeners = [];
+  }
+
+  addEventListener(type, handler, options = {}) {
+    if (type === 'click') this.listeners.push({ handler, once: Boolean(options.once) });
+  }
+
+  click() {
+    if (this.onclick) this.onclick();
+    for (const listener of [...this.listeners]) {
+      listener.handler();
+      if (listener.once) {
+        this.listeners = this.listeners.filter(candidate => candidate !== listener);
+      }
+    }
+  }
+}
+
+const originalGlobals = {
+  document: Object.getOwnPropertyDescriptor(globalThis, 'document'),
+  navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+  window: Object.getOwnPropertyDescriptor(globalThis, 'window'),
+};
+const updateBanner = { hidden: true };
+const updateButton = new FakeButton();
+const laterButton = new FakeButton();
+const updateMessages = [];
+const updateToasts = [];
+let flushAttempts = 0;
+let controllerChangeListeners = 0;
+const updateRegistration = {
+  waiting: { postMessage: message => updateMessages.push(message) },
+  addEventListener() {},
+};
+
+Object.defineProperty(globalThis, 'document', {
+  configurable: true,
+  value: {
+    getElementById(id) {
+      return {
+        updateBanner,
+        btnUpdate: updateButton,
+        btnUpdateLater: laterButton,
+      }[id] || null;
+    },
+  },
+});
+Object.defineProperty(globalThis, 'navigator', {
+  configurable: true,
+  value: {
+    serviceWorker: {
+      controller: {},
+      register: async () => updateRegistration,
+      addEventListener(type) {
+        if (type === 'controllerchange') controllerChangeListeners += 1;
+      },
+    },
+  },
+});
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: { location: { reload() {} } },
+});
+
+try {
+  const retryModule = await import('../js/capture/pwa.js?update-retry-regression');
+  await retryModule.registerCaptureServiceWorker({
+    flushDraft() {
+      flushAttempts += 1;
+      return flushAttempts > 1;
+    },
+    showToast(message) {
+      updateToasts.push(message);
+    },
+  });
+
+  retryModule.showUpdateAvailable();
+  retryModule.showUpdateAvailable();
+  updateButton.click();
+  assert(flushAttempts === 1, 'Test 13b: duplicate banner setup must not duplicate update handlers');
+  assert(updateMessages.length === 0, 'Test 13b: failed flush must not send SKIP_WAITING');
+  assert(updateBanner.hidden === false, 'Test 13b: banner should stay visible after failed flush');
+  assert(updateToasts.length === 1, 'Test 13b: failed flush should explain the delay');
+
+  updateButton.click();
+  assert(flushAttempts === 2, 'Test 13b: Update should retry the draft flush');
+  assert(updateMessages.length === 1, 'Test 13b: successful retry should send SKIP_WAITING once');
+  assert(updateMessages[0].type === 'SKIP_WAITING', 'Test 13b: successful retry should request activation');
+  assert(controllerChangeListeners === 1, 'Test 13b: successful update should register one reload listener');
+  assert(updateBanner.hidden === true, 'Test 13b: banner should hide after successful retry');
+} finally {
+  for (const [name, descriptor] of Object.entries(originalGlobals)) {
+    if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+    else delete globalThis[name];
+  }
+}
+console.log('✓ Test 13b: failed draft flush keeps Update retryable without duplicate handlers');
 
 // Test 14: service worker routing is scope-relative
 assert(!swContent.includes("url.pathname.startsWith('/js/')"), 'Test 14: routing should not use absolute paths');
@@ -136,7 +272,7 @@ function collectStaticImportGraph(filePath, visited = new Set()) {
   visited.add(filePath);
 
   const source = readFileSync(filePath, 'utf-8');
-  const importPattern = /(?:import|export)\\s+(?:[^'"]*?\\s+from\\s+)?['"]([^'"]+)['"]/g;
+  const importPattern = /(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
 
   for (const match of source.matchAll(importPattern)) {
     if (!match[1].startsWith('.')) continue;
@@ -165,9 +301,23 @@ assert(
 );
 console.log('✓ Test 16: complete Mobile Capture import graph is isolated and precached');
 
-// Test 17: version is 0.9.0-alpha.2
+// Test 17: version and cache are 0.9.0-alpha.3
 const { APP_VERSION } = await import('../js/version.js');
-assert(APP_VERSION === '0.9.0-alpha.2', 'Test 17: version should be 0.9.0-alpha.2');
-console.log('✓ Test 17: version is 0.9.0-alpha.2');
+assert(APP_VERSION === '0.9.0-alpha.3', 'Test 17: version should be 0.9.0-alpha.3');
+assert(swContent.includes("const CACHE_NAME = 'atlas-capture-0.9.0-alpha.3'"), 'Test 17: SW cache should be alpha.3');
+console.log('✓ Test 17: version and cache are 0.9.0-alpha.3');
+
+// Test 18: lifecycle, permission and accessibility wiring exists in the Capture shell
+const captureAppContent = readFileSync(join(projectRoot, 'js', 'capture', 'app.js'), 'utf-8');
+assert(captureAppContent.includes("window.addEventListener('pagehide', flushCaptureDraft)"), 'Test 18: pagehide should flush draft');
+assert(captureAppContent.includes("document.addEventListener('visibilitychange'"), 'Test 18: visibilitychange should be handled');
+assert(captureAppContent.includes('flushDraft: flushCaptureDraft'), 'Test 18: SW update should use common draft flush');
+assert(captureAppContent.includes("atlas_capture_mic_intro_v1"), 'Test 18: mic intro key should be explicit');
+assert(captureAppContent.includes('queryMicrophonePermission(navigator)'), 'Test 18: microphone permission should be queried from platform');
+assert(indexHtml.includes('id="micIntroDialog"'), 'Test 18: mic intro should use dialog');
+assert(indexHtml.includes('id="micDeniedDialog"'), 'Test 18: denied UX should use dialog');
+assert(indexHtml.includes('id="voiceStatus" aria-live="polite"'), 'Test 18: voice status should be announced accessibly');
+assert(indexHtml.includes('id="infoMicrophone"'), 'Test 18: info panel should show microphone status');
+console.log('✓ Test 18: lifecycle, permission and accessibility wiring');
 
 console.log('\n✅ All PWA tests passed.');

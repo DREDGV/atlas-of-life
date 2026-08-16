@@ -10,13 +10,16 @@ function makeId(prefix = 'inbox'){
 }
 
 export function getInboxItems(){
-  return [...ensureInbox()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return ensureInbox()
+    .map(item => ({ ...item, entryPoint: normalizeEntryPoint(item.entryPoint) }))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 const VALID_INPUT_TYPES = new Set(['text', 'voice']);
 const VALID_USER_HINTS = new Set(['task', 'thought', 'note']);
 const VALID_STATUSES = new Set(['new', 'reviewed', 'processed', 'discarded']);
 const VALID_SOURCES = new Set(['desktop-capture', 'mobile-capture']);
+const VALID_ENTRY_POINTS = new Set(['app', 'share', 'shortcut']);
 
 function normalizeInputType(value){
   return VALID_INPUT_TYPES.has(value) ? value : 'text';
@@ -34,12 +37,16 @@ function normalizeSource(value){
   return VALID_SOURCES.has(value) ? value : 'desktop-capture';
 }
 
+export function normalizeEntryPoint(value){
+  return VALID_ENTRY_POINTS.has(value) ? value : 'app';
+}
+
 export function addInboxLines(text, options = {}){
   const rawText = String(text || '');
   const splitLines = options.splitLines !== false;
   const lines = splitLines
     ? rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
-    : [rawText.trim()];
+    : rawText.trim() ? [rawText] : [];
 
   if (lines.length === 0) return [];
 
@@ -50,6 +57,7 @@ export function addInboxLines(text, options = {}){
   const status = normalizeStatus(options.status);
   const userHint = normalizeUserHint(options.userHint);
   const deviceId = options.deviceId || null;
+  const entryPoint = normalizeEntryPoint(options.entryPoint);
 
   const created = lines.map((line, index) => ({
     id: idFactory(index),
@@ -60,6 +68,7 @@ export function addInboxLines(text, options = {}){
     status,
     userHint,
     deviceId,
+    entryPoint,
     createdAt: now,
     updatedAt: now,
   }));

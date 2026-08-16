@@ -47,7 +47,7 @@
           </button>
           <button type="button" class="capture-btn capture-btn-save" id="btnSave">Сохранить</button>
         </div>
-        <div class="capture-voice-status" id="voiceStatus"></div>
+        <div class="capture-voice-status" id="voiceStatus" aria-live="polite"></div>
         <div class="capture-voice-note">Atlas не сохраняет аудиозапись. Распознавание выполняется средствами браузера.</div>
         <button type="button" class="capture-clear-draft" id="btnClearDraft" hidden>Очистить черновик</button>
       </div>
@@ -77,8 +77,10 @@
         <h2>Atlas Capture</h2>
         <div class="info-version" id="infoVersion"></div>
         <div class="info-status" id="infoStatus"></div>
+        <div class="info-storage" id="infoStorage"></div>
         <div class="info-sw" id="infoSW"></div>
-        <div class="info-inbox" id="infoInbox"></div>
+        <div class="info-voice" id="infoVoice"></div>
+        <div class="info-microphone" id="infoMicrophone"></div>
         <div class="info-note">Синхронизация между устройствами пока не реализована.</div>
         <button type="button" class="capture-btn capture-btn-secondary" id="btnBackFromInfo">Назад</button>
       </div>
@@ -123,6 +125,33 @@
         <button type="button" class="capture-btn" id="btnShareAppend">Добавить</button>
         <button type="button" class="capture-btn" id="btnShareReplace">Заменить</button>
         <button type="button" class="capture-btn capture-btn-secondary" id="btnShareCancel">Не принимать</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="micIntroDialog" class="capture-dialog" aria-labelledby="micIntroTitle">
+    <div class="capture-dialog-content">
+      <h3 id="micIntroTitle">Голосовой ввод</h3>
+      <p>Atlas сохраняет только распознанный текст.</p>
+      <p>Само аудио Atlas не сохраняет.</p>
+      <p>Распознавание выполняет браузер или системная служба и в некоторых случаях может требовать интернет.</p>
+      <div class="capture-dialog-actions">
+        <button type="button" class="capture-btn" id="btnMicIntroContinue">Продолжить</button>
+        <button type="button" class="capture-btn capture-btn-secondary" id="btnMicIntroLater">Не сейчас</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="micDeniedDialog" class="capture-dialog" aria-labelledby="micDeniedTitle">
+    <div class="capture-dialog-content">
+      <h3 id="micDeniedTitle">Микрофон отключён</h3>
+      <p>Доступ к микрофону для Atlas запрещён. Разрешите его в настройках сайта / браузера.</p>
+      <p id="micDeniedInstructions" class="capture-dialog-help" tabindex="-1" hidden>
+        Откройте сведения о сайте рядом с адресной строкой, найдите разрешение «Микрофон», выберите «Разрешить» и вернитесь в Atlas.
+      </p>
+      <div class="capture-dialog-actions">
+        <button type="button" class="capture-btn" id="btnMicDeniedHelp">Как включить</button>
+        <button type="button" class="capture-btn capture-btn-secondary" id="btnMicUseText">Использовать текст</button>
       </div>
     </div>
   </dialog>
