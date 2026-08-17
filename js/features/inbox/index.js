@@ -3,6 +3,8 @@ export {
   addInboxLines,
   convertInboxItemToTask,
   getInboxItems,
+  normalizeItemType,
   removeInboxItem,
   restoreInboxItem,
+  updateInboxItem,
 } from './model.js';

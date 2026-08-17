@@ -11,12 +11,22 @@ function makeId(prefix = 'inbox'){
 
 export function getInboxItems(){
   return ensureInbox()
-    .map(item => ({ ...item, entryPoint: normalizeEntryPoint(item.entryPoint) }))
+    .map(item => ({
+      ...item,
+      entryPoint: normalizeEntryPoint(item.entryPoint),
+      itemType: normalizeItemType(item.itemType),
+      status: normalizeStatus(item.status),
+    }))
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 const VALID_INPUT_TYPES = new Set(['text', 'voice']);
 const VALID_USER_HINTS = new Set(['task', 'thought', 'note']);
+// Confirmed processing types (Stage B0): a closed set on purpose. The capture
+// hint (`userHint`) stays separate; `itemType` is the confirmed routing type.
+const VALID_ITEM_TYPES = new Set(['task', 'thought', 'note']);
+// Processing lifecycle shared by Studio and (later) Sync. Reused as-is; no
+// parallel status system.
 const VALID_STATUSES = new Set(['new', 'reviewed', 'processed', 'discarded']);
 const VALID_SOURCES = new Set(['desktop-capture', 'mobile-capture']);
 const VALID_ENTRY_POINTS = new Set(['app', 'share', 'shortcut']);
@@ -27,6 +37,10 @@ function normalizeInputType(value){
 
 function normalizeUserHint(value){
   return VALID_USER_HINTS.has(value) ? value : null;
+}
+
+export function normalizeItemType(value){
+  return VALID_ITEM_TYPES.has(value) ? value : null;
 }
 
 function normalizeStatus(value){
@@ -56,6 +70,9 @@ export function addInboxLines(text, options = {}){
   const source = normalizeSource(options.source);
   const status = normalizeStatus(options.status);
   const userHint = normalizeUserHint(options.userHint);
+  // Capture does not confirm a type yet: the hint stays a hint, and the
+  // confirmed `itemType` is set later in Processing (default null).
+  const itemType = normalizeItemType(options.itemType);
   const deviceId = options.deviceId || null;
   const entryPoint = normalizeEntryPoint(options.entryPoint);
 
@@ -67,6 +84,7 @@ export function addInboxLines(text, options = {}){
     source,
     status,
     userHint,
+    itemType,
     deviceId,
     entryPoint,
     createdAt: now,
@@ -91,6 +109,45 @@ export function restoreInboxItem(removal){
   const index = Math.max(0, Math.min(removal.index ?? inbox.length, inbox.length));
   inbox.splice(index, 0, removal.item);
   return true;
+}
+
+/**
+ * Stage B0 editing mutation. Returns `{ item, changes }` for the caller to
+ * apply atomically, or `null` when the id is unknown.
+ *
+ * Invariants:
+ * - `text` is the editable display text; `rawText` stays the original capture
+ *   and can never be overwritten through this mutation (explicit guard).
+ * - `itemType` normalizes to the closed set `task | thought | note | null`.
+ * - `status` must be one of the shared processing states
+ *   `new | reviewed | processed | discarded`.
+ * - `updatedAt` is owned by the command layer, not by this mutation.
+ */
+export function updateInboxItem(id, patch = {}){
+  if (Object.hasOwn(patch, 'rawText')) {
+    throw new Error('rawText is the original capture and cannot be modified');
+  }
+  const inbox = ensureInbox();
+  const item = inbox.find(entry => entry.id === id);
+  if (!item) return null;
+
+  const changes = {};
+  if (Object.hasOwn(patch, 'text')) {
+    const text = String(patch.text ?? '').trim();
+    if (!text) throw new Error('Inbox text cannot be empty');
+    changes.text = text;
+  }
+  if (Object.hasOwn(patch, 'itemType')) {
+    changes.itemType = normalizeItemType(patch.itemType);
+  }
+  if (Object.hasOwn(patch, 'status')) {
+    const status = String(patch.status ?? '').trim();
+    if (!VALID_STATUSES.has(status)) {
+      throw new Error(`Unknown inbox status: ${patch.status}`);
+    }
+    changes.status = status;
+  }
+  return { item, changes };
 }
 
 export function convertInboxItemToTask(id, options = {}){
