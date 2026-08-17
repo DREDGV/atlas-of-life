@@ -175,6 +175,33 @@ function renderDisplayRow(item){
     meta.append(hint);
   }
 
+  // Compact confirmed-type picker: Task / Thought / Note / No type.
+  // Calls the Core command directly; no separate form.
+  const typeBar = document.createElement('div');
+  typeBar.className = 'inbox-type-bar';
+  const typeOptions = [
+    { value: 'task', label: `${ITEM_TYPE_ICONS.task} ${ITEM_TYPE_LABELS.task}` },
+    { value: 'thought', label: `${ITEM_TYPE_ICONS.thought} ${ITEM_TYPE_LABELS.thought}` },
+    { value: 'note', label: `${ITEM_TYPE_ICONS.note} ${ITEM_TYPE_LABELS.note}` },
+    { value: null, label: 'Без типа' },
+  ];
+  typeOptions.forEach(({ value, label }) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'inbox-type-button';
+    button.dataset.itemType = value ?? 'none';
+    const active = (item.itemType ?? null) === value;
+    if (active) button.classList.add('is-active', value ? `is-${value}` : 'is-none');
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      if ((item.itemType ?? null) === value) return;
+      if (updateInbox(item.id, { itemType: value })) commit('inbox:update');
+      openInboxList();
+    });
+    typeBar.appendChild(button);
+  });
+
   const statusBar = document.createElement('div');
   statusBar.className = 'inbox-status-bar';
   PROCESSING_STATUS_ORDER.forEach(status => {
@@ -191,7 +218,7 @@ function renderDisplayRow(item){
     statusBar.appendChild(button);
   });
 
-  body.append(text, meta, statusBar);
+  body.append(text, meta, typeBar, statusBar);
 
   const actions = document.createElement('div');
   actions.className = 'inbox-row-actions';

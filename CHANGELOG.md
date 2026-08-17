@@ -24,13 +24,14 @@
 - **Редактирование Inbox-записи**: правка текста через Core command; `rawText` остаётся оригиналом захвата и не перезаписывается (явный guard в команде)
 - **Подтверждённый тип `itemType`**: отделён от Capture-подсказки `userHint`; закрытый набор `task | thought | note | null`, по умолчанию `null`
 - **Processing state**: используются существующие `new | reviewed | processed | discarded` — без параллельной системы статусов
-- **Processing UI (карточный разбор)**: каждая запись — открыть / отредактировать (inline, с сохранением черновика правки при возврате) / выбрать тип / отметить статус; без большой формы
+- **Processing UI (карточный разбор)**: каждая запись — открыть / отредактировать (inline, с сохранением черновика правки при возврате) / выбрать тип (Задача / Мысль / Заметка / Без типа) / отметить статус; без большой формы
 - **Дата и время**: сегодняшние записи — время, старые — дата + время; маркер «изм.» по `updatedAt`
 - **Визуальное различие типов**: label + icon + accent (Задача / Мысль / Заметка), компактно, без redesign
 
 #### Техническое
 - Новая Core-команда `inbox.update` (edit / itemType / status): атомарная, одна операция `inbox.update` в operation log с `before/after`, no-op не плодит операции
 - Нормализация `itemType`/`status` на чтении (`getInboxItems`) — старые записи без полей читаются как `itemType: null`, `status: new`; миграции не требуются
+- **Строгая write-валидация `itemType`**: `inbox.update` принимает только `task | thought | note | null` — неизвестное значение бросает ошибку и не меняет запись (чтение legacy остаётся lenient)
 - `rawText`-инвариант: команда отклоняет попытки записи в `rawText`
 - Focused regression tests: `tests/processing-b0.mjs` (edit/rawText, itemType normalization, old compat, processing status, atomic rollback, operation log)
 

@@ -1,7 +1,9 @@
 // Stage B0 — Processing Center Foundation regression tests.
-// Focused coverage: edit/rawText preservation, itemType normalization,
-// old Inbox compatibility, processing status, atomic rollback on save
-// failure, and the operation log for edit/type/status commands.
+// Focused coverage: edit/rawText preservation, itemType normalization on
+// read + strict validation on write, old Inbox compatibility, processing
+// status, atomic rollback on save failure, the operation log for
+// edit/type/status commands, and a light UI→itemType wiring check.
+import { readFileSync } from 'node:fs';
 import { state } from '../js/state.js';
 import { getInboxItems, normalizeItemType } from '../js/features/inbox/model.js';
 import {
@@ -82,16 +84,26 @@ assert(normalizeItemType('thought') === 'thought', 'Test 3d: normalizeItemType k
 assert(normalizeItemType('meeting') === null, 'Test 3e: normalizeItemType nulls unknown values');
 console.log('✓ Test 3: itemType normalization');
 
-// Test 4: itemType update through the command
+// Test 4: itemType update is strict on write
 resetState();
 const t4 = captureInbox('Сначала мысль', opts());
 updateInbox(t4[0].id, { itemType: 'thought' }, { ...opts(), now: 1200 });
-assert(state.inbox[0].itemType === 'thought', 'Test 4a: itemType should be updatable');
-updateInbox(t4[0].id, { itemType: 'wishlist' }, { ...opts(), now: 1300 });
-assert(state.inbox[0].itemType === null, 'Test 4b: invalid update should normalize to null');
+assert(state.inbox[0].itemType === 'thought', 'Test 4a: valid type should be assigned');
+updateInbox(t4[0].id, { itemType: 'task' }, { ...opts(), now: 1300 });
+assert(state.inbox[0].itemType === 'task', 'Test 4b: switching to another valid type should work');
 updateInbox(t4[0].id, { itemType: null }, { ...opts(), now: 1400 });
-assert(state.inbox[0].itemType === null, 'Test 4c: explicit null should stay null');
-console.log('✓ Test 4: itemType update normalizes');
+assert(state.inbox[0].itemType === null, 'Test 4c: explicit null should clear the type');
+const opsBeforeInvalidType = state.operationLog.length;
+let invalidTypeError = null;
+try {
+  updateInbox(t4[0].id, { itemType: 'wishlist' }, { ...opts(), now: 1500 });
+} catch (error) {
+  invalidTypeError = error;
+}
+assert(invalidTypeError?.message.includes('Unknown itemType'), 'Test 4d: invalid type must throw');
+assert(state.inbox[0].itemType === null, 'Test 4e: existing type must survive the rejected update');
+assert(state.operationLog.length === opsBeforeInvalidType, 'Test 4f: rejected update must not grow the journal');
+console.log('✓ Test 4: itemType write validation is strict');
 
 // Test 5: old Inbox records without itemType/status read normally
 resetState();
@@ -217,5 +229,21 @@ const missing = updateInbox('inbox-missing', { text: 'Никуда' }, opts());
 assert(missing === null, 'Test 10a: unknown id must return null');
 assert(state.operationLog.length === opsCount, 'Test 10b: unknown id must not touch the journal');
 console.log('✓ Test 10: unknown id is a safe no-op');
+
+// Test 11: minimal UI → itemType wiring (static source check, no browser framework)
+const viewSource = readFileSync(new URL('../js/features/inbox/view.js', import.meta.url), 'utf-8');
+assert(
+  ['Задача', 'Мысль', 'Заметка', 'Без типа'].every(label => viewSource.includes(label)),
+  'Test 11a: type picker labels must exist in the Processing card'
+);
+assert(
+  viewSource.includes('updateInbox(item.id, { itemType: value })'),
+  'Test 11b: picker must route through the Core command updateInbox with itemType'
+);
+assert(
+  viewSource.includes('dataset.itemType') && viewSource.includes('inbox-type-button'),
+  'Test 11c: picker must render per-type buttons'
+);
+console.log('✓ Test 11: UI type picker wiring');
 
 console.log('\n✅ All Stage B0 processing tests passed.');

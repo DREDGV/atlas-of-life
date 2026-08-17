@@ -138,7 +138,14 @@ export function updateInboxItem(id, patch = {}){
     changes.text = text;
   }
   if (Object.hasOwn(patch, 'itemType')) {
-    changes.itemType = normalizeItemType(patch.itemType);
+    const itemType = patch.itemType;
+    // Write path is strict: only the confirmed closed set (or an explicit
+    // null) may be assigned. Read-time normalization stays lenient for legacy
+    // data, but a typo here must throw instead of silently clearing the type.
+    if (itemType !== null && !VALID_ITEM_TYPES.has(itemType)) {
+      throw new Error(`Unknown itemType: ${itemType}`);
+    }
+    changes.itemType = itemType;
   }
   if (Object.hasOwn(patch, 'status')) {
     const status = String(patch.status ?? '').trim();
