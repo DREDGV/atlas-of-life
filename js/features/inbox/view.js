@@ -1,5 +1,6 @@
 import { state } from '../../state.js';
 import { getInboxItems } from './model.js';
+import { createEditState } from './edit-state.js';
 import {
   captureInbox,
   convertInboxToTask,
@@ -12,10 +13,9 @@ let root = null;
 let onStateChange = () => {};
 let lastRemoval = null;
 
-// Pending inline-edit drafts, keyed by inbox item id. They survive re-renders
-// and overlay close, so returning to the list never loses an in-progress
-// correction ("вернуться без потери данных").
-const editDrafts = new Map();
+// Edit flow state: "unsaved draft" and "active edit mode" are separate.
+// Escape/Back leave edit mode but keep the draft; Save and Delete clear both.
+const editState = createEditState();
 
 const ITEM_TYPE_LABELS = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
 const ITEM_TYPE_ICONS = { task: '✓', thought: '💭', note: '📝' };
@@ -43,6 +43,8 @@ function updateCounter(){
 }
 
 function closeInbox(){
+  // Leaving the overlay exits edit mode; the draft itself stays preserved.
+  editState.exit();
   if (root) root.hidden = true;
 }
 
@@ -73,10 +75,8 @@ function typeChip(item){
 }
 
 function enterEditMode(itemId){
-  if (!editDrafts.has(itemId)) {
-    const item = state.inbox.find(entry => entry.id === itemId);
-    editDrafts.set(itemId, item?.text ?? '');
-  }
+  const item = state.inbox.find(entry => entry.id === itemId);
+  editState.enter(itemId, item?.text ?? '');
   openInboxList();
   requestAnimationFrame(() => {
     const area = root?.querySelector(`[data-edit-id="${itemId}"]`);
@@ -88,6 +88,11 @@ function enterEditMode(itemId){
   });
 }
 
+function exitEditMode(){
+  editState.exit();
+  openInboxList();
+}
+
 function renderEditRow(item){
   const row = document.createElement('article');
   row.className = 'inbox-row inbox-row--edit';
@@ -95,17 +100,17 @@ function renderEditRow(item){
   const area = document.createElement('textarea');
   area.className = 'inbox-edit-area';
   area.dataset.editId = item.id;
-  area.value = editDrafts.get(item.id) ?? item.text;
+  area.value = editState.getDraft(item.id, item.text);
   area.rows = Math.max(2, Math.min(6, area.value.split('\n').length + 1));
   area.addEventListener('input', () => {
-    editDrafts.set(item.id, area.value);
+    editState.setDraft(item.id, area.value);
   });
   area.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-      // Exit edit mode and keep the draft; stop the overlay's Esc handler.
+      // Leave edit mode and keep the draft; stop the overlay's Esc handler.
       event.preventDefault();
       event.stopPropagation();
-      openInboxList();
+      exitEditMode();
     }
   });
 
@@ -118,23 +123,23 @@ function renderEditRow(item){
   save.textContent = 'Сохранить';
   save.addEventListener('click', () => {
     if (updateInbox(item.id, { text: area.value })) {
-      editDrafts.delete(item.id);
+      editState.clear(item.id);
       commit('inbox:update');
     }
     openInboxList();
   });
 
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = 'inbox-button secondary';
-  cancel.textContent = 'Отмена';
-  cancel.addEventListener('click', () => openInboxList());
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'inbox-button secondary';
+  back.textContent = 'Назад';
+  back.addEventListener('click', () => exitEditMode());
 
   const hint = document.createElement('span');
   hint.className = 'inbox-help';
   hint.textContent = 'rawText оригинала не изменяется';
 
-  actions.append(save, cancel);
+  actions.append(save, back);
   row.append(area, actions, hint);
   return row;
 }
@@ -235,7 +240,7 @@ function renderDisplayRow(item){
   toTask.textContent = 'В задачу';
   toTask.addEventListener('click', () => {
     if (convertInboxToTask(item.id)) {
-      editDrafts.delete(item.id);
+      editState.clear(item.id);
       lastRemoval = null;
       commit('inbox:convert-to-task');
       openInboxList();
@@ -249,7 +254,7 @@ function renderDisplayRow(item){
   remove.addEventListener('click', () => {
     lastRemoval = deleteInbox(item.id);
     if (lastRemoval) {
-      editDrafts.delete(item.id);
+      editState.clear(item.id);
       commit('inbox:delete');
       openInboxList();
     }
@@ -373,7 +378,7 @@ export function openInboxList(){
   const list = document.createElement('div');
   list.className = 'inbox-list';
   items.forEach(item => {
-    const row = editDrafts.has(item.id)
+    const row = editState.isActive(item.id)
       ? renderEditRow(item)
       : renderDisplayRow(item);
     list.appendChild(row);

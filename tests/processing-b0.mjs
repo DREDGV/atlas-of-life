@@ -246,4 +246,45 @@ assert(
 );
 console.log('✓ Test 11: UI type picker wiring');
 
+// Test 12: edit flow state logic — draft and active mode are separate
+const { createEditState } = await import('../js/features/inbox/edit-state.js');
+const editState = createEditState();
+assert(!editState.hasDraft('i1') && !editState.isActive('i1'), 'Test 12a: starts with neither draft nor mode');
+editState.enter('i1', 'Исходный текст');
+assert(editState.isActive('i1'), 'Test 12b: enter activates edit mode');
+assert(editState.getDraft('i1', '') === 'Исходный текст', 'Test 12c: enter seeds draft with item text');
+editState.setDraft('i1', 'Незавершённая правка');
+editState.exit();
+assert(!editState.isActive('i1'), 'Test 12d: Escape/Back leaves edit mode');
+assert(editState.hasDraft('i1') && editState.getDraft('i1', '') === 'Незавершённая правка', 'Test 12e: draft survives exiting edit mode');
+editState.enter('i1', 'Исходный текст');
+assert(editState.getDraft('i1', '') === 'Незавершённая правка', 'Test 12f: re-entering restores the saved draft without overwriting it');
+editState.setDraft('i1', 'Завершённая правка');
+editState.clear('i1');
+assert(!editState.hasDraft('i1') && !editState.isActive('i1'), 'Test 12g: Save/Delete clears draft and mode');
+editState.enter('i1', 'Новый текст');
+editState.exit();
+editState.clear('i2');
+assert(editState.hasDraft('i1'), 'Test 12h: clearing another item keeps this draft');
+console.log('✓ Test 12: edit flow state logic');
+
+// Test 13: edit flow wiring (static source checks, no browser framework)
+assert(
+  viewSource.includes('editState.isActive(item.id)'),
+  'Test 13a: row mode must depend on active edit state, not draft presence'
+);
+assert(
+  viewSource.includes("back.textContent = 'Назад'"),
+  'Test 13b: Cancel button must read Back and keep the draft'
+);
+assert(
+  viewSource.includes('editState.exit()'),
+  'Test 13c: Escape/Back/overlay-close must exit edit mode without clearing drafts'
+);
+assert(
+  viewSource.includes('editState.clear(item.id)'),
+  'Test 13d: Save/Delete must clear both draft and edit state'
+);
+console.log('✓ Test 13: edit flow wiring');
+
 console.log('\n✅ All Stage B0 processing tests passed.');
