@@ -175,6 +175,7 @@ export function openInspectorFor(obj) {
       <div class="kv"><strong>${obj.title}</strong></div>
       <div class="kv">Проект: ${taskProject?.title || 'Без проекта'}</div>
       <div class="kv">Домен: ${taskDomainId ? byId(state.domains, taskDomainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
+      ${obj.sourceInboxId ? `<div class="kv">Источник: Входящие</div>` : ''}
       <div class="kv">Теги: #${normalizeTags(obj.tags).join(" #") || "-"}</div>
       <div class="kv">Статус: ${statusPill(obj.status)} · обновл.: ${daysSince(
       obj.updatedAt

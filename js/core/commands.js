@@ -109,6 +109,11 @@ function generateProjectId(){
   return `project-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function generateDomainId(){
+  if (globalThis.crypto?.randomUUID) return `domain-${globalThis.crypto.randomUUID()}`;
+  return `domain-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function snapshot(value){
   return JSON.parse(JSON.stringify(value));
 }
@@ -119,6 +124,25 @@ function normalizeTaskStatus(status){
     throw new Error(`Unknown task status: ${status}`);
   }
   return normalized;
+}
+
+// Priority is the existing 1..4 scale (1 = low … 4 = critical), matching the
+// quick-add parser `p1..p4` and `sizeByImportance`.
+function normalizePriority(value){
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 4 ? n : 2;
+}
+
+// Due is structured: { date: 'YYYY-MM-DD', time: 'HH:MM' | null } | null.
+// Never embedded in the task title.
+function normalizeDue(value){
+  if (!value || typeof value !== 'object') return null;
+  const date = typeof value.date === 'string' ? value.date : null;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const time = typeof value.time === 'string' && /^\d{2}:\d{2}$/.test(value.time)
+    ? value.time
+    : null;
+  return { date, time };
 }
 
 function normalizePosition(position){
@@ -238,6 +262,135 @@ function updateInboxMutation(id, patch, options){
 
 export function updateInbox(id, patch, options = {}){
   return runAtomicCommand(() => updateInboxMutation(id, patch, options));
+}
+
+/**
+ * Stage B1: safe Inbox → Task routing. Creates a Task, marks the source Inbox
+ * item `processed`, and links both directions in one atomic operation:
+ *   InboxItem.resultRef = { type: 'task', id: task.id }
+ *   Task.sourceInboxId   = inboxItem.id
+ * The source item and its rawText are never destroyed.
+ */
+function routeInboxToTaskMutation(id, options){
+  const inboxItem = state.inbox.find(item => item.id === id);
+  if (!inboxItem) return null;
+  // Only Task items route to a Task; Thought/Note/null must never become one,
+  // even when the command is called directly.
+  if (inboxItem.itemType !== 'task') {
+    throw new Error('Only task-type inbox items can be routed to a Task');
+  }
+  if (inboxItem.resultRef) {
+    throw new Error('Inbox item already has a routed result');
+  }
+
+  const now = options.now ?? Date.now();
+  const task = {
+    id: options.taskId || generateTaskId(),
+    projectId: null,
+    domainId: null,
+    title: String(options.title ?? inboxItem.text ?? '').trim() || 'Новая задача',
+    tags: normalizeTags(options.tags),
+    status: normalizeTaskStatus(options.status),
+    estimateMin: options.estimateMin ?? null,
+    priority: normalizePriority(options.priority),
+    due: normalizeDue(options.due),
+    sourceInboxId: inboxItem.id,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Destination uses the existing placement rules: validate domain, then let
+  // applyTaskPlacement validate the project and derive the domain from it.
+  const destination = {
+    projectId: options.projectId ?? null,
+    domainId: options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
+  };
+  if (Object.hasOwn(destination, 'domainId') && destination.domainId) {
+    const domainExists = state.domains.some(domain => domain.id === destination.domainId);
+    if (!domainExists) throw new Error(`Unknown target domain: ${destination.domainId}`);
+  }
+  applyTaskPlacement(task, destination);
+
+  state.tasks.push(task);
+
+  const inboxBefore = snapshot(inboxItem);
+  inboxItem.status = 'processed';
+  inboxItem.resultRef = { type: 'task', id: task.id };
+  inboxItem.updatedAt = now;
+
+  appendOperation({
+    type: 'inbox.route_to_task',
+    entityType: 'task',
+    entityId: task.id,
+    payload: {
+      inboxBefore,
+      inboxAfter: snapshot(inboxItem),
+      task,
+    },
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  return { inboxItem, task };
+}
+
+export function routeInboxToTask(id, options = {}){
+  return runAtomicCommand(() => routeInboxToTaskMutation(id, options));
+}
+
+/**
+ * Reverts a routed result: deletes the linked Task only when it was created by
+ * this processing operation AND has not been modified since (updatedAt ===
+ * createdAt). A modified Task is never deleted — the caller gets a `refused`
+ * result instead. Not a universal Undo — just the one reversible step this
+ * flow needs.
+ */
+function revertInboxRouteMutation(id, options){
+  const inboxItem = state.inbox.find(item => item.id === id);
+  if (!inboxItem) return null;
+  const ref = inboxItem.resultRef;
+  if (!ref || ref.type !== 'task') return null;
+
+  const now = options.now ?? Date.now();
+  const inboxBefore = snapshot(inboxItem);
+  const taskIndex = state.tasks.findIndex(task => task.id === ref.id);
+
+  if (taskIndex >= 0) {
+    const task = state.tasks[taskIndex];
+    if (task.sourceInboxId !== inboxItem.id) {
+      throw new Error('Result task is not linked to this inbox item');
+    }
+    // A task that was edited, moved or otherwise changed after routing is no
+    // longer safe to auto-delete; refuse without touching anything.
+    if (task.updatedAt !== task.createdAt) {
+      return { inboxItem, task: null, refused: true, reason: 'task-modified' };
+    }
+  }
+
+  let removedTask = null;
+  if (taskIndex >= 0) {
+    removedTask = snapshot(state.tasks[taskIndex]);
+    state.tasks.splice(taskIndex, 1);
+  }
+
+  delete inboxItem.resultRef;
+  inboxItem.status = 'reviewed';
+  inboxItem.updatedAt = now;
+
+  appendOperation({
+    type: 'inbox.route_revert',
+    entityType: 'inbox',
+    entityId: inboxItem.id,
+    payload: {
+      inboxBefore,
+      inboxAfter: snapshot(inboxItem),
+      task: removedTask,
+    },
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  return { inboxItem, task: removedTask };
+}
+
+export function revertInboxRoute(id, options = {}){
+  return runAtomicCommand(() => revertInboxRouteMutation(id, options));
 }
 
 function convertInboxToTaskMutation(id, options){
@@ -435,6 +588,32 @@ function createProjectMutation(input, options){
 
 export function createProject(input, options = {}){
   return runAtomicCommand(() => createProjectMutation(input, options));
+}
+
+function createDomainMutation(input, options){
+  const now = options.now ?? Date.now();
+  const title = String(input?.title ?? '').trim();
+  if (!title) throw new Error('Domain title cannot be empty');
+  const domain = {
+    id: input?.id || options.domainId || generateDomainId(),
+    title,
+    color: input?.color ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.domains.push(domain);
+  appendOperation({
+    type: 'domain.create',
+    entityType: 'domain',
+    entityId: domain.id,
+    payload: domain,
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  return domain;
+}
+
+export function createDomain(input, options = {}){
+  return runAtomicCommand(() => createDomainMutation(input, options));
 }
 
 function promoteTaskToProjectMutation(taskId, options){
