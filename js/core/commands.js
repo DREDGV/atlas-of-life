@@ -121,6 +121,25 @@ function normalizeTaskStatus(status){
   return normalized;
 }
 
+// Priority is the existing 1..4 scale (1 = low … 4 = critical), matching the
+// quick-add parser `p1..p4` and `sizeByImportance`.
+function normalizePriority(value){
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 4 ? n : 2;
+}
+
+// Due is structured: { date: 'YYYY-MM-DD', time: 'HH:MM' | null } | null.
+// Never embedded in the task title.
+function normalizeDue(value){
+  if (!value || typeof value !== 'object') return null;
+  const date = typeof value.date === 'string' ? value.date : null;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const time = typeof value.time === 'string' && /^\d{2}:\d{2}$/.test(value.time)
+    ? value.time
+    : null;
+  return { date, time };
+}
+
 function normalizePosition(position){
   if (!position || typeof position !== 'object') return null;
   const x = Number(position.x);
@@ -238,6 +257,111 @@ function updateInboxMutation(id, patch, options){
 
 export function updateInbox(id, patch, options = {}){
   return runAtomicCommand(() => updateInboxMutation(id, patch, options));
+}
+
+/**
+ * Stage B1: safe Inbox → Task routing. Creates a Task, marks the source Inbox
+ * item `processed`, and links both directions in one atomic operation:
+ *   InboxItem.resultRef = { type: 'task', id: task.id }
+ *   Task.sourceInboxId   = inboxItem.id
+ * The source item and its rawText are never destroyed.
+ */
+function routeInboxToTaskMutation(id, options){
+  const inboxItem = state.inbox.find(item => item.id === id);
+  if (!inboxItem) return null;
+  if (inboxItem.resultRef) {
+    throw new Error('Inbox item already has a routed result');
+  }
+
+  const now = options.now ?? Date.now();
+  const projectId = options.projectId ?? null;
+  const task = {
+    id: options.taskId || generateTaskId(),
+    projectId,
+    domainId: projectId
+      ? undefined
+      : (options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null),
+    title: String(options.title ?? inboxItem.text ?? '').trim() || 'Новая задача',
+    tags: normalizeTags(options.tags),
+    status: options.status || 'backlog',
+    estimateMin: options.estimateMin ?? null,
+    priority: normalizePriority(options.priority),
+    due: normalizeDue(options.due),
+    sourceInboxId: inboxItem.id,
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.tasks.push(task);
+
+  const inboxBefore = snapshot(inboxItem);
+  inboxItem.status = 'processed';
+  inboxItem.resultRef = { type: 'task', id: task.id };
+  inboxItem.updatedAt = now;
+
+  appendOperation({
+    type: 'inbox.route_to_task',
+    entityType: 'task',
+    entityId: task.id,
+    payload: {
+      inboxBefore,
+      inboxAfter: snapshot(inboxItem),
+      task,
+    },
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  return { inboxItem, task };
+}
+
+export function routeInboxToTask(id, options = {}){
+  return runAtomicCommand(() => routeInboxToTaskMutation(id, options));
+}
+
+/**
+ * Reverts a routed result: deletes the linked Task only when it was created by
+ * this processing operation (task.sourceInboxId === inboxItem.id), clears
+ * resultRef and returns the item to `reviewed`. Not a universal Undo — just
+ * the one reversible step this flow needs.
+ */
+function revertInboxRouteMutation(id, options){
+  const inboxItem = state.inbox.find(item => item.id === id);
+  if (!inboxItem) return null;
+  const ref = inboxItem.resultRef;
+  if (!ref || ref.type !== 'task') return null;
+
+  const now = options.now ?? Date.now();
+  const inboxBefore = snapshot(inboxItem);
+  const taskIndex = state.tasks.findIndex(task => task.id === ref.id);
+
+  let removedTask = null;
+  if (taskIndex >= 0) {
+    const task = state.tasks[taskIndex];
+    if (task.sourceInboxId !== inboxItem.id) {
+      throw new Error('Result task is not linked to this inbox item');
+    }
+    removedTask = snapshot(task);
+    state.tasks.splice(taskIndex, 1);
+  }
+
+  delete inboxItem.resultRef;
+  inboxItem.status = 'reviewed';
+  inboxItem.updatedAt = now;
+
+  appendOperation({
+    type: 'inbox.route_revert',
+    entityType: 'inbox',
+    entityId: inboxItem.id,
+    payload: {
+      inboxBefore,
+      inboxAfter: snapshot(inboxItem),
+      task: removedTask,
+    },
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  return { inboxItem, task: removedTask };
+}
+
+export function revertInboxRoute(id, options = {}){
+  return runAtomicCommand(() => revertInboxRouteMutation(id, options));
 }
 
 function convertInboxToTaskMutation(id, options){
