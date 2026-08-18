@@ -177,6 +177,25 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-edit-area{box-sizing:border-box;width:100%;resize:vertical;border:1px solid var(--panel-2);border-radius:10px;outline:none;background:rgba(5,10,22,.7);color:var(--text);padding:10px;font:inherit;line-height:1.45}
 .inbox-edit-area:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(86,204,242,.12)}
 .inbox-row--edit{flex-direction:column;align-items:stretch;gap:10px}
+/* Processing queue filters */
+.inbox-filters{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.inbox-filter-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:999px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+.inbox-filter-button:hover{color:var(--text);border-color:var(--accent)}
+.inbox-filter-button.is-active{border-color:rgba(86,204,242,.45);background:rgba(86,204,242,.16);color:#bcecff}
+/* Task routing controls (inside the card) */
+.inbox-route{display:flex;flex-direction:column;gap:7px;margin-top:12px;border:1px solid rgba(157,177,201,.14);border-radius:12px;background:rgba(5,10,22,.3);padding:11px}
+.inbox-route-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.inbox-route-label{flex:none;width:74px;color:var(--muted);font-size:12px}
+.inbox-select,.inbox-input{box-sizing:border-box;min-width:0;border:1px solid var(--panel-2);border-radius:8px;background:rgba(5,10,22,.7);color:var(--text);padding:5px 8px;font:inherit;font-size:12px}
+.inbox-select:focus,.inbox-input:focus{border-color:var(--accent);outline:none}
+.inbox-input[type="date"],.inbox-input[type="time"]{width:auto}
+.inbox-priority-bar{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.inbox-priority-bar .inbox-type-button.is-active{border-color:rgba(86,204,242,.45);background:rgba(86,204,242,.16);color:#bcecff}
+/* Linked result (routed Task) */
+.inbox-result{display:flex;flex-direction:column;gap:6px;margin-top:12px;border:1px solid rgba(52,211,153,.28);border-radius:12px;background:rgba(52,211,153,.07);padding:11px}
+.inbox-result-title{color:var(--text);font-weight:700;font-size:13px}
+.inbox-result-meta{color:var(--muted);font-size:12px}
+.inbox-result .inbox-row-actions{margin-top:2px}
 
 /* Адаптивность для маленьких экранов */
 @media (max-width: 1200px) {

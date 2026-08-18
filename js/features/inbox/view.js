@@ -1,10 +1,12 @@
 import { state } from '../../state.js';
 import { getInboxItems } from './model.js';
 import { createEditState } from './edit-state.js';
+import { openInspectorFor } from '../../inspector.js';
 import {
   captureInbox,
-  convertInboxToTask,
   deleteInbox,
+  revertInboxRoute,
+  routeInboxToTask,
   undoDeleteInbox,
   updateInbox,
 } from '../../core/commands.js';
@@ -26,6 +28,20 @@ const PROCESSING_STATUS_LABELS = {
   discarded: 'Отброшена',
 };
 const PROCESSING_STATUS_ORDER = ['new', 'reviewed', 'processed', 'discarded'];
+
+// Priority is the existing 1..4 scale; label it for humans in the UI.
+const PRIORITY_LABELS = { 1: 'Низкий', 2: 'Обычный', 3: 'Высокий', 4: 'Критичный' };
+const PRIORITY_ORDER = [1, 2, 3, 4];
+const DEFAULT_PRIORITY = 2;
+
+// Processing queue filters, mapped onto the existing statuses.
+const QUEUE_FILTERS = [
+  { key: 'new', label: 'Новые', matches: status => status === 'new' },
+  { key: 'reviewed', label: 'В работе', matches: status => status === 'reviewed' },
+  { key: 'processed', label: 'Разобранные', matches: status => status === 'processed' || status === 'discarded' },
+  { key: 'all', label: 'Все', matches: () => true },
+];
+let queueFilter = 'new';
 
 function isTypingTarget(target){
   return target instanceof HTMLElement && (
@@ -72,6 +88,180 @@ function typeChip(item){
     ? `${ITEM_TYPE_ICONS[type]} ${ITEM_TYPE_LABELS[type]}`
     : 'Тип не выбран';
   return chip;
+}
+
+function formatDue(due){
+  if (!due?.date) return '';
+  const [y, m, d] = due.date.split('-').map(Number);
+  const date = new Date(y, (m || 1) - 1, d || 1);
+  const dateStr = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  return due.time ? `${dateStr} ${due.time}` : dateStr;
+}
+
+function makeLabel(text){
+  const label = document.createElement('span');
+  label.className = 'inbox-route-label';
+  label.textContent = text;
+  return label;
+}
+
+function makeSelect(options, className = 'inbox-select'){
+  const select = document.createElement('select');
+  select.className = className;
+  options.forEach(({ value, text, selected }) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = text;
+    if (selected) option.selected = true;
+    select.appendChild(option);
+  });
+  return select;
+}
+
+// Compact Task-routing controls rendered inside the Processing card:
+// Domain → Project (filtered by domain) → Priority → Due (date + time).
+function buildRoutingControls(item){
+  const wrap = document.createElement('div');
+  wrap.className = 'inbox-route';
+
+  const domains = Array.isArray(state.domains) ? state.domains : [];
+  const defaultDomainId = state.activeDomain || domains[0]?.id || null;
+  const domainSelect = makeSelect(
+    domains.map(domain => ({
+      value: domain.id,
+      text: domain.title,
+      selected: domain.id === defaultDomainId,
+    }))
+  );
+
+  const projectSelect = makeSelect([]);
+  const repopulateProjects = () => {
+    projectSelect.replaceChildren();
+    projectSelect.appendChild(new Option('Без проекта', ''));
+    const domainId = domainSelect.value;
+    state.projects
+      .filter(project => project.domainId === domainId)
+      .forEach(project => projectSelect.appendChild(new Option(project.title, project.id)));
+  };
+  domainSelect.addEventListener('change', repopulateProjects);
+  repopulateProjects();
+
+  let priority = DEFAULT_PRIORITY;
+  const priorityBar = document.createElement('div');
+  priorityBar.className = 'inbox-priority-bar';
+  PRIORITY_ORDER.forEach(value => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'inbox-type-button';
+    button.dataset.priority = String(value);
+    if (value === priority) button.classList.add('is-active');
+    button.setAttribute('aria-pressed', value === priority ? 'true' : 'false');
+    button.textContent = PRIORITY_LABELS[value];
+    button.addEventListener('click', () => {
+      priority = value;
+      priorityBar.querySelectorAll('button').forEach(other => {
+        other.classList.toggle('is-active', other === button);
+        other.setAttribute('aria-pressed', other === button ? 'true' : 'false');
+      });
+    });
+    priorityBar.appendChild(button);
+  });
+
+  const dueDate = document.createElement('input');
+  dueDate.type = 'date';
+  dueDate.className = 'inbox-input';
+  const dueTime = document.createElement('input');
+  dueTime.type = 'time';
+  dueTime.className = 'inbox-input';
+
+  const submit = document.createElement('button');
+  submit.type = 'button';
+  submit.className = 'inbox-button primary';
+  submit.textContent = 'Создать задачу';
+  submit.addEventListener('click', () => {
+    const due = dueDate.value
+      ? { date: dueDate.value, time: dueTime.value || null }
+      : null;
+    const projectId = projectSelect.value || null;
+    const domainId = projectId ? undefined : (domainSelect.value || null);
+    const result = routeInboxToTask(item.id, { projectId, domainId, priority, due });
+    if (result) commit('inbox:route');
+    openInboxList();
+  });
+
+  const domainRow = document.createElement('div');
+  domainRow.className = 'inbox-route-row';
+  domainRow.append(makeLabel('Домен'), domainSelect);
+
+  const projectRow = document.createElement('div');
+  projectRow.className = 'inbox-route-row';
+  projectRow.append(makeLabel('Проект'), projectSelect);
+
+  const priorityRow = document.createElement('div');
+  priorityRow.className = 'inbox-route-row';
+  priorityRow.append(makeLabel('Приоритет'), priorityBar);
+
+  const dueRow = document.createElement('div');
+  dueRow.className = 'inbox-route-row';
+  dueRow.append(makeLabel('Когда'), dueDate, dueTime);
+
+  const submitRow = document.createElement('div');
+  submitRow.className = 'inbox-route-row';
+  submitRow.append(submit);
+
+  wrap.append(domainRow, projectRow, priorityRow, dueRow, submitRow);
+  return wrap;
+}
+
+// Shows a routed result: "Разобрана → Задача: …" with Open / Return actions.
+function buildLinkedResult(item, task){
+  const wrap = document.createElement('div');
+  wrap.className = 'inbox-result';
+
+  const title = document.createElement('div');
+  title.className = 'inbox-result-title';
+  title.textContent = `→ Задача: ${task ? task.title : '(задача удалена)'}`;
+
+  const meta = document.createElement('div');
+  meta.className = 'inbox-result-meta';
+  if (task) {
+    const taskProject = state.projects.find(project => project.id === task.projectId);
+    const taskDomain = state.domains.find(domain => domain.id === (task.domainId || taskProject?.domainId));
+    const parts = [
+      [taskDomain?.title, taskProject?.title].filter(Boolean).join(' / '),
+      PRIORITY_LABELS[task.priority] || `p${task.priority}`,
+      formatDue(task.due),
+    ].filter(Boolean);
+    meta.textContent = parts.join(' · ');
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'inbox-row-actions';
+
+  if (task) {
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'inbox-button primary';
+    open.textContent = 'Открыть задачу';
+    open.addEventListener('click', () => {
+      closeInbox();
+      openInspectorFor({ ...task, _type: 'task' });
+    });
+    actions.appendChild(open);
+  }
+
+  const revert = document.createElement('button');
+  revert.type = 'button';
+  revert.className = 'inbox-button secondary';
+  revert.textContent = 'Вернуть в разбор';
+  revert.addEventListener('click', () => {
+    if (revertInboxRoute(item.id)) commit('inbox:route-revert');
+    openInboxList();
+  });
+  actions.appendChild(revert);
+
+  wrap.append(title, meta, actions);
+  return wrap;
 }
 
 function enterEditMode(itemId){
@@ -240,6 +430,16 @@ function renderDisplayRow(item){
 
   body.append(text, meta, typeBar, statusBar);
 
+  // Task routing lives only on Task items; Thought/Note get no routing controls.
+  if (item.itemType === 'task') {
+    if (item.resultRef?.type === 'task') {
+      const resultTask = state.tasks.find(task => task.id === item.resultRef.id);
+      body.appendChild(buildLinkedResult(item, resultTask));
+    } else {
+      body.appendChild(buildRoutingControls(item));
+    }
+  }
+
   const actions = document.createElement('div');
   actions.className = 'inbox-row-actions';
 
@@ -248,19 +448,6 @@ function renderDisplayRow(item){
   edit.className = 'inbox-button secondary';
   edit.textContent = '✎ Править';
   edit.addEventListener('click', () => enterEditMode(item.id));
-
-  const toTask = document.createElement('button');
-  toTask.type = 'button';
-  toTask.className = 'inbox-button primary';
-  toTask.textContent = 'В задачу';
-  toTask.addEventListener('click', () => {
-    if (convertInboxToTask(item.id)) {
-      editState.clear(item.id);
-      lastRemoval = null;
-      commit('inbox:convert-to-task');
-      openInboxList();
-    }
-  });
 
   const remove = document.createElement('button');
   remove.type = 'button';
@@ -275,7 +462,7 @@ function renderDisplayRow(item){
     }
   });
 
-  actions.append(edit, toTask, remove);
+  actions.append(edit, remove);
   row.append(body, actions);
   return row;
 }
@@ -354,15 +541,11 @@ export function openInboxList(){
   toolbar.className = 'inbox-toolbar';
   const summary = document.createElement('div');
   summary.className = 'inbox-help';
-  const items = getInboxItems();
-  const freshCount = items.filter(item => item.status === 'new').length;
-  if (items.length === 0) {
-    summary.textContent = 'Входящие разобраны. Здесь спокойно.';
-  } else if (freshCount === 0) {
-    summary.textContent = `Записей: ${items.length}`;
-  } else {
-    summary.textContent = `Новых: ${freshCount} · Всего: ${items.length}`;
-  }
+  const allItems = getInboxItems();
+  const remainingCount = allItems.filter(item => item.status === 'new' || item.status === 'reviewed').length;
+  summary.textContent = allItems.length === 0
+    ? 'Входящие разобраны. Здесь спокойно.'
+    : `Осталось разобрать: ${remainingCount} · Всего: ${allItems.length}`;
   const captureButton = document.createElement('button');
   captureButton.type = 'button';
   captureButton.className = 'inbox-button primary';
@@ -370,6 +553,27 @@ export function openInboxList(){
   captureButton.addEventListener('click', openInboxCapture);
   toolbar.append(summary, captureButton);
   body.appendChild(toolbar);
+
+  // Processing queue filters, mapped onto the existing statuses.
+  const filters = document.createElement('div');
+  filters.className = 'inbox-filters';
+  QUEUE_FILTERS.forEach(filter => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'inbox-filter-button';
+    button.dataset.queueFilter = filter.key;
+    if (filter.key === queueFilter) button.classList.add('is-active');
+    button.textContent = filter.label;
+    button.addEventListener('click', () => {
+      queueFilter = filter.key;
+      openInboxList();
+    });
+    filters.appendChild(button);
+  });
+  body.appendChild(filters);
+
+  const activeFilter = QUEUE_FILTERS.find(filter => filter.key === queueFilter) || QUEUE_FILTERS[QUEUE_FILTERS.length - 1];
+  const items = allItems.filter(item => activeFilter.matches(item.status));
 
   if (lastRemoval) {
     const undo = document.createElement('div');
