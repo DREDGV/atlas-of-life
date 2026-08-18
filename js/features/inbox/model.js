@@ -55,6 +55,14 @@ export function normalizeEntryPoint(value){
   return VALID_ENTRY_POINTS.has(value) ? value : 'app';
 }
 
+// A Capture-time domain suggestion: a hint, not a final route. Must reference
+// an existing Domain; an unknown/missing id normalizes to null.
+function normalizeDomainHintId(value){
+  if (!value) return null;
+  const known = Array.isArray(state.domains) && state.domains.some(domain => domain.id === value);
+  return known ? value : null;
+}
+
 export function addInboxLines(text, options = {}){
   const rawText = String(text || '');
   const splitLines = options.splitLines !== false;
@@ -73,6 +81,7 @@ export function addInboxLines(text, options = {}){
   // Capture does not confirm a type yet: the hint stays a hint, and the
   // confirmed `itemType` is set later in Processing (default null).
   const itemType = normalizeItemType(options.itemType);
+  const domainHintId = normalizeDomainHintId(options.domainHintId);
   const deviceId = options.deviceId || null;
   const entryPoint = normalizeEntryPoint(options.entryPoint);
 
@@ -85,6 +94,7 @@ export function addInboxLines(text, options = {}){
     status,
     userHint,
     itemType,
+    domainHintId,
     deviceId,
     entryPoint,
     createdAt: now,

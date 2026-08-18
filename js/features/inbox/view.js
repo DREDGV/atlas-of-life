@@ -42,14 +42,22 @@ const PRIORITY_LABELS = { 1: 'Низкий', 2: 'Обычный', 3: 'Высок
 const PRIORITY_ORDER = [1, 2, 3, 4];
 const DEFAULT_PRIORITY = 2;
 
-// Processing queue filters, mapped onto the existing statuses.
+// Processing queue filters, mapped onto the existing statuses. The statuses
+// stay in the model; the UI offers a simple user-facing set.
 const QUEUE_FILTERS = [
-  { key: 'new', label: 'Новые', matches: status => status === 'new' },
-  { key: 'reviewed', label: 'В работе', matches: status => status === 'reviewed' },
-  { key: 'processed', label: 'Разобранные', matches: status => status === 'processed' || status === 'discarded' },
+  { key: 'review', label: 'К разбору', matches: status => status === 'new' || status === 'reviewed' },
+  { key: 'done', label: 'Разобранные', matches: status => status === 'processed' || status === 'discarded' },
   { key: 'all', label: 'Все', matches: () => true },
 ];
-let queueFilter = 'new';
+let queueFilter = 'review';
+
+// The one expanded card in the queue; everything else stays compact.
+let activeProcessingId = null;
+
+// Quick Capture hint state (ephemeral UI state, like the routing draft).
+let captureUserHint = null;
+let captureDomainHintId = null;
+let savedBannerCount = 0;
 
 function isTypingTarget(target){
   return target instanceof HTMLElement && (
@@ -127,15 +135,24 @@ function makeSelect(options, className = 'inbox-select'){
 }
 
 // Compact Task-routing controls rendered inside the Processing card:
-// Domain → Project (filtered by domain) → Priority → Due (date + time).
+// Domain → Project → Priority/Due (collapsed behind "Дополнительно").
 // Selections live in a local routing draft; Domain/Project can be created
-// inline through Core commands.
+// inline through Core commands. A Capture domain hint proposes the initial
+// domain but never locks it.
 function buildRoutingControls(item){
   const wrap = document.createElement('div');
   wrap.className = 'inbox-route';
 
   const domains = Array.isArray(state.domains) ? state.domains : [];
   const draft = routingDraftState.get(item.id) || {};
+  if (!draft.domainId && item.domainHintId && domains.some(domain => domain.id === item.domainHintId)) {
+    draft.domainId = item.domainHintId;
+  }
+
+  const stepLabel = document.createElement('div');
+  stepLabel.className = 'inbox-step-label';
+  stepLabel.textContent = 'Куда?';
+  wrap.appendChild(stepLabel);
 
   let domainSelect = null;
   let projectSelect = null;
@@ -319,11 +336,28 @@ function buildRoutingControls(item){
   dueRow.className = 'inbox-route-row';
   dueRow.append(makeLabel('Когда'), dueDate, dueTime);
 
+  // "Дополнительно" is collapsed by default: priority and due only take the
+  // screen when the user actually needs them. Draft values survive.
+  const extraSection = document.createElement('div');
+  extraSection.className = 'inbox-route-extra';
+  extraSection.hidden = true;
+  extraSection.append(priorityRow, dueRow);
+
+  const extraToggle = document.createElement('button');
+  extraToggle.type = 'button';
+  extraToggle.className = 'inbox-extra-toggle';
+  extraToggle.textContent = '▸ Дополнительно';
+  extraToggle.addEventListener('click', () => {
+    const open = extraSection.hidden;
+    extraSection.hidden = !open;
+    extraToggle.textContent = open ? '▾ Дополнительно' : '▸ Дополнительно';
+  });
+
   const submitRow = document.createElement('div');
   submitRow.className = 'inbox-route-row';
   submitRow.append(submit);
 
-  wrap.append(priorityRow, dueRow, submitRow);
+  wrap.append(extraToggle, extraSection, submitRow);
   return wrap;
 }
 
@@ -557,31 +591,37 @@ function renderDisplayRow(item){
     typeBar.appendChild(button);
   });
 
-  const statusBar = document.createElement('div');
-  statusBar.className = 'inbox-status-bar';
-  PROCESSING_STATUS_ORDER.forEach(status => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'inbox-status-button';
-    if (item.status === status) button.classList.add('is-active', `is-${status}`);
-    button.textContent = PROCESSING_STATUS_LABELS[status];
-    button.addEventListener('click', () => {
-      if (item.status === status) return;
-      if (updateInbox(item.id, { status })) commit('inbox:update');
-      openInboxList();
-    });
-    statusBar.appendChild(button);
-  });
-
   const isTask = item.itemType === 'task';
   const isRouted = item.resultRef?.type === 'task';
 
   body.append(text, meta);
-  // The type picker stays available while the user can still change their
-  // mind (no resultRef yet), including for Task items. Once routed, the item
-  // is locked: no picker, no manual status buttons — only the linked result.
-  if (!isRouted) body.appendChild(typeBar);
-  if (!isRouted) body.appendChild(statusBar);
+
+  // Capture hints are proposals, never confirmed routing.
+  const hintBits = [];
+  if (item.userHint) {
+    hintBits.push(`Подсказка: ${ITEM_TYPE_LABELS[item.userHint] || item.userHint}`);
+  }
+  if (item.domainHintId) {
+    const hintDomain = state.domains.find(domain => domain.id === item.domainHintId);
+    if (hintDomain) hintBits.push(`Предложенный домен: ${hintDomain.title}`);
+  }
+  if (hintBits.length > 0) {
+    const hintLine = document.createElement('div');
+    hintLine.className = 'inbox-hint-line';
+    hintLine.textContent = hintBits.join(' · ');
+    body.appendChild(hintLine);
+  }
+
+  // The main question first: "Что это?". The picker stays available while the
+  // user can still change their mind (no resultRef yet), including for Task
+  // items. Once routed, the item is locked — only the linked result remains.
+  if (!isRouted) {
+    const questionLabel = document.createElement('div');
+    questionLabel.className = 'inbox-step-label';
+    questionLabel.textContent = 'Что это?';
+    body.appendChild(questionLabel);
+    body.appendChild(typeBar);
+  }
 
   if (isTask) {
     if (isRouted) {
@@ -590,6 +630,22 @@ function renderDisplayRow(item){
     } else {
       body.appendChild(buildRoutingControls(item));
     }
+  } else if (!isRouted && (item.itemType === 'thought' || item.itemType === 'note')) {
+    // Thought/Note never become Tasks: one clear finishing action.
+    const finishRow = document.createElement('div');
+    finishRow.className = 'inbox-route-row';
+    const finishButton = document.createElement('button');
+    finishButton.type = 'button';
+    finishButton.className = 'inbox-button primary';
+    finishButton.textContent = 'Считать разобранной';
+    finishButton.addEventListener('click', () => {
+      if (updateInbox(item.id, { itemType: item.itemType, status: 'processed' })) {
+        commit('inbox:processed');
+      }
+      openInboxList();
+    });
+    finishRow.appendChild(finishButton);
+    body.appendChild(finishRow);
   }
 
   const actions = document.createElement('div');
@@ -600,6 +656,20 @@ function renderDisplayRow(item){
   edit.className = 'inbox-button secondary';
   edit.textContent = '✎ Править';
   edit.addEventListener('click', () => enterEditMode(item.id));
+
+  if (!isRouted) {
+    const discard = document.createElement('button');
+    discard.type = 'button';
+    discard.className = 'inbox-button secondary';
+    discard.textContent = 'Отбросить';
+    discard.addEventListener('click', () => {
+      if (updateInbox(item.id, { status: 'discarded' })) {
+        commit('inbox:discarded');
+      }
+      openInboxList();
+    });
+    actions.appendChild(discard);
+  }
 
   const remove = document.createElement('button');
   remove.type = 'button';
@@ -617,6 +687,33 @@ function renderDisplayRow(item){
 
   actions.append(edit, remove);
   row.append(body, actions);
+  return row;
+}
+
+// Compact queue row: non-active records show text + minimal meta only.
+function renderCompactRow(item){
+  const row = document.createElement('article');
+  row.className = 'inbox-row inbox-row--compact';
+
+  const text = document.createElement('div');
+  text.className = 'inbox-row-text';
+  text.textContent = item.text;
+
+  const meta = document.createElement('div');
+  meta.className = 'inbox-row-meta';
+
+  const time = document.createElement('span');
+  time.className = 'inbox-time';
+  time.textContent = formatProcessingTime(item.createdAt);
+  meta.append(time);
+
+  if (item.itemType) meta.appendChild(typeChip(item));
+
+  row.append(text, meta);
+  row.addEventListener('click', () => {
+    activeProcessingId = item.id;
+    openInboxList();
+  });
   return row;
 }
 
@@ -658,22 +755,125 @@ export function openInboxCapture(){
   body.innerHTML = `
     <p class="inbox-help">Запишите мысли как есть. Каждая непустая строка станет отдельной записью.</p>
     <textarea id="inboxCaptureText" class="inbox-capture" rows="7" placeholder="Позвонить врачу&#10;Идея для проекта&#10;Купить подарок"></textarea>
+    <div class="inbox-capture-extras"></div>
     <div class="inbox-actions">
       <button type="button" class="inbox-button secondary" id="inboxOpenList">Открыть список</button>
+      <button type="button" class="inbox-button secondary" id="inboxCaptureRefine">+ Уточнить</button>
       <button type="button" class="inbox-button primary" id="inboxCaptureSave">Сохранить</button>
-    </div>`;
+    </div>
+    <div class="inbox-saved-banner" id="inboxSavedBanner" hidden></div>`;
+
   const input = document.getElementById('inboxCaptureText');
+  const extras = document.querySelector('#inboxDialogBody .inbox-capture-extras');
+  const refineButton = document.getElementById('inboxCaptureRefine');
+
+  // ---- "+ Уточнить": Capture hints (type + domain), never final routing ----
+  const hintBlock = document.createElement('div');
+  hintBlock.className = 'inbox-capture-hints-block';
+  hintBlock.hidden = true;
+
+  const hintLabel = document.createElement('div');
+  hintLabel.className = 'inbox-step-label';
+  hintLabel.textContent = 'Подсказка типа:';
+  const hintBar = document.createElement('div');
+  hintBar.className = 'inbox-type-bar';
+  ['task', 'thought', 'note'].forEach(hint => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'inbox-type-button';
+    button.dataset.captureHint = hint;
+    button.textContent = `${ITEM_TYPE_ICONS[hint]} ${ITEM_TYPE_LABELS[hint]}`;
+    button.addEventListener('click', () => {
+      captureUserHint = captureUserHint === hint ? null : hint;
+      updateHintUI();
+    });
+    hintBar.appendChild(button);
+  });
+
+  const domainRow = document.createElement('div');
+  domainRow.className = 'inbox-route-row';
+  domainRow.appendChild(makeLabel('Домен'));
+  const domainSelect = makeSelect([
+    { value: '', text: 'не выбран', selected: true },
+    ...(Array.isArray(state.domains) ? state.domains : []).map(domain => ({
+      value: domain.id,
+      text: domain.title,
+    })),
+  ]);
+  domainSelect.addEventListener('change', () => {
+    captureDomainHintId = domainSelect.value || null;
+  });
+  domainRow.appendChild(domainSelect);
+
+  const multiNote = document.createElement('div');
+  multiNote.className = 'inbox-help';
+  multiNote.textContent = 'Уточнение применится ко всем записям';
+  multiNote.hidden = true;
+  input.addEventListener('input', () => {
+    multiNote.hidden = !input.value.includes('\n');
+  });
+
+  hintBlock.append(hintLabel, hintBar, domainRow, multiNote);
+  extras.appendChild(hintBlock);
+
+  function updateHintUI(){
+    hintBar.querySelectorAll('button').forEach(button => {
+      const active = button.dataset.captureHint === captureUserHint;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    domainSelect.value = captureDomainHintId || '';
+  }
+  updateHintUI();
+
+  refineButton.addEventListener('click', () => {
+    const open = hintBlock.hidden;
+    hintBlock.hidden = !open;
+    refineButton.textContent = open ? '− Скрыть уточнение' : '+ Уточнить';
+  });
+
+  // ---- Saved banner: a natural next step after Capture ----
+  const savedBanner = document.getElementById('inboxSavedBanner');
+  if (savedBannerCount > 0) {
+    const text = document.createElement('span');
+    const n = savedBannerCount;
+    const plural = n === 1 ? 'запись' : (n >= 2 && n <= 4 ? 'записи' : 'записей');
+    text.textContent = `✓ Сохранено ${n} ${plural}`;
+    const goButton = document.createElement('button');
+    goButton.type = 'button';
+    goButton.className = 'inbox-button primary';
+    goButton.textContent = 'Разобрать сейчас';
+    goButton.addEventListener('click', () => {
+      savedBannerCount = 0;
+      queueFilter = 'review';
+      openInboxList();
+    });
+    savedBanner.append(text, goButton);
+    savedBanner.hidden = false;
+  }
+
   const save = () => {
-    const created = captureInbox(input.value);
+    const created = captureInbox(input.value, {
+      userHint: captureUserHint,
+      domainHintId: captureDomainHintId,
+    });
     if (!created.length) {
       input.focus();
       return;
     }
     commit('inbox:capture');
-    openInboxList();
+    captureUserHint = null;
+    captureDomainHintId = null;
+    savedBannerCount = created.length;
+    input.value = '';
+    updateHintUI();
+    openInboxCapture();
   };
   document.getElementById('inboxCaptureSave').addEventListener('click', save);
-  document.getElementById('inboxOpenList').addEventListener('click', openInboxList);
+  document.getElementById('inboxOpenList').addEventListener('click', () => {
+    savedBannerCount = 0;
+    openInboxList();
+  });
   input.addEventListener('keydown', event => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
@@ -687,6 +887,7 @@ export function openInboxList(){
   createShell();
   root.hidden = false;
   setBodyTitle('Входящие · разбор');
+  savedBannerCount = 0;
   const body = document.getElementById('inboxDialogBody');
   body.innerHTML = '';
 
@@ -697,8 +898,8 @@ export function openInboxList(){
   const allItems = getInboxItems();
   const remainingCount = allItems.filter(item => item.status === 'new' || item.status === 'reviewed').length;
   summary.textContent = allItems.length === 0
-    ? 'Входящие разобраны. Здесь спокойно.'
-    : `Осталось разобрать: ${remainingCount} · Всего: ${allItems.length}`;
+    ? 'Здесь пусто. Захватите мысль.'
+    : `К разбору: ${remainingCount}`;
   const captureButton = document.createElement('button');
   captureButton.type = 'button';
   captureButton.className = 'inbox-button primary';
@@ -728,6 +929,17 @@ export function openInboxList(){
   const activeFilter = QUEUE_FILTERS.find(filter => filter.key === queueFilter) || QUEUE_FILTERS[QUEUE_FILTERS.length - 1];
   const items = allItems.filter(item => activeFilter.matches(item.status));
 
+  // One active/expanded card; the rest of the queue stays compact. After a
+  // record is processed it leaves "К разбору" and the next one takes over.
+  if (!items.some(item => item.id === activeProcessingId)) {
+    activeProcessingId = items[0]?.id ?? null;
+  }
+  const activeItem = items.find(item => item.id === activeProcessingId) || items[0] || null;
+  // Started actually processing -> reviewed (automatic, Core command).
+  if (activeItem && activeItem.status === 'new' && !activeItem.resultRef) {
+    updateInbox(activeItem.id, { status: 'reviewed' });
+  }
+
   if (lastRemoval) {
     const undo = document.createElement('div');
     undo.className = 'inbox-undo';
@@ -752,7 +964,9 @@ export function openInboxList(){
   items.forEach(item => {
     const row = editState.isActive(item.id)
       ? renderEditRow(item)
-      : renderDisplayRow(item);
+      : (item.id === activeProcessingId
+        ? renderDisplayRow(item)
+        : renderCompactRow(item));
     list.appendChild(row);
   });
   body.appendChild(list);

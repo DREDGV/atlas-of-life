@@ -197,6 +197,18 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-result-title{color:var(--text);font-weight:700;font-size:13px}
 .inbox-result-meta{color:var(--muted);font-size:12px}
 .inbox-result .inbox-row-actions{margin-top:2px}
+/* B2 Processing Flow: steps, hints, compact queue, saved banner */
+.inbox-step-label{color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin:10px 0 6px}
+.inbox-route .inbox-step-label{margin-top:0}
+.inbox-hint-line{color:var(--warn);font-size:12px;margin-top:8px;font-style:italic}
+.inbox-route-extra{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+.inbox-extra-toggle{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;text-align:left;padding:4px 0}
+.inbox-extra-toggle:hover{color:var(--text)}
+.inbox-row--compact{cursor:pointer;transition:border-color .15s ease}
+.inbox-row--compact:hover{border-color:rgba(86,204,242,.35)}
+.inbox-capture-hints-block{display:flex;flex-direction:column;gap:8px;margin:10px 0 12px;border:1px solid rgba(157,177,201,.14);border-radius:12px;background:rgba(5,10,22,.3);padding:11px}
+.inbox-capture-hints-block .inbox-step-label{margin-top:0}
+.inbox-saved-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;border:1px solid rgba(52,211,153,.3);border-radius:10px;background:rgba(52,211,153,.08);color:#a7f3d0;padding:9px 11px;font-size:13px}
 
 /* Адаптивность для маленьких экранов */
 @media (max-width: 1200px) {
