@@ -6,6 +6,7 @@ import {
   convertInboxItemToTask,
   removeInboxItem,
   restoreInboxItem,
+  updateInboxItem,
 } from '../features/inbox/model.js';
 
 const TASK_STATUSES = new Set(['backlog', 'today', 'doing', 'done']);
@@ -201,6 +202,42 @@ function undoDeleteInboxMutation(removal, options){
 
 export function undoDeleteInbox(removal, options = {}){
   return runAtomicCommand(() => undoDeleteInboxMutation(removal, options));
+}
+
+/**
+ * Stage B0 processing edit: text, confirmed type or processing status.
+ * One atomic command, one `inbox.update` operation. `rawText` is preserved
+ * by the model invariant and never appears in the patch.
+ */
+function updateInboxMutation(id, patch, options){
+  const result = updateInboxItem(id, patch);
+  if (!result) return null;
+  const { item, changes } = result;
+
+  const comparable = Object.entries(changes).some(([key, value]) =>
+    JSON.stringify(item[key] ?? null) !== JSON.stringify(value ?? null)
+  );
+  if (!comparable) return { item, before: snapshot(item), operation: null };
+
+  const before = snapshot(item);
+  Object.assign(item, changes);
+  item.updatedAt = options.now ?? Date.now();
+  const operation = appendOperation({
+    type: 'inbox.update',
+    entityType: 'inbox',
+    entityId: item.id,
+    baseVersion: before.updatedAt || null,
+    payload: {
+      before,
+      after: item,
+    },
+  }, { timestamp: item.updatedAt, deviceId: options.deviceId });
+  finish(options);
+  return { item, before, operation };
+}
+
+export function updateInbox(id, patch, options = {}){
+  return runAtomicCommand(() => updateInboxMutation(id, patch, options));
 }
 
 function convertInboxToTaskMutation(id, options){

@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 История версий (релизы) + дорожная карта (планы/идеи). Формат релизов: Atlas_of_life_vX.Y.Z. В UI версия берётся по первой секции `## Atlas_of_life_vX.Y.Z` сверху.
 
@@ -12,6 +12,35 @@
 - Частичный экспорт/импорт (по доменам/проектам).
 - Метрики продуктивности: время в статусе, aging‑heatmap.
 - Эксперименты по раскладке: force‑layout / grid‑кольца.
+- Reversible Inbox → Task conversion (см. docs/PROCESSING_B0_FOLLOWUP.md).
+
+---
+
+## 0.10.0-alpha.1 - 2026-08-18
+
+### Stage B0 — Processing Center Foundation
+
+#### Добавлено
+- **Редактирование Inbox-записи**: правка текста через Core command; `rawText` остаётся оригиналом захвата и не перезаписывается (явный guard в команде)
+- **Подтверждённый тип `itemType`**: отделён от Capture-подсказки `userHint`; закрытый набор `task | thought | note | null`, по умолчанию `null`
+- **Processing state**: используются существующие `new | reviewed | processed | discarded` — без параллельной системы статусов
+- **Processing UI (карточный разбор)**: каждая запись — открыть / отредактировать (inline, с сохранением черновика правки при возврате) / выбрать тип (Задача / Мысль / Заметка / Без типа) / отметить статус; без большой формы
+- **Дата и время**: сегодняшние записи — время, старые — дата + время; маркер «изм.» по `updatedAt`
+- **Визуальное различие типов**: label + icon + accent (Задача / Мысль / Заметка), компактно, без redesign
+
+#### Техническое
+- Новая Core-команда `inbox.update` (edit / itemType / status): атомарная, одна операция `inbox.update` в operation log с `before/after`, no-op не плодит операции
+- Нормализация `itemType`/`status` на чтении (`getInboxItems`) — старые записи без полей читаются как `itemType: null`, `status: new`; миграции не требуются
+- **Строгая write-валидация `itemType`**: `inbox.update` принимает только `task | thought | note | null` — неизвестное значение бросает ошибку и не меняет запись (чтение legacy остаётся lenient)
+- `rawText`-инвариант: команда отклоняет попытки записи в `rawText`
+- Focused regression tests: `tests/processing-b0.mjs` (edit/rawText, itemType normalization, old compat, processing status, atomic rollback, operation log)
+
+#### Follow-up (зафиксировано, не в этом PR)
+- **Reversible Processing flow**: текущий `inbox.convert_to_task` деструктивен (запись удаляется, без Undo и ссылки на источник) — безопасный обратимый конверсионный поток спроектирован отдельно в `docs/PROCESSING_B0_FOLLOWUP.md`
+
+#### Изменено
+- **Версия**: обновлена до `0.10.0-alpha.1`
+- **PWA cache**: `atlas-capture-0.10.0-alpha.1`
 
 ---
 

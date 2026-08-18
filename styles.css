@@ -149,6 +149,34 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-undo{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;border:1px solid rgba(242,201,76,.3);border-radius:10px;background:rgba(242,201,76,.08);color:#ffe9a6;padding:9px 11px;font-size:12px}
 .inbox-undo span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-undo button{border:0;background:transparent;color:var(--warn);font:inherit;font-weight:700;cursor:pointer}
+/* Processing Center card: body, meta, confirmed type, status bar, inline edit */
+.inbox-row-body{flex:1;min-width:0}
+.inbox-row-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.inbox-time{font-variant-numeric:tabular-nums;white-space:nowrap}
+.inbox-edited-marker{color:var(--muted);font-size:11px;opacity:.75}
+.inbox-type-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.5;white-space:nowrap}
+.inbox-type-chip.is-task{background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.35);color:#93c5fd}
+.inbox-type-chip.is-thought{background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.35);color:#c4b5fd}
+.inbox-type-chip.is-note{background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.35);color:#5eead4}
+.inbox-type-chip.is-none{background:rgba(157,177,201,.08);border:1px solid rgba(157,177,201,.25);color:var(--muted);font-weight:600}
+.inbox-hint-marker{font-size:11px;color:var(--muted);opacity:.8;font-style:italic}
+.inbox-type-bar{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:8px}
+.inbox-type-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:8px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer}
+.inbox-type-button:hover{color:var(--text);border-color:var(--accent)}
+.inbox-type-button.is-active.is-task{background:rgba(96,165,250,.14);border-color:rgba(96,165,250,.35);color:#93c5fd}
+.inbox-type-button.is-active.is-thought{background:rgba(167,139,250,.14);border-color:rgba(167,139,250,.35);color:#c4b5fd}
+.inbox-type-button.is-active.is-note{background:rgba(45,212,191,.14);border-color:rgba(45,212,191,.35);color:#5eead4}
+.inbox-type-button.is-active.is-none{background:rgba(157,177,201,.08);border-color:rgba(157,177,201,.25);color:var(--muted)}
+.inbox-status-bar{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:10px}
+.inbox-status-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:8px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer}
+.inbox-status-button:hover{color:var(--text);border-color:var(--accent)}
+.inbox-status-button.is-active.is-new{background:rgba(86,204,242,.16);border-color:rgba(86,204,242,.45);color:#bcecff}
+.inbox-status-button.is-active.is-reviewed{background:rgba(242,201,76,.14);border-color:rgba(242,201,76,.4);color:#ffe9a6}
+.inbox-status-button.is-active.is-processed{background:rgba(52,211,153,.14);border-color:rgba(52,211,153,.4);color:#a7f3d0}
+.inbox-status-button.is-active.is-discarded{background:rgba(255,107,107,.12);border-color:rgba(255,107,107,.35);color:#ffb4b4}
+.inbox-edit-area{box-sizing:border-box;width:100%;resize:vertical;border:1px solid var(--panel-2);border-radius:10px;outline:none;background:rgba(5,10,22,.7);color:var(--text);padding:10px;font:inherit;line-height:1.45}
+.inbox-edit-area:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(86,204,242,.12)}
+.inbox-row--edit{flex-direction:column;align-items:stretch;gap:10px}
 
 /* Адаптивность для маленьких экранов */
 @media (max-width: 1200px) {
