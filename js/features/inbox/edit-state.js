@@ -4,7 +4,8 @@
 // - `hasDraft(id)`  — an unsaved edit draft exists for the item;
 // - `isActive(id)`  — the item is currently rendered in edit mode.
 //
-// Escape/Back leave edit mode but keep the draft; Save and Delete clear both.
+// Escape/Back leave edit mode but keep the draft; Save, Delete, and explicit
+// discard clear both.
 // Pure module (no DOM), so the state logic is regression-testable without a
 // browser framework. Core/data model is untouched.
 export function createEditState(){
@@ -18,6 +19,8 @@ export function createEditState(){
   };
   const getDraft = (id, fallback) =>
     drafts.has(id) ? drafts.get(id) : String(fallback ?? '');
+  const isDirty = (id, savedText) =>
+    drafts.has(id) && drafts.get(id) !== String(savedText ?? '');
   const setDraft = (id, value) => {
     drafts.set(id, String(value ?? ''));
   };
@@ -33,5 +36,5 @@ export function createEditState(){
     if (activeId === id) activeId = null;
   };
 
-  return { hasDraft, isActive, seed, getDraft, setDraft, enter, exit, clear };
+  return { hasDraft, isActive, seed, getDraft, isDirty, setDraft, enter, exit, clear };
 }

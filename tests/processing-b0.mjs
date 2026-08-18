@@ -253,19 +253,28 @@ assert(!editState.hasDraft('i1') && !editState.isActive('i1'), 'Test 12a: starts
 editState.enter('i1', 'Исходный текст');
 assert(editState.isActive('i1'), 'Test 12b: enter activates edit mode');
 assert(editState.getDraft('i1', '') === 'Исходный текст', 'Test 12c: enter seeds draft with item text');
+assert(!editState.isDirty('i1', 'Исходный текст'), 'Test 12d: unchanged draft is not dirty');
 editState.setDraft('i1', 'Незавершённая правка');
+assert(editState.isDirty('i1', 'Исходный текст'), 'Test 12e: changed draft is dirty and can be discarded');
 editState.exit();
-assert(!editState.isActive('i1'), 'Test 12d: Escape/Back leaves edit mode');
-assert(editState.hasDraft('i1') && editState.getDraft('i1', '') === 'Незавершённая правка', 'Test 12e: draft survives exiting edit mode');
+assert(!editState.isActive('i1'), 'Test 12f: Escape/Back leaves edit mode');
+assert(editState.hasDraft('i1') && editState.getDraft('i1', '') === 'Незавершённая правка', 'Test 12g: draft survives exiting edit mode');
 editState.enter('i1', 'Исходный текст');
-assert(editState.getDraft('i1', '') === 'Незавершённая правка', 'Test 12f: re-entering restores the saved draft without overwriting it');
+assert(editState.getDraft('i1', '') === 'Незавершённая правка', 'Test 12h: re-entering restores the saved draft without overwriting it');
+editState.setDraft('i1', 'Исходный текст');
+assert(!editState.isDirty('i1', 'Исходный текст'), 'Test 12i: returning to saved text hides discard again');
+editState.setDraft('i1', 'Ошибочная правка');
+editState.clear('i1');
+assert(!editState.hasDraft('i1') && !editState.isActive('i1'), 'Test 12j: discard clears draft and active mode');
+editState.enter('i1', 'Исходный текст');
+assert(editState.getDraft('i1', '') === 'Исходный текст', 'Test 12k: editing after discard starts from saved item text');
 editState.setDraft('i1', 'Завершённая правка');
 editState.clear('i1');
-assert(!editState.hasDraft('i1') && !editState.isActive('i1'), 'Test 12g: Save/Delete clears draft and mode');
+assert(!editState.hasDraft('i1') && !editState.isActive('i1'), 'Test 12l: successful Save/Delete clears draft and mode');
 editState.enter('i1', 'Новый текст');
 editState.exit();
 editState.clear('i2');
-assert(editState.hasDraft('i1'), 'Test 12h: clearing another item keeps this draft');
+assert(editState.hasDraft('i1'), 'Test 12m: clearing another item keeps this draft');
 console.log('✓ Test 12: edit flow state logic');
 
 // Test 13: edit flow wiring (static source checks, no browser framework)
@@ -284,6 +293,16 @@ assert(
 assert(
   viewSource.includes('editState.clear(item.id)'),
   'Test 13d: Save/Delete must clear both draft and edit state'
+);
+assert(
+  viewSource.includes("discard.textContent = 'Отменить правки'") &&
+    viewSource.includes('discard.hidden = !editState.isDirty(item.id, item.text)'),
+  'Test 13e: dirty edit drafts must expose a live Cancel edits action'
+);
+assert(
+  viewSource.includes("discard.addEventListener('click', () => {") &&
+    viewSource.includes('editState.clear(item.id);'),
+  'Test 13f: Cancel edits must clear only UI draft/edit state'
 );
 console.log('✓ Test 13: edit flow wiring');
 

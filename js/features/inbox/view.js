@@ -102,9 +102,6 @@ function renderEditRow(item){
   area.dataset.editId = item.id;
   area.value = editState.getDraft(item.id, item.text);
   area.rows = Math.max(2, Math.min(6, area.value.split('\n').length + 1));
-  area.addEventListener('input', () => {
-    editState.setDraft(item.id, area.value);
-  });
   area.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       // Leave edit mode and keep the draft; stop the overlay's Esc handler.
@@ -135,11 +132,29 @@ function renderEditRow(item){
   back.textContent = 'Назад';
   back.addEventListener('click', () => exitEditMode());
 
+  const discard = document.createElement('button');
+  discard.type = 'button';
+  discard.className = 'inbox-button secondary';
+  discard.textContent = 'Отменить правки';
+  discard.addEventListener('click', () => {
+    editState.clear(item.id);
+    openInboxList();
+  });
+
+  const updateDiscardVisibility = () => {
+    discard.hidden = !editState.isDirty(item.id, item.text);
+  };
+  area.addEventListener('input', () => {
+    editState.setDraft(item.id, area.value);
+    updateDiscardVisibility();
+  });
+  updateDiscardVisibility();
+
   const hint = document.createElement('span');
   hint.className = 'inbox-help';
   hint.textContent = 'rawText оригинала не изменяется';
 
-  actions.append(save, back);
+  actions.append(save, back, discard);
   row.append(area, actions, hint);
   return row;
 }
