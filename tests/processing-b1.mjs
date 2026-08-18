@@ -4,8 +4,11 @@
 import { state } from '../js/state.js';
 import {
   captureInbox,
+  createDomain,
+  createProject,
   revertInboxRoute,
   routeInboxToTask,
+  updateInbox,
 } from '../js/core/commands.js';
 import adapter from '../js/storageAdapter.js';
 
@@ -217,5 +220,62 @@ assert(state.tasks.some(task => task.id === 'task-b1-9'), 'Test 9b: modified Tas
 assert(state.inbox[0].resultRef?.id === 'task-b1-9', 'Test 9c: resultRef preserved');
 assert(state.inbox[0].status === 'processed', 'Test 9d: Inbox still processed');
 console.log('✓ Test 9: modified linked Task is not deleted on revert');
+
+// Test 10: routed Inbox item is locked (itemType/status immutable in Core)
+resetState();
+const captured10 = captureInbox('Залоченная запись', opts({ itemType: 'task' }));
+routeInboxToTask(captured10[0].id, { projectId: 'p1', taskId: 'task-b1-10', now: 4000 });
+let lockTypeErr = null;
+try { updateInbox(captured10[0].id, { itemType: 'thought' }, { ...opts(), now: 4100 }); } catch (e) { lockTypeErr = e; }
+assert(lockTypeErr?.message.includes('locked'), 'Test 10a: routed item cannot change type');
+let lockStatusErr = null;
+try { updateInbox(captured10[0].id, { status: 'reviewed' }, { ...opts(), now: 4200 }); } catch (e) { lockStatusErr = e; }
+assert(lockStatusErr?.message.includes('locked'), 'Test 10b: routed item cannot change status');
+assert(state.inbox[0].itemType === 'task' && state.inbox[0].status === 'processed', 'Test 10c: type/status untouched');
+const textEdit = updateInbox(captured10[0].id, { text: 'Правка текста' }, { ...opts(), now: 4300 });
+assert(textEdit?.item.text === 'Правка текста', 'Test 10d: text editing stays allowed');
+console.log('✓ Test 10: routed Inbox item is locked');
+
+// Test 11: after revert the item is editable again
+resetState();
+const captured11 = captureInbox('Снова свободная', opts({ itemType: 'task' }));
+routeInboxToTask(captured11[0].id, { projectId: 'p1', taskId: 'task-b1-11', now: 5000 });
+revertInboxRoute(captured11[0].id, { now: 5100 });
+const typeAfter = updateInbox(captured11[0].id, { itemType: 'note' }, { ...opts(), now: 5200 });
+assert(typeAfter?.item.itemType === 'note', 'Test 11a: type editable after revert');
+const statusAfter = updateInbox(captured11[0].id, { status: 'discarded' }, { ...opts(), now: 5300 });
+assert(statusAfter?.item.status === 'discarded', 'Test 11b: status editable after revert');
+console.log('✓ Test 11: revert unlocks the item again');
+
+// Test 12: routing draft is temporary UI state (persists, clears per item)
+const { createRoutingDraftState } = await import('../js/features/inbox/routing-draft.js');
+const drafts = createRoutingDraftState();
+assert(!drafts.has('i1'), 'Test 12a: no draft initially');
+drafts.set('i1', { domainId: 'd1', projectId: 'p1', priority: 3, dueDate: '2026-08-22', dueTime: '18:00' });
+assert(drafts.get('i1').priority === 3 && drafts.get('i1').dueTime === '18:00', 'Test 12b: draft stores selections');
+drafts.set('i1', { ...drafts.get('i1'), priority: 4 });
+assert(drafts.get('i1').priority === 4, 'Test 12c: draft updates preserve other fields');
+drafts.clear('i1');
+assert(!drafts.has('i1'), 'Test 12d: draft clears after route/revert/delete');
+drafts.set('i2', { domainId: 'd2' });
+drafts.clear('i1');
+assert(drafts.has('i2') && !drafts.has('i1'), 'Test 12e: clearing one item leaves others');
+console.log('✓ Test 12: routing draft state');
+
+// Test 13: inline Domain/Project creation via Core + strict task status
+resetState();
+state.domains = [];
+state.projects = [];
+const createdDomain = createDomain({ title: 'Дача' }, { ...opts(), now: 6000 });
+assert(createdDomain.title === 'Дача', 'Test 13a: domain created');
+assert(state.operationLog.at(-1).type === 'domain.create', 'Test 13b: domain creation journaled');
+const createdProject = createProject({ domainId: createdDomain.id, title: 'Сад' }, { ...opts(), now: 6100 });
+assert(createdProject.domainId === createdDomain.id && createdProject.title === 'Сад', 'Test 13c: project created inside domain');
+const captured13 = captureInbox('Задача со статусом', opts({ itemType: 'task' }));
+let badStatusErr = null;
+try { routeInboxToTask(captured13[0].id, { projectId: createdProject.id, status: 'nonsense' }, { ...opts(), now: 6200 }); } catch (e) { badStatusErr = e; }
+assert(badStatusErr?.message.includes('Unknown task status'), 'Test 13d: invalid task status rejected');
+assert(state.tasks.length === 0, 'Test 13e: no Task created on invalid status');
+console.log('✓ Test 13: Domain/Project creation via Core, strict task status');
 
 console.log('\n✅ All Stage B1 routing tests passed.');

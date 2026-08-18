@@ -1,9 +1,12 @@
 import { state } from '../../state.js';
 import { getInboxItems } from './model.js';
 import { createEditState } from './edit-state.js';
+import { createRoutingDraftState } from './routing-draft.js';
 import { openInspectorFor } from '../../inspector.js';
 import {
   captureInbox,
+  createDomain,
+  createProject,
   deleteInbox,
   revertInboxRoute,
   routeInboxToTask,
@@ -18,6 +21,11 @@ let lastRemoval = null;
 // Edit flow state: "unsaved draft" and "active edit mode" are separate.
 // Escape/Back leave edit mode but keep the draft; Save and Delete clear both.
 const editState = createEditState();
+
+// Unfinished Task-routing selections per Inbox item (Domain/Project/Priority/
+// Due). Temporary UI state — survives re-renders, filter switches and overlay
+// close; cleared after a successful route, revert or delete.
+const routingDraftState = createRoutingDraftState();
 
 const ITEM_TYPE_LABELS = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
 const ITEM_TYPE_ICONS = { task: '✓', thought: '💭', note: '📝' };
@@ -120,33 +128,130 @@ function makeSelect(options, className = 'inbox-select'){
 
 // Compact Task-routing controls rendered inside the Processing card:
 // Domain → Project (filtered by domain) → Priority → Due (date + time).
+// Selections live in a local routing draft; Domain/Project can be created
+// inline through Core commands.
 function buildRoutingControls(item){
   const wrap = document.createElement('div');
   wrap.className = 'inbox-route';
 
   const domains = Array.isArray(state.domains) ? state.domains : [];
-  const defaultDomainId = state.activeDomain || domains[0]?.id || null;
-  const domainSelect = makeSelect(
-    domains.map(domain => ({
-      value: domain.id,
-      text: domain.title,
-      selected: domain.id === defaultDomainId,
-    }))
-  );
+  const draft = routingDraftState.get(item.id) || {};
 
-  const projectSelect = makeSelect([]);
-  const repopulateProjects = () => {
-    projectSelect.replaceChildren();
-    projectSelect.appendChild(new Option('Без проекта', ''));
-    const domainId = domainSelect.value;
-    state.projects
-      .filter(project => project.domainId === domainId)
-      .forEach(project => projectSelect.appendChild(new Option(project.title, project.id)));
+  let domainSelect = null;
+  let projectSelect = null;
+  let priority = draft.priority ?? DEFAULT_PRIORITY;
+  let dueDate = null;
+  let dueTime = null;
+
+  const saveDraft = () => {
+    routingDraftState.set(item.id, {
+      domainId: domainSelect ? domainSelect.value || null : null,
+      projectId: projectSelect ? projectSelect.value || null : null,
+      priority,
+      dueDate: dueDate ? dueDate.value : '',
+      dueTime: dueTime ? dueTime.value : '',
+    });
   };
-  domainSelect.addEventListener('change', repopulateProjects);
-  repopulateProjects();
 
-  let priority = DEFAULT_PRIORITY;
+  // ---- Domain ----
+  const domainRow = document.createElement('div');
+  domainRow.className = 'inbox-route-row';
+  domainRow.appendChild(makeLabel('Домен'));
+
+  if (domains.length === 0) {
+    const empty = document.createElement('span');
+    empty.className = 'inbox-empty-state';
+    empty.textContent = 'Нет доменов';
+    const createDomainButton = document.createElement('button');
+    createDomainButton.type = 'button';
+    createDomainButton.className = 'inbox-button secondary';
+    createDomainButton.textContent = '+ Создать домен';
+    createDomainButton.addEventListener('click', () => {
+      const title = prompt('Название домена:');
+      if (!title || !title.trim()) return;
+      const domain = createDomain({ title: title.trim() });
+      if (domain) {
+        routingDraftState.set(item.id, {
+          ...(routingDraftState.get(item.id) || {}),
+          domainId: domain.id,
+        });
+        commit('domain:create');
+        openInboxList();
+      }
+    });
+    domainRow.append(empty, createDomainButton);
+  } else {
+    const draftDomainValid = domains.some(domain => domain.id === draft.domainId);
+    const defaultDomainId = draftDomainValid
+      ? draft.domainId
+      : (state.activeDomain || domains[0]?.id || null);
+    domainSelect = makeSelect(
+      domains.map(domain => ({
+        value: domain.id,
+        text: domain.title,
+        selected: domain.id === defaultDomainId,
+      }))
+    );
+    domainRow.appendChild(domainSelect);
+  }
+  wrap.appendChild(domainRow);
+
+  // ---- Project (filtered by the chosen Domain) ----
+  const projectRow = document.createElement('div');
+  projectRow.className = 'inbox-route-row';
+  projectRow.appendChild(makeLabel('Проект'));
+
+  if (domains.length > 0) {
+    projectSelect = makeSelect([]);
+    const repopulateProjects = () => {
+      projectSelect.replaceChildren();
+      projectSelect.appendChild(new Option('Без проекта', ''));
+      const domainId = domainSelect.value;
+      const projects = state.projects.filter(project => project.domainId === domainId);
+      if (projects.length === 0) {
+        const none = new Option('Нет проектов', '');
+        none.disabled = true;
+        projectSelect.appendChild(none);
+      }
+      projects.forEach(project => projectSelect.appendChild(new Option(project.title, project.id)));
+      if (draft.projectId && projects.some(project => project.id === draft.projectId)) {
+        projectSelect.value = draft.projectId;
+      } else {
+        projectSelect.value = '';
+      }
+    };
+    domainSelect.addEventListener('change', () => {
+      repopulateProjects();
+      saveDraft();
+    });
+    repopulateProjects();
+
+    const createProjectButton = document.createElement('button');
+    createProjectButton.type = 'button';
+    createProjectButton.className = 'inbox-button secondary';
+    createProjectButton.textContent = '+ Создать проект';
+    createProjectButton.addEventListener('click', () => {
+      const title = prompt('Название проекта:');
+      if (!title || !title.trim()) return;
+      const project = createProject({
+        domainId: domainSelect.value,
+        title: title.trim(),
+      });
+      if (project) {
+        routingDraftState.set(item.id, {
+          ...(routingDraftState.get(item.id) || {}),
+          domainId: domainSelect.value,
+          projectId: project.id,
+        });
+        commit('project:create');
+        openInboxList();
+      }
+    });
+    projectRow.append(projectSelect, createProjectButton);
+  }
+  wrap.appendChild(projectRow);
+
+  // ---- Priority ----
   const priorityBar = document.createElement('div');
   priorityBar.className = 'inbox-priority-bar';
   PRIORITY_ORDER.forEach(value => {
@@ -163,17 +268,25 @@ function buildRoutingControls(item){
         other.classList.toggle('is-active', other === button);
         other.setAttribute('aria-pressed', other === button ? 'true' : 'false');
       });
+      saveDraft();
     });
     priorityBar.appendChild(button);
   });
 
-  const dueDate = document.createElement('input');
+  // ---- Due (date + optional time) ----
+  dueDate = document.createElement('input');
   dueDate.type = 'date';
   dueDate.className = 'inbox-input';
-  const dueTime = document.createElement('input');
+  if (draft.dueDate) dueDate.value = draft.dueDate;
+  dueDate.addEventListener('input', saveDraft);
+
+  dueTime = document.createElement('input');
   dueTime.type = 'time';
   dueTime.className = 'inbox-input';
+  if (draft.dueTime) dueTime.value = draft.dueTime;
+  dueTime.addEventListener('input', saveDraft);
 
+  // ---- Submit ----
   const submit = document.createElement('button');
   submit.type = 'button';
   submit.className = 'inbox-button primary';
@@ -182,20 +295,21 @@ function buildRoutingControls(item){
     const due = dueDate.value
       ? { date: dueDate.value, time: dueTime.value || null }
       : null;
-    const projectId = projectSelect.value || null;
-    const domainId = projectId ? undefined : (domainSelect.value || null);
-    const result = routeInboxToTask(item.id, { projectId, domainId, priority, due });
-    if (result) commit('inbox:route');
+    const projectId = projectSelect ? projectSelect.value || null : null;
+    const domainId = projectId ? undefined : (domainSelect ? domainSelect.value || null : null);
+    try {
+      const result = routeInboxToTask(item.id, { projectId, domainId, priority, due });
+      if (result) {
+        routingDraftState.clear(item.id);
+        commit('inbox:route');
+      }
+    } catch (error) {
+      if (typeof window.showToast === 'function') {
+        window.showToast(error?.message || 'Не удалось создать задачу', 'warn');
+      }
+    }
     openInboxList();
   });
-
-  const domainRow = document.createElement('div');
-  domainRow.className = 'inbox-route-row';
-  domainRow.append(makeLabel('Домен'), domainSelect);
-
-  const projectRow = document.createElement('div');
-  projectRow.className = 'inbox-route-row';
-  projectRow.append(makeLabel('Проект'), projectSelect);
 
   const priorityRow = document.createElement('div');
   priorityRow.className = 'inbox-route-row';
@@ -209,7 +323,7 @@ function buildRoutingControls(item){
   submitRow.className = 'inbox-route-row';
   submitRow.append(submit);
 
-  wrap.append(domainRow, projectRow, priorityRow, dueRow, submitRow);
+  wrap.append(priorityRow, dueRow, submitRow);
   return wrap;
 }
 
@@ -283,7 +397,10 @@ function buildLinkedResult(item, task){
       }
       return;
     }
-    if (result) commit('inbox:route-revert');
+    if (result) {
+      routingDraftState.clear(item.id);
+      commit('inbox:route-revert');
+    }
     openInboxList();
   });
   actions.appendChild(revert);
@@ -456,11 +573,17 @@ function renderDisplayRow(item){
     statusBar.appendChild(button);
   });
 
-  body.append(text, meta, typeBar, statusBar);
+  const isTask = item.itemType === 'task';
+  const isRouted = item.resultRef?.type === 'task';
 
-  // Task routing lives only on Task items; Thought/Note get no routing controls.
-  if (item.itemType === 'task') {
-    if (item.resultRef?.type === 'task') {
+  body.append(text, meta);
+  // For Task items the routing block already states the type — no picker
+  // duplication. Routed items are locked at `processed` — no status buttons.
+  if (!isTask) body.appendChild(typeBar);
+  if (!isRouted) body.appendChild(statusBar);
+
+  if (isTask) {
+    if (isRouted) {
       const resultTask = state.tasks.find(task => task.id === item.resultRef.id);
       body.appendChild(buildLinkedResult(item, resultTask));
     } else {
@@ -485,6 +608,7 @@ function renderDisplayRow(item){
     lastRemoval = deleteInbox(item.id);
     if (lastRemoval) {
       editState.clear(item.id);
+      routingDraftState.clear(item.id);
       commit('inbox:delete');
       openInboxList();
     }
