@@ -269,18 +269,20 @@ export function updateInbox(id, patch, options = {}){
 function routeInboxToTaskMutation(id, options){
   const inboxItem = state.inbox.find(item => item.id === id);
   if (!inboxItem) return null;
+  // Only Task items route to a Task; Thought/Note/null must never become one,
+  // even when the command is called directly.
+  if (inboxItem.itemType !== 'task') {
+    throw new Error('Only task-type inbox items can be routed to a Task');
+  }
   if (inboxItem.resultRef) {
     throw new Error('Inbox item already has a routed result');
   }
 
   const now = options.now ?? Date.now();
-  const projectId = options.projectId ?? null;
   const task = {
     id: options.taskId || generateTaskId(),
-    projectId,
-    domainId: projectId
-      ? undefined
-      : (options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null),
+    projectId: null,
+    domainId: null,
     title: String(options.title ?? inboxItem.text ?? '').trim() || 'Новая задача',
     tags: normalizeTags(options.tags),
     status: options.status || 'backlog',
@@ -291,6 +293,19 @@ function routeInboxToTaskMutation(id, options){
     createdAt: now,
     updatedAt: now,
   };
+
+  // Destination uses the existing placement rules: validate domain, then let
+  // applyTaskPlacement validate the project and derive the domain from it.
+  const destination = {
+    projectId: options.projectId ?? null,
+    domainId: options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
+  };
+  if (Object.hasOwn(destination, 'domainId') && destination.domainId) {
+    const domainExists = state.domains.some(domain => domain.id === destination.domainId);
+    if (!domainExists) throw new Error(`Unknown target domain: ${destination.domainId}`);
+  }
+  applyTaskPlacement(task, destination);
+
   state.tasks.push(task);
 
   const inboxBefore = snapshot(inboxItem);
@@ -318,9 +333,10 @@ export function routeInboxToTask(id, options = {}){
 
 /**
  * Reverts a routed result: deletes the linked Task only when it was created by
- * this processing operation (task.sourceInboxId === inboxItem.id), clears
- * resultRef and returns the item to `reviewed`. Not a universal Undo — just
- * the one reversible step this flow needs.
+ * this processing operation AND has not been modified since (updatedAt ===
+ * createdAt). A modified Task is never deleted — the caller gets a `refused`
+ * result instead. Not a universal Undo — just the one reversible step this
+ * flow needs.
  */
 function revertInboxRouteMutation(id, options){
   const inboxItem = state.inbox.find(item => item.id === id);
@@ -332,13 +348,21 @@ function revertInboxRouteMutation(id, options){
   const inboxBefore = snapshot(inboxItem);
   const taskIndex = state.tasks.findIndex(task => task.id === ref.id);
 
-  let removedTask = null;
   if (taskIndex >= 0) {
     const task = state.tasks[taskIndex];
     if (task.sourceInboxId !== inboxItem.id) {
       throw new Error('Result task is not linked to this inbox item');
     }
-    removedTask = snapshot(task);
+    // A task that was edited, moved or otherwise changed after routing is no
+    // longer safe to auto-delete; refuse without touching anything.
+    if (task.updatedAt !== task.createdAt) {
+      return { inboxItem, task: null, refused: true, reason: 'task-modified' };
+    }
+  }
+
+  let removedTask = null;
+  if (taskIndex >= 0) {
+    removedTask = snapshot(state.tasks[taskIndex]);
     state.tasks.splice(taskIndex, 1);
   }
 

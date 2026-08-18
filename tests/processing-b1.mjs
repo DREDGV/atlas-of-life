@@ -48,7 +48,7 @@ const opts = (extra = {}) => ({
 
 // Test 1: safe routing creates a Task and links both directions
 resetState();
-const captured = captureInbox('Купить удобрение для сливы', opts());
+const captured = captureInbox('Купить удобрение для сливы', opts({ itemType: 'task' }));
 const item = captured[0];
 const result = routeInboxToTask(item.id, {
   projectId: 'p1',
@@ -91,7 +91,7 @@ console.log('✓ Test 3: revert removes linked Task and returns item to review')
 
 // Test 4: revert refuses a Task not linked to this Inbox item
 resetState();
-const captured2 = captureInbox('Вторая запись', opts());
+const captured2 = captureInbox('Вторая запись', opts({ itemType: 'task' }));
 const routed2 = routeInboxToTask(captured2[0].id, {
   projectId: 'p1',
   taskId: 'task-b1-2',
@@ -111,7 +111,7 @@ console.log('✓ Test 4: revert refuses an unlinked Task');
 
 // Test 5: atomic rollback when persistence fails
 resetState();
-const captured3 = captureInbox('До сбоя', opts({ persist: true, now: 2000 }));
+const captured3 = captureInbox('До сбоя', opts({ itemType: 'task', persist: true, now: 2000 }));
 const jsonBefore = memory.get(adapter.key);
 const inboxBefore = JSON.stringify(state.inbox);
 const tasksBefore = JSON.stringify(state.tasks);
@@ -153,7 +153,7 @@ console.log('✓ Test 5: atomic rollback on save failure');
 
 // Test 6: domain-only routing, due normalization, priority default
 resetState();
-const captured4 = captureInbox('Без проекта', opts());
+const captured4 = captureInbox('Без проекта', opts({ itemType: 'task' }));
 const routed4 = routeInboxToTask(captured4[0].id, {
   domainId: 'd2',
   due: { date: '2026-08-22' },
@@ -165,7 +165,7 @@ assert(routed4.task.due.time === null, 'Test 6b: due without time keeps time nul
 assert(routed4.task.priority === 2, 'Test 6c: priority defaults to 2 (normal)');
 
 resetState();
-const captured5 = captureInbox('Некорректный due', opts());
+const captured5 = captureInbox('Некорректный due', opts({ itemType: 'task' }));
 const routed5 = routeInboxToTask(captured5[0].id, {
   due: { date: 'not-a-date', time: '25:99' },
   taskId: 'task-b1-5',
@@ -173,5 +173,49 @@ const routed5 = routeInboxToTask(captured5[0].id, {
 });
 assert(routed5.task.due === null, 'Test 6d: invalid due normalizes to null');
 console.log('✓ Test 6: domain routing, due normalization, priority default');
+
+// Test 7: Thought/Note/null must never route to a Task
+resetState();
+const thought = captureInbox('Просто мысль', opts({ itemType: 'thought' }));
+let thoughtErr = null;
+try { routeInboxToTask(thought[0].id, { projectId: 'p1' }); } catch (e) { thoughtErr = e; }
+assert(thoughtErr?.message.includes('Only task-type'), 'Test 7a: thought cannot route');
+
+const note = captureInbox('Просто заметка', opts({ itemType: 'note', now: 1001, idFactory: () => 'note' }));
+let noteErr = null;
+try { routeInboxToTask(note[0].id, { projectId: 'p1' }); } catch (e) { noteErr = e; }
+assert(noteErr?.message.includes('Only task-type'), 'Test 7b: note cannot route');
+
+const untyped = captureInbox('Без типа', opts({ now: 1002, idFactory: () => 'untyped' }));
+let untypedErr = null;
+try { routeInboxToTask(untyped[0].id, { projectId: 'p1' }); } catch (e) { untypedErr = e; }
+assert(untypedErr?.message.includes('Only task-type'), 'Test 7c: null itemType cannot route');
+assert(state.tasks.length === 0, 'Test 7d: no Task created');
+console.log('✓ Test 7: Thought/Note/null cannot route to Task');
+
+// Test 8: unknown Project/Domain rejected (no dangling references)
+resetState();
+const captured8 = captureInbox('Задача с плохим destination', opts({ itemType: 'task' }));
+let projErr = null;
+try { routeInboxToTask(captured8[0].id, { projectId: 'p-missing' }); } catch (e) { projErr = e; }
+assert(projErr?.message.includes('Unknown target project'), 'Test 8a: unknown project rejected');
+
+let domErr = null;
+try { routeInboxToTask(captured8[0].id, { domainId: 'd-missing' }); } catch (e) { domErr = e; }
+assert(domErr?.message.includes('Unknown target domain'), 'Test 8b: unknown domain rejected');
+assert(state.tasks.length === 0, 'Test 8c: no dangling Task created');
+console.log('✓ Test 8: unknown Project/Domain rejected');
+
+// Test 9: a modified linked Task is not deleted on revert
+resetState();
+const captured9 = captureInbox('Задача для правки', opts({ itemType: 'task' }));
+const routed9 = routeInboxToTask(captured9[0].id, { projectId: 'p1', taskId: 'task-b1-9', now: 3000 });
+routed9.task.updatedAt = 3001; // simulate a later edit (any command bumps updatedAt)
+const reverted9 = revertInboxRoute(captured9[0].id, { now: 3100 });
+assert(reverted9?.refused === true && reverted9.reason === 'task-modified', 'Test 9a: modified task refused');
+assert(state.tasks.some(task => task.id === 'task-b1-9'), 'Test 9b: modified Task preserved');
+assert(state.inbox[0].resultRef?.id === 'task-b1-9', 'Test 9c: resultRef preserved');
+assert(state.inbox[0].status === 'processed', 'Test 9d: Inbox still processed');
+console.log('✓ Test 9: modified linked Task is not deleted on revert');
 
 console.log('\n✅ All Stage B1 routing tests passed.');
