@@ -288,6 +288,21 @@ export function fitActiveProject() {
   fitToBBox({ minX, minY, maxX, maxY });
 }
 
+export function fitTask(taskId) {
+  const node = nodes.find((n) => n._type === "task" && n.id === taskId);
+  if (!node) {
+    fitAll();
+    return;
+  }
+  const r = node.r || 16;
+  fitToBBox({
+    minX: node.x - r,
+    minY: node.y - r,
+    maxX: node.x + r,
+    maxY: node.y + r,
+  });
+}
+
 export function resize() {
   const rect = document.getElementById("canvasWrap").getBoundingClientRect();
   DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -1601,6 +1616,8 @@ window.mapApi.confirmDetach = confirmDetach;
 window.mapApi.drawMap = drawMap;
 window.mapApi.initMap = initMap;
 window.mapApi.fitAll = fitAll;
+window.mapApi.fitTask = fitTask;
+window.mapApi.layoutMap = layoutMap;
 // expose scale helpers: percent-like values (100 -> scale 1)
 function getScale() {
   return Math.round(viewState.scale * 100);

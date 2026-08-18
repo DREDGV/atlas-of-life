@@ -245,6 +245,27 @@ function buildLinkedResult(item, task){
     open.textContent = 'Открыть задачу';
     open.addEventListener('click', () => {
       closeInbox();
+      // Reveal the task on the map and focus its inspector: switch to the map
+      // view, ensure its domain is visible, then center the camera on the task.
+      const taskProject = state.projects.find(project => project.id === task.projectId);
+      const domainId = task.domainId || taskProject?.domainId || null;
+      if (domainId) {
+        state.activeDomain = domainId;
+        try { state.activeDomains = []; } catch (_) {}
+      }
+      state.view = 'map';
+      const canvasEl = document.getElementById('canvas');
+      const todayEl = document.getElementById('viewToday');
+      if (canvasEl) canvasEl.style.display = 'block';
+      if (todayEl) todayEl.style.display = 'none';
+      document.querySelectorAll('.chip[data-view]').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.view === 'map');
+      });
+      try { if (window.renderSidebar) window.renderSidebar(); } catch (_) {}
+      const mapApi = window.mapApi || {};
+      try { if (mapApi.layoutMap) mapApi.layoutMap(); } catch (_) {}
+      try { if (mapApi.drawMap) mapApi.drawMap(); } catch (_) {}
+      try { if (mapApi.fitTask) mapApi.fitTask(task.id); } catch (_) {}
       openInspectorFor({ ...task, _type: 'task' });
     });
     actions.appendChild(open);
@@ -255,7 +276,14 @@ function buildLinkedResult(item, task){
   revert.className = 'inbox-button secondary';
   revert.textContent = 'Вернуть в разбор';
   revert.addEventListener('click', () => {
-    if (revertInboxRoute(item.id)) commit('inbox:route-revert');
+    const result = revertInboxRoute(item.id);
+    if (result?.refused) {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Задача уже изменена — автоматический возврат небезопасен', 'warn');
+      }
+      return;
+    }
+    if (result) commit('inbox:route-revert');
     openInboxList();
   });
   actions.appendChild(revert);
