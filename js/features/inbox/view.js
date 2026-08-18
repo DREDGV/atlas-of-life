@@ -577,9 +577,10 @@ function renderDisplayRow(item){
   const isRouted = item.resultRef?.type === 'task';
 
   body.append(text, meta);
-  // For Task items the routing block already states the type — no picker
-  // duplication. Routed items are locked at `processed` — no status buttons.
-  if (!isTask) body.appendChild(typeBar);
+  // The type picker stays available while the user can still change their
+  // mind (no resultRef yet), including for Task items. Once routed, the item
+  // is locked: no picker, no manual status buttons — only the linked result.
+  if (!isRouted) body.appendChild(typeBar);
   if (!isRouted) body.appendChild(statusBar);
 
   if (isTask) {
