@@ -109,6 +109,11 @@ function generateProjectId(){
   return `project-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function generateDomainId(){
+  if (globalThis.crypto?.randomUUID) return `domain-${globalThis.crypto.randomUUID()}`;
+  return `domain-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function snapshot(value){
   return JSON.parse(JSON.stringify(value));
 }
@@ -285,7 +290,7 @@ function routeInboxToTaskMutation(id, options){
     domainId: null,
     title: String(options.title ?? inboxItem.text ?? '').trim() || 'Новая задача',
     tags: normalizeTags(options.tags),
-    status: options.status || 'backlog',
+    status: normalizeTaskStatus(options.status),
     estimateMin: options.estimateMin ?? null,
     priority: normalizePriority(options.priority),
     due: normalizeDue(options.due),
@@ -583,6 +588,32 @@ function createProjectMutation(input, options){
 
 export function createProject(input, options = {}){
   return runAtomicCommand(() => createProjectMutation(input, options));
+}
+
+function createDomainMutation(input, options){
+  const now = options.now ?? Date.now();
+  const title = String(input?.title ?? '').trim();
+  if (!title) throw new Error('Domain title cannot be empty');
+  const domain = {
+    id: input?.id || options.domainId || generateDomainId(),
+    title,
+    color: input?.color ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.domains.push(domain);
+  appendOperation({
+    type: 'domain.create',
+    entityType: 'domain',
+    entityId: domain.id,
+    payload: domain,
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  return domain;
+}
+
+export function createDomain(input, options = {}){
+  return runAtomicCommand(() => createDomainMutation(input, options));
 }
 
 function promoteTaskToProjectMutation(taskId, options){

@@ -131,6 +131,15 @@ export function updateInboxItem(id, patch = {}){
   const item = inbox.find(entry => entry.id === id);
   if (!item) return null;
 
+  // Routed items are locked: their confirmed type and processing status are
+  // owned by the routing flow and change only through revertInboxRoute.
+  if (
+    item.resultRef &&
+    (Object.hasOwn(patch, 'itemType') || Object.hasOwn(patch, 'status'))
+  ) {
+    throw new Error('Routed inbox items are locked; use "Вернуть в разбор" first');
+  }
+
   const changes = {};
   if (Object.hasOwn(patch, 'text')) {
     const text = String(patch.text ?? '').trim();
