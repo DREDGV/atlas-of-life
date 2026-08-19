@@ -137,23 +137,55 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-actions,.inbox-toolbar,.inbox-row-actions{display:flex;align-items:center;gap:8px}
 .inbox-actions{justify-content:flex-end}
 .inbox-toolbar{justify-content:space-between;margin-bottom:14px}
-.inbox-button{border:1px solid var(--panel-2);border-radius:9px;background:var(--panel-2);color:var(--text);padding:7px 11px;font:inherit;font-size:12px;cursor:pointer}
+
+/* ── Button hierarchy ───────────────────────────────────────────── */
+.inbox-button{border:1px solid var(--panel-2);border-radius:9px;background:var(--panel-2);color:var(--text);padding:7px 11px;font:inherit;font-size:12px;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .inbox-button:hover{filter:brightness(1.15)}
-.inbox-button.primary{border-color:rgba(86,204,242,.45);background:rgba(86,204,242,.16);color:#bcecff}
-.inbox-button.secondary{background:transparent;color:var(--muted)}
+/* Primary: accent blue — the main action */
+.inbox-button.primary{border-color:rgba(86,204,242,.5);background:rgba(86,204,242,.18);color:#bcecff;font-weight:600}
+.inbox-button.primary:hover{background:rgba(86,204,242,.28);border-color:rgba(86,204,242,.65)}
+/* Secondary: ghost — supporting actions */
+.inbox-button.secondary{background:transparent;border-color:rgba(157,177,201,.18);color:var(--muted)}
+.inbox-button.secondary:hover{color:var(--text);border-color:rgba(157,177,201,.35);background:rgba(157,177,201,.06)}
+/* Tertiary: minimal — low-priority actions like "Править" */
+.inbox-button.tertiary{background:transparent;border-color:transparent;color:var(--muted);padding:7px 6px;font-size:11px}
+.inbox-button.tertiary:hover{color:var(--text);border-color:rgba(157,177,201,.18)}
+/* Destructive: muted red — delete, never the most prominent */
+.inbox-button.destructive{background:transparent;border-color:rgba(255,107,107,.15);color:rgba(255,180,180,.65);font-size:11px;padding:7px 6px}
+.inbox-button.destructive:hover{border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.08);color:#ffb4b4}
+/* Legacy .danger kept for compatibility */
 .inbox-button.danger{border-color:rgba(255,107,107,.28);background:rgba(255,107,107,.09);color:#ffb4b4}
+
 .inbox-list{display:flex;flex-direction:column;gap:9px}
-.inbox-row{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid rgba(157,177,201,.14);border-radius:13px;background:rgba(5,10,22,.42);padding:12px 13px}
+
+/* ── Card states ────────────────────────────────────────────────── */
+/* Base row */
+.inbox-row{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid rgba(157,177,201,.12);border-radius:13px;background:rgba(5,10,22,.35);padding:12px 13px;transition:border-color .15s,background .15s,box-shadow .15s}
+
+/* Compact: quiet, minimal */
+.inbox-row--compact{cursor:pointer;padding:10px 13px;min-height:42px;background:rgba(5,10,22,.25)}
+.inbox-row--compact:hover{border-color:rgba(86,204,242,.3);background:rgba(5,10,22,.45)}
+/* Processed compact: even quieter */
+.inbox-row--compact.inbox-row--processed{opacity:.65;border-color:rgba(157,177,201,.08)}
+.inbox-row--compact.inbox-row--processed:hover{opacity:.85;border-color:rgba(157,177,201,.2)}
+
+/* Active processing: the main card — visually dominant */
+.inbox-row--active{border-color:rgba(86,204,242,.3);background:rgba(5,10,22,.55);box-shadow:0 0 0 1px rgba(86,204,242,.08),0 4px 20px rgba(0,0,0,.2);padding:16px}
+
+/* Edit mode */
+.inbox-row--edit{flex-direction:column;align-items:stretch;gap:10px}
+
 .inbox-row-text{min-width:0;color:var(--text);line-height:1.45;overflow-wrap:anywhere}
-.inbox-row-actions{flex:none}
+.inbox-row-actions{flex:none;flex-wrap:wrap;gap:6px}
+
 .inbox-undo{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;border:1px solid rgba(242,201,76,.3);border-radius:10px;background:rgba(242,201,76,.08);color:#ffe9a6;padding:9px 11px;font-size:12px}
 .inbox-undo span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-undo button{border:0;background:transparent;color:var(--warn);font:inherit;font-weight:700;cursor:pointer}
+
 /* Processing Center card: body, meta, confirmed type, status bar, inline edit */
 .inbox-row-body{flex:1;min-width:0}
-.inbox-row-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
-.inbox-time{font-variant-numeric:tabular-nums;white-space:nowrap}
-.inbox-edited-marker{color:var(--muted);font-size:11px;opacity:.75}
+.inbox-row-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:12px;color:var(--muted)}
+.inbox-time{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:11px;opacity:.7}
 .inbox-type-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.5;white-space:nowrap}
 .inbox-type-chip.is-task{background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.35);color:#93c5fd}
 .inbox-type-chip.is-thought{background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.35);color:#c4b5fd}
@@ -161,12 +193,31 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-type-chip.is-none{background:rgba(157,177,201,.08);border:1px solid rgba(157,177,201,.25);color:var(--muted);font-weight:600}
 .inbox-hint-marker{font-size:11px;color:var(--muted);opacity:.8;font-style:italic}
 .inbox-type-bar{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:8px}
-.inbox-type-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:8px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer}
+.inbox-type-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:8px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .inbox-type-button:hover{color:var(--text);border-color:var(--accent)}
 .inbox-type-button.is-active.is-task{background:rgba(96,165,250,.14);border-color:rgba(96,165,250,.35);color:#93c5fd}
 .inbox-type-button.is-active.is-thought{background:rgba(167,139,250,.14);border-color:rgba(167,139,250,.35);color:#c4b5fd}
 .inbox-type-button.is-active.is-note{background:rgba(45,212,191,.14);border-color:rgba(45,212,191,.35);color:#5eead4}
 .inbox-type-button.is-active.is-none{background:rgba(157,177,201,.08);border-color:rgba(157,177,201,.25);color:var(--muted)}
+
+/* ── Semantic priority buttons ──────────────────────────────────── */
+.inbox-priority-button[data-priority="1"].is-active{background:rgba(157,177,201,.12);border-color:rgba(157,177,201,.35);color:var(--muted)}
+.inbox-priority-button[data-priority="2"].is-active{background:rgba(96,165,250,.14);border-color:rgba(96,165,250,.4);color:#93c5fd}
+.inbox-priority-button[data-priority="3"].is-active{background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.45);color:#fbbf24}
+.inbox-priority-button[data-priority="4"].is-active{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.45);color:#fca5a5}
+/* Non-active priority buttons get a subtle hint of their color on hover */
+.inbox-priority-button[data-priority="1"]:hover{border-color:rgba(157,177,201,.3);color:var(--muted)}
+.inbox-priority-button[data-priority="2"]:hover{border-color:rgba(96,165,250,.3);color:#93c5fd}
+.inbox-priority-button[data-priority="3"]:hover{border-color:rgba(245,158,11,.3);color:#fbbf24}
+.inbox-priority-button[data-priority="4"]:hover{border-color:rgba(239,68,68,.3);color:#fca5a5}
+
+/* Priority chip in linked result */
+.inbox-priority-chip{display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;line-height:1.5;white-space:nowrap}
+.inbox-priority-chip--p1{background:rgba(157,177,201,.1);border:1px solid rgba(157,177,201,.25);color:var(--muted)}
+.inbox-priority-chip--p2{background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.3);color:#93c5fd}
+.inbox-priority-chip--p3{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:#fbbf24}
+.inbox-priority-chip--p4{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5}
+
 .inbox-status-bar{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:10px}
 .inbox-status-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:8px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer}
 .inbox-status-button:hover{color:var(--text);border-color:var(--accent)}
@@ -176,27 +227,132 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-status-button.is-active.is-discarded{background:rgba(255,107,107,.12);border-color:rgba(255,107,107,.35);color:#ffb4b4}
 .inbox-edit-area{box-sizing:border-box;width:100%;resize:vertical;border:1px solid var(--panel-2);border-radius:10px;outline:none;background:rgba(5,10,22,.7);color:var(--text);padding:10px;font:inherit;line-height:1.45}
 .inbox-edit-area:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(86,204,242,.12)}
-.inbox-row--edit{flex-direction:column;align-items:stretch;gap:10px}
+
 /* Processing queue filters */
-.inbox-filters{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-.inbox-filter-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:999px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+.inbox-filters{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.inbox-filter-button{border:1px solid var(--panel-2);background:transparent;color:var(--muted);border-radius:999px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .inbox-filter-button:hover{color:var(--text);border-color:var(--accent)}
 .inbox-filter-button.is-active{border-color:rgba(86,204,242,.45);background:rgba(86,204,242,.16);color:#bcecff}
+
 /* Task routing controls (inside the card) */
-.inbox-route{display:flex;flex-direction:column;gap:7px;margin-top:12px;border:1px solid rgba(157,177,201,.14);border-radius:12px;background:rgba(5,10,22,.3);padding:11px}
+.inbox-route{display:flex;flex-direction:column;gap:7px;margin-top:12px;border:1px solid rgba(157,177,201,.12);border-radius:12px;background:rgba(5,10,22,.25);padding:12px}
 .inbox-route-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.inbox-route-row--due{align-items:flex-start}
 .inbox-route-label{flex:none;width:74px;color:var(--muted);font-size:12px}
-.inbox-select,.inbox-input{box-sizing:border-box;min-width:150px;border:1px solid var(--panel-2);border-radius:8px;background:rgba(5,10,22,.7);color:var(--text);padding:5px 8px;font:inherit;font-size:12px}
+.inbox-select,.inbox-input{box-sizing:border-box;min-width:150px;border:1px solid var(--panel-2);border-radius:8px;background:rgba(5,10,22,.7);color:var(--text);padding:5px 8px;font:inherit;font-size:12px;transition:border-color .12s}
 .inbox-select:focus,.inbox-input:focus{border-color:var(--accent);outline:none}
 .inbox-empty-state{color:var(--muted);font-size:12px;font-style:italic}
-.inbox-input[type="date"],.inbox-input[type="time"]{width:auto}
+
+/* ── Date / time controls ───────────────────────────────────────── */
+.inbox-due-field{display:flex;flex-direction:column;gap:3px}
+.inbox-due-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.inbox-input--date,.inbox-input--time{width:130px;padding:6px 10px;border-radius:8px;font-size:12px;color-scheme:dark}
+.inbox-input--date::-webkit-calendar-picker-indicator,.inbox-input--time::-webkit-calendar-picker-indicator{filter:invert(.7) brightness(1.2);cursor:pointer;opacity:.7;transition:opacity .12s}
+.inbox-input--date::-webkit-calendar-picker-indicator:hover,.inbox-input--time::-webkit-calendar-picker-indicator:hover{opacity:1}
+.inbox-input--date::-webkit-datetime-edit,.inbox-input--time::-webkit-datetime-edit{color:var(--text)}
+.inbox-input--time:placeholder-shown{color:var(--muted);opacity:.6}
+
 .inbox-priority-bar{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
-.inbox-priority-bar .inbox-type-button.is-active{border-color:rgba(86,204,242,.45);background:rgba(86,204,242,.16);color:#bcecff}
+/* Override the generic priority-bar active rule — semantic buttons handle their own */
+.inbox-priority-bar .inbox-type-button.is-active:not(.inbox-priority-button){border-color:rgba(86,204,242,.45);background:rgba(86,204,242,.16);color:#bcecff}
+
 /* Linked result (routed Task) */
-.inbox-result{display:flex;flex-direction:column;gap:6px;margin-top:12px;border:1px solid rgba(52,211,153,.28);border-radius:12px;background:rgba(52,211,153,.07);padding:11px}
+.inbox-result{display:flex;flex-direction:column;gap:6px;margin-top:12px;border:1px solid rgba(52,211,153,.22);border-radius:12px;background:rgba(52,211,153,.05);padding:12px}
 .inbox-result-title{color:var(--text);font-weight:700;font-size:13px}
-.inbox-result-meta{color:var(--muted);font-size:12px}
-.inbox-result .inbox-row-actions{margin-top:2px}
+.inbox-result-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--muted);font-size:12px}
+.inbox-result .inbox-row-actions{margin-top:4px}
+
+/* B2 Processing Flow: steps, hints, compact queue, saved banner */
+.inbox-step-label{color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin:10px 0 6px}
+.inbox-route .inbox-step-label{margin-top:0}
+.inbox-hint-line{color:var(--warn);font-size:12px;margin-top:8px;font-style:italic}
+.inbox-route-extra{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+.inbox-extra-toggle{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;text-align:left;padding:4px 0;transition:color .12s}
+.inbox-extra-toggle:hover{color:var(--text)}
+.inbox-capture-hints-block{display:flex;flex-direction:column;gap:8px;margin:10px 0 12px;border:1px solid rgba(157,177,201,.14);border-radius:12px;background:rgba(5,10,22,.3);padding:11px}
+.inbox-capture-hints-block .inbox-step-label{margin-top:0}
+.inbox-saved-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;border:1px solid rgba(52,211,153,.3);border-radius:10px;background:rgba(52,211,153,.08);color:#a7f3d0;padding:9px 11px;font-size:13px}
+
+/* B2 product pass: scrollbar, provenance, batch, search, keyboard hints */
+.inbox-dialog{scrollbar-width:thin;scrollbar-color:rgba(86,204,242,.3) transparent}
+.inbox-dialog::-webkit-scrollbar{width:8px}
+.inbox-dialog::-webkit-scrollbar-track{background:transparent}
+.inbox-dialog::-webkit-scrollbar-thumb{background:rgba(86,204,242,.25);border-radius:8px}
+.inbox-dialog::-webkit-scrollbar-thumb:hover{background:rgba(86,204,242,.4)}
+.inbox-route-extra[hidden],.inbox-provenance[hidden],.inbox-capture-hints-block[hidden],.inbox-saved-banner[hidden]{display:none}
+
+/* ── Provenance accordion ───────────────────────────────────────── */
+.inbox-provenance{display:flex;flex-direction:column;gap:6px;margin-top:6px;border:1px solid rgba(157,177,201,.1);border-radius:10px;background:rgba(5,10,22,.2);padding:10px 12px}
+.inbox-provenance-line{display:flex;gap:8px;font-size:12px;overflow-wrap:anywhere;line-height:1.5}
+.inbox-provenance-label{flex:none;min-width:90px;color:var(--muted);font-weight:600;font-size:11px;opacity:.7}
+.inbox-provenance-value{color:var(--text);opacity:.85}
+.inbox-provenance-value--raw{font-style:italic;opacity:.7}
+
+.inbox-compact-chevron{flex:none;color:var(--muted);font-size:20px;line-height:1;opacity:.4;transition:color .12s,opacity .12s}
+.inbox-row--compact:hover .inbox-compact-chevron{color:var(--accent);opacity:.9}
+.inbox-search-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.inbox-search-input{flex:1;min-width:0;box-sizing:border-box;border:1px solid rgba(157,177,201,.15);border-radius:999px;background:rgba(5,10,22,.5);color:var(--text);padding:6px 14px;font:inherit;font-size:12px;transition:border-color .12s}
+.inbox-search-input:focus{border-color:var(--accent);outline:none}
+.inbox-search-input::placeholder{color:var(--muted);opacity:.5}
+
+/* Keyboard hints — significantly less prominent */
+.inbox-kbd-hint{margin:0 0 8px;color:var(--muted);font-size:10px;opacity:.35}
+.inbox-kbd-hint kbd{border:1px solid rgba(157,177,201,.1);border-radius:4px;background:rgba(5,10,22,.4);padding:0 4px;font:inherit;font-size:9px;color:var(--muted)}
+
+.inbox-empty-block{display:flex;flex-direction:column;align-items:flex-start;gap:10px;border:1px dashed rgba(157,177,201,.18);border-radius:14px;padding:22px;color:var(--muted);font-size:13px;text-align:left}
+
+/* ── Batch mode ─────────────────────────────────────────────────── */
+.inbox-row--batch{display:flex;align-items:center;gap:10px;padding:8px 13px}
+.inbox-row--batch input[type="checkbox"]{width:16px;height:16px;accent-color:rgba(86,204,242,.9);flex:none}
+.inbox-row--batch:has(input:checked){background:rgba(86,204,242,.08);border-color:rgba(86,204,242,.2)}
+.inbox-batch-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;border:1px solid rgba(86,204,242,.2);border-radius:12px;background:rgba(86,204,242,.04);padding:10px 12px}
+.inbox-list-wrap--batch{border-top:1px solid rgba(86,204,242,.15);padding-top:12px}
+
+/* Mode toggle — looks like a switch, not a regular button */
+.inbox-mode-toggle{background:transparent;border-color:rgba(157,177,201,.18);color:var(--muted);font-size:11px;padding:5px 10px}
+.inbox-mode-toggle:hover{border-color:rgba(86,204,242,.3);color:var(--text)}
+.inbox-mode-toggle.is-active{background:rgba(86,204,242,.12);border-color:rgba(86,204,242,.35);color:#bcecff;font-weight:600}
+
+/* ── B2 visual clarity refinements (post-review) ────────────────── */
+.inbox-summary{color:var(--text);font-weight:600;font-size:13px}
+.inbox-button--capture{border-color:rgba(86,204,242,.3);background:transparent;color:#9fd8f7;font-weight:600}
+.inbox-button--capture:hover{background:rgba(86,204,242,.1);border-color:rgba(86,204,242,.45)}
+.inbox-controls-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.inbox-controls-row .inbox-mode-toggle{margin-left:auto}
+.inbox-controls-row .inbox-filters{margin-bottom:0}
+.inbox-search-row{margin-bottom:10px}
+.inbox-search-input{border-color:rgba(157,177,201,.12);background:rgba(5,10,22,.4)}
+/* Active card is the one clear focus of the window */
+.inbox-row--active{border-color:rgba(86,204,242,.4);border-left:3px solid rgba(86,204,242,.6);background:rgba(8,15,30,.6);box-shadow:0 6px 24px rgba(0,0,0,.28)}
+/* Fewer nested frames inside the active card */
+.inbox-route{border-color:transparent;background:rgba(5,10,22,.2)}
+.inbox-provenance{border-color:transparent;background:rgba(5,10,22,.16)}
+/* Priority reads at a glance even before it is active */
+.inbox-priority-button[data-priority="1"]{border-color:rgba(157,177,201,.16);color:rgba(203,213,225,.55)}
+.inbox-priority-button[data-priority="2"]{border-color:rgba(96,165,250,.2);color:rgba(147,197,253,.55)}
+.inbox-priority-button[data-priority="3"]{border-color:rgba(245,158,11,.2);color:rgba(251,191,36,.55)}
+.inbox-priority-button[data-priority="4"]{border-color:rgba(239,68,68,.2);color:rgba(252,165,165,.55)}
+.inbox-priority-button.is-active[data-priority="1"]{background:rgba(157,177,201,.14);border-color:rgba(157,177,201,.4);color:#cbd5e1;font-weight:700}
+.inbox-priority-button.is-active[data-priority="2"]{background:rgba(96,165,250,.16);border-color:rgba(96,165,250,.45);color:#93c5fd;font-weight:700}
+.inbox-priority-button.is-active[data-priority="3"]{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.5);color:#fbbf24;font-weight:700}
+.inbox-priority-button.is-active[data-priority="4"]{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.5);color:#fca5a5;font-weight:700}
+/* Discarded final state reads as closed, not as "done with a task" */
+.inbox-result--discarded{background:rgba(239,68,68,.05);border-color:rgba(239,68,68,.2)}
+.inbox-result--discarded .inbox-result-title{color:#fca5a5}
+/* Due field fine-tune */
+.inbox-due-optional{font-weight:400;text-transform:none;opacity:.55;margin-left:3px}
+.inbox-input--date::-webkit-calendar-picker-indicator,.inbox-input--time::-webkit-calendar-picker-indicator{opacity:.85}
+/* Keyboard hints live at the bottom, quiet */
+.inbox-kbd-hint{margin:10px 0 0;opacity:.45}
+/* Selected batch rows clearly stand out */
+.inbox-row--batch:has(input:checked){background:rgba(86,204,242,.1);border-color:rgba(86,204,242,.3)}
+/* Compact priority marker: colored dot + label, quiet but always visible */
+.inbox-priority-marker{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;border-radius:999px;padding:1px 7px;line-height:1.5;white-space:nowrap}
+.inbox-priority-marker::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.inbox-priority-marker--p1{color:rgba(203,213,225,.7);background:rgba(157,177,201,.08);border:1px solid rgba(157,177,201,.2)}
+.inbox-priority-marker--p2{color:rgba(147,197,253,.8);background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.22)}
+.inbox-priority-marker--p3{color:rgba(251,191,36,.85);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.24)}
+.inbox-priority-marker--p4{color:rgba(252,165,165,.85);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.24)}
 
 /* Адаптивность для маленьких экранов */
 @media (max-width: 1200px) {
@@ -219,4 +375,8 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
   .inbox-dialog{max-height:94vh;padding:16px}
   .inbox-row{align-items:flex-start;flex-direction:column}
   .inbox-row-actions{width:100%;justify-content:flex-end}
+  .inbox-row--active{padding:12px}
+  .inbox-due-field{width:100%}
+  .inbox-input--date,.inbox-input--time{width:100%}
+  .inbox-route-row--due{flex-direction:column;align-items:stretch}
 }
