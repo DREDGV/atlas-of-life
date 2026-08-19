@@ -824,45 +824,53 @@ function renderDisplayRow(item){
     }
   }
 
-  const actions = document.createElement('div');
-  actions.className = 'inbox-row-actions';
+  // Routed cards own their full action set inside the linked-result block
+  // (Открыть задачу / Вернуть в разбор / Править / Удалить) — the card-level
+  // action row is only for non-routed cards, to avoid duplicated buttons.
+  if (!isRouted) {
+    const actions = document.createElement('div');
+    actions.className = 'inbox-row-actions';
 
-  const edit = document.createElement('button');
-  edit.type = 'button';
-  edit.className = 'inbox-button secondary';
-  edit.textContent = '✎ Править';
-  edit.addEventListener('click', () => enterEditMode(item.id));
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'inbox-button secondary';
+    edit.textContent = '✎ Править';
+    edit.addEventListener('click', () => enterEditMode(item.id));
+    actions.appendChild(edit);
 
-  if (!isRouted && !isFinalized) {
-    const discard = document.createElement('button');
-    discard.type = 'button';
-    discard.className = 'inbox-button secondary';
-    discard.textContent = 'Отбросить';
-    discard.addEventListener('click', () => {
-      if (updateInbox(item.id, { status: 'discarded' })) {
-        commit('inbox:discarded');
-      }
-      openInboxList();
-    });
-    actions.appendChild(discard);
-  }
-
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'inbox-button destructive';
-  remove.textContent = 'Удалить';
-  remove.addEventListener('click', () => {
-    lastRemoval = deleteInbox(item.id);
-    if (lastRemoval) {
-      editState.clear(item.id);
-      routingDraftState.clear(item.id);
-      commit('inbox:delete');
-      openInboxList();
+    if (!isFinalized) {
+      const discard = document.createElement('button');
+      discard.type = 'button';
+      discard.className = 'inbox-button secondary';
+      discard.textContent = 'Отбросить';
+      discard.addEventListener('click', () => {
+        if (updateInbox(item.id, { status: 'discarded' })) {
+          commit('inbox:discarded');
+        }
+        openInboxList();
+      });
+      actions.appendChild(discard);
     }
-  });
 
-  actions.append(edit, remove);
-  row.append(body, actions);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'inbox-button destructive';
+    remove.textContent = 'Удалить';
+    remove.addEventListener('click', () => {
+      lastRemoval = deleteInbox(item.id);
+      if (lastRemoval) {
+        editState.clear(item.id);
+        routingDraftState.clear(item.id);
+        commit('inbox:delete');
+        openInboxList();
+      }
+    });
+    actions.appendChild(remove);
+
+    row.append(body, actions);
+  } else {
+    row.append(body);
+  }
   return row;
 }
 
