@@ -75,6 +75,14 @@ let batchPriority = DEFAULT_PRIORITY;
 // Which dialog view is currently open ('capture' | 'list'), for hotkeys.
 let currentDialogView = 'list';
 
+// Capture hints are ephemeral per Capture session: after a successful save they
+// are cleared, and leaving Capture without saving clears them too — stale hints
+// must never silently apply to a new record.
+function resetCaptureHints(){
+  captureUserHint = null;
+  captureDomainHintId = null;
+}
+
 function isTypingTarget(target){
   return target instanceof HTMLElement && (
     target.isContentEditable ||
@@ -93,6 +101,8 @@ function updateCounter(){
 function closeInbox(){
   // Leaving the overlay exits edit mode; the draft itself stays preserved.
   editState.exit();
+  // Leaving Capture without saving must not leak its hints into a new capture.
+  if (currentDialogView === 'capture') resetCaptureHints();
   if (root) root.hidden = true;
 }
 
@@ -959,8 +969,7 @@ export function openInboxCapture(){
       return;
     }
     commit('inbox:capture');
-    captureUserHint = null;
-    captureDomainHintId = null;
+    resetCaptureHints();
     savedBannerCount = created.length;
     input.value = '';
     updateHintUI();
@@ -969,6 +978,7 @@ export function openInboxCapture(){
   document.getElementById('inboxCaptureSave').addEventListener('click', save);
   document.getElementById('inboxOpenList').addEventListener('click', () => {
     savedBannerCount = 0;
+    resetCaptureHints();
     openInboxList();
   });
   input.addEventListener('keydown', event => {

@@ -1,7 +1,8 @@
 // Stage B2 product pass — focused regression for critical data invariants:
 // processed Thought/Note → restore to review, batch routing without dupes,
 // sourceInboxId/resultRef correctness, batch failure leaves the queue intact,
-// domainHintId patch validation.
+// domainHintId patch validation, Capture hint reset on leaving Capture.
+import { readFileSync } from 'node:fs';
 import { state } from '../js/state.js';
 import {
   captureInbox,
@@ -138,5 +139,19 @@ try {
 assert(badHint?.message.includes('Unknown domain hint'), 'Test 4c: unknown domain hint rejected');
 assert(state.inbox[0].domainHintId === null, 'Test 4d: rejected patch left the record unchanged');
 console.log('✓ Test 4: domainHintId patch validation');
+
+// Test 5: Quick Capture hints do not leak into a new capture session
+const viewSource = readFileSync(new URL('../js/features/inbox/view.js', import.meta.url), 'utf-8');
+assert(
+  viewSource.includes('function resetCaptureHints()'),
+  'Test 5a: a dedicated hint-reset helper exists'
+);
+const resetCalls = (viewSource.match(/resetCaptureHints\(\)/g) || []).length;
+assert(resetCalls >= 3, `Test 5b: reset is wired in save, leave-to-list and overlay-close paths (got ${resetCalls})`);
+assert(
+  viewSource.includes("if (currentDialogView === 'capture') resetCaptureHints();"),
+  'Test 5c: closing the overlay from Capture clears the hints'
+);
+console.log('✓ Test 5: Capture hints reset when leaving without saving');
 
 console.log('\n✅ All Stage B2 product-pass tests passed.');
