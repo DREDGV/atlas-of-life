@@ -70,4 +70,4 @@ Capture → Inbox → Processing → Task / Thought / Note / context → Today �
 
 1. Прочитай этот файл и `docs/ROADMAP_REVIVAL.md`.
 2. Определи branch / PR / HEAD, проверь `git status`.
-3. Для обычной разработки используй skill `atlas-development` (`skills/atlas-development/SKILL.md`); для UI/UX задач — `atlas-ui-review` (`skills/atlas-ui-review/SKILL.md`).
+3. Для обычной разработки используй skill `atlas-development` (`.agents/skills/atlas-development/SKILL.md`); для UI/UX задач — `atlas-ui-review` (`.agents/skills/atlas-ui-review/SKILL.md`).
