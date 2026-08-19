@@ -338,6 +338,10 @@ function buildRoutingControls(item){
   const dueTimeLabel = document.createElement('label');
   dueTimeLabel.className = 'inbox-due-label';
   dueTimeLabel.textContent = 'Время';
+  const dueTimeOptional = document.createElement('span');
+  dueTimeOptional.className = 'inbox-due-optional';
+  dueTimeOptional.textContent = 'необязательно';
+  dueTimeLabel.appendChild(dueTimeOptional);
   dueTime = document.createElement('input');
   dueTime.type = 'time';
   dueTime.className = 'inbox-input inbox-input--time';
@@ -524,7 +528,7 @@ function buildLinkedResult(item, task){
 // routed Task: a clear result plus "Вернуть в разбор" (Core → reviewed).
 function buildFinalizedResult(item){
   const wrap = document.createElement('div');
-  wrap.className = 'inbox-result';
+  wrap.className = `inbox-result${item.status === 'discarded' ? ' inbox-result--discarded' : ''}`;
 
   const title = document.createElement('div');
   title.className = 'inbox-result-title';
@@ -1295,7 +1299,7 @@ export function openInboxList(){
   const toolbar = document.createElement('div');
   toolbar.className = 'inbox-toolbar';
   const summary = document.createElement('div');
-  summary.className = 'inbox-help';
+  summary.className = 'inbox-summary';
   const allItems = getInboxItems();
   const remainingCount = allItems.filter(item => item.status === 'new' || item.status === 'reviewed').length;
   summary.textContent = allItems.length === 0
@@ -1303,13 +1307,13 @@ export function openInboxList(){
     : `К разбору: ${remainingCount}`;
   const captureButton = document.createElement('button');
   captureButton.type = 'button';
-  captureButton.className = 'inbox-button primary';
+  captureButton.className = 'inbox-button inbox-button--capture';
   captureButton.textContent = '+ Записать';
   captureButton.addEventListener('click', openInboxCapture);
   toolbar.append(summary, captureButton);
   body.appendChild(toolbar);
 
-  // Local search + batch toggle.
+  // Calm, full-width local search.
   const searchRow = document.createElement('div');
   searchRow.className = 'inbox-search-row';
   const searchInput = document.createElement('input');
@@ -1318,17 +1322,20 @@ export function openInboxList(){
   searchInput.placeholder = 'Найти во входящих…';
   searchInput.value = searchQuery;
   searchInput.setAttribute('aria-label', 'Найти во входящих');
+  searchRow.appendChild(searchInput);
+  body.appendChild(searchRow);
+
+  // One control strip: queue filters on the left, batch mode switch on the right.
   const batchToggle = document.createElement('button');
   batchToggle.type = 'button';
   batchToggle.className = `inbox-button inbox-mode-toggle${batchMode ? ' is-active' : ''}`;
+  batchToggle.setAttribute('aria-pressed', batchMode ? 'true' : 'false');
   batchToggle.textContent = batchMode ? 'Готово' : 'Выбрать несколько';
   batchToggle.addEventListener('click', () => {
     batchMode = !batchMode;
     if (!batchMode) batchSelection.clear();
     openInboxList();
   });
-  searchRow.append(searchInput, batchToggle);
-  body.appendChild(searchRow);
 
   // Processing queue filters, mapped onto the existing statuses.
   const filters = document.createElement('div');
@@ -1347,17 +1354,22 @@ export function openInboxList(){
     });
     filters.appendChild(button);
   });
-  body.appendChild(filters);
 
+  const controlsRow = document.createElement('div');
+  controlsRow.className = 'inbox-controls-row';
+  controlsRow.append(filters, batchToggle);
+  body.appendChild(controlsRow);
+
+  const listWrap = document.createElement('div');
+  body.appendChild(listWrap);
+
+  // Keyboard hints: one quiet line at the bottom, out of the way.
   const kbdHint = document.createElement('div');
   kbdHint.className = 'inbox-kbd-hint';
   kbdHint.innerHTML =
     '<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> тип · <kbd>J</kbd>/<kbd>K</kbd> запись · <kbd>Enter</kbd> готово · <kbd>Esc</kbd> свернуть';
   kbdHint.setAttribute('aria-hidden', 'true');
   body.appendChild(kbdHint);
-
-  const listWrap = document.createElement('div');
-  body.appendChild(listWrap);
 
   const renderQueue = () => {
     listWrap.replaceChildren();

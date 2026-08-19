@@ -313,6 +313,40 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-mode-toggle:hover{border-color:rgba(86,204,242,.3);color:var(--text)}
 .inbox-mode-toggle.is-active{background:rgba(86,204,242,.12);border-color:rgba(86,204,242,.35);color:#bcecff;font-weight:600}
 
+/* ── B2 visual clarity refinements (post-review) ────────────────── */
+.inbox-summary{color:var(--text);font-weight:600;font-size:13px}
+.inbox-button--capture{border-color:rgba(86,204,242,.3);background:transparent;color:#9fd8f7;font-weight:600}
+.inbox-button--capture:hover{background:rgba(86,204,242,.1);border-color:rgba(86,204,242,.45)}
+.inbox-controls-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.inbox-controls-row .inbox-mode-toggle{margin-left:auto}
+.inbox-controls-row .inbox-filters{margin-bottom:0}
+.inbox-search-row{margin-bottom:10px}
+.inbox-search-input{border-color:rgba(157,177,201,.12);background:rgba(5,10,22,.4)}
+/* Active card is the one clear focus of the window */
+.inbox-row--active{border-color:rgba(86,204,242,.4);border-left:3px solid rgba(86,204,242,.6);background:rgba(8,15,30,.6);box-shadow:0 6px 24px rgba(0,0,0,.28)}
+/* Fewer nested frames inside the active card */
+.inbox-route{border-color:transparent;background:rgba(5,10,22,.2)}
+.inbox-provenance{border-color:transparent;background:rgba(5,10,22,.16)}
+/* Priority reads at a glance even before it is active */
+.inbox-priority-button[data-priority="1"]{border-color:rgba(157,177,201,.16);color:rgba(203,213,225,.55)}
+.inbox-priority-button[data-priority="2"]{border-color:rgba(96,165,250,.2);color:rgba(147,197,253,.55)}
+.inbox-priority-button[data-priority="3"]{border-color:rgba(245,158,11,.2);color:rgba(251,191,36,.55)}
+.inbox-priority-button[data-priority="4"]{border-color:rgba(239,68,68,.2);color:rgba(252,165,165,.55)}
+.inbox-priority-button.is-active[data-priority="1"]{background:rgba(157,177,201,.14);border-color:rgba(157,177,201,.4);color:#cbd5e1;font-weight:700}
+.inbox-priority-button.is-active[data-priority="2"]{background:rgba(96,165,250,.16);border-color:rgba(96,165,250,.45);color:#93c5fd;font-weight:700}
+.inbox-priority-button.is-active[data-priority="3"]{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.5);color:#fbbf24;font-weight:700}
+.inbox-priority-button.is-active[data-priority="4"]{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.5);color:#fca5a5;font-weight:700}
+/* Discarded final state reads as closed, not as "done with a task" */
+.inbox-result--discarded{background:rgba(239,68,68,.05);border-color:rgba(239,68,68,.2)}
+.inbox-result--discarded .inbox-result-title{color:#fca5a5}
+/* Due field fine-tune */
+.inbox-due-optional{font-weight:400;text-transform:none;opacity:.55;margin-left:3px}
+.inbox-input--date::-webkit-calendar-picker-indicator,.inbox-input--time::-webkit-calendar-picker-indicator{opacity:.85}
+/* Keyboard hints live at the bottom, quiet */
+.inbox-kbd-hint{margin:10px 0 0;opacity:.45}
+/* Selected batch rows clearly stand out */
+.inbox-row--batch:has(input:checked){background:rgba(86,204,242,.1);border-color:rgba(86,204,242,.3)}
+
 /* Адаптивность для маленьких экранов */
 @media (max-width: 1200px) {
   main{grid-template-columns:minmax(200px, 250px) 1fr minmax(250px, 300px);}
