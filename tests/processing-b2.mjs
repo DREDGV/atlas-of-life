@@ -103,7 +103,7 @@ assert(
   'Test 4d: processing card shows the proposed domain to the user'
 );
 assert(
-  viewSource.includes('Считать разобранной') && viewSource.includes('К разбору'),
+  viewSource.includes('Сохранить как мысль') && viewSource.includes('К разбору'),
   'Test 4e: B2 flow UI present (finish action, queue label)'
 );
 console.log('✓ Test 4: routing draft uses the domain hint but allows change');
