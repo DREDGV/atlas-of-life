@@ -304,7 +304,7 @@ function buildRoutingControls(item){
   PRIORITY_ORDER.forEach(value => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'inbox-type-button';
+    button.className = 'inbox-type-button inbox-priority-button';
     button.dataset.priority = String(value);
     if (value === priority) button.classList.add('is-active');
     button.setAttribute('aria-pressed', value === priority ? 'true' : 'false');
@@ -321,17 +321,29 @@ function buildRoutingControls(item){
   });
 
   // ---- Due (date + optional time) ----
+  const dueDateWrap = document.createElement('div');
+  dueDateWrap.className = 'inbox-due-field';
+  const dueDateLabel = document.createElement('label');
+  dueDateLabel.className = 'inbox-due-label';
+  dueDateLabel.textContent = 'Дата';
   dueDate = document.createElement('input');
   dueDate.type = 'date';
-  dueDate.className = 'inbox-input';
+  dueDate.className = 'inbox-input inbox-input--date';
   if (draft.dueDate) dueDate.value = draft.dueDate;
   dueDate.addEventListener('input', saveDraft);
+  dueDateWrap.append(dueDateLabel, dueDate);
 
+  const dueTimeWrap = document.createElement('div');
+  dueTimeWrap.className = 'inbox-due-field';
+  const dueTimeLabel = document.createElement('label');
+  dueTimeLabel.className = 'inbox-due-label';
+  dueTimeLabel.textContent = 'Время';
   dueTime = document.createElement('input');
   dueTime.type = 'time';
-  dueTime.className = 'inbox-input';
+  dueTime.className = 'inbox-input inbox-input--time';
   if (draft.dueTime) dueTime.value = draft.dueTime;
   dueTime.addEventListener('input', saveDraft);
+  dueTimeWrap.append(dueTimeLabel, dueTime);
 
   // ---- Submit ----
   const submit = document.createElement('button');
@@ -366,8 +378,8 @@ function buildRoutingControls(item){
   priorityRow.append(makeLabel('Приоритет'), priorityBar);
 
   const dueRow = document.createElement('div');
-  dueRow.className = 'inbox-route-row';
-  dueRow.append(makeLabel('Когда'), dueDate, dueTime);
+  dueRow.className = 'inbox-route-row inbox-route-row--due';
+  dueRow.append(makeLabel('Когда'), dueDateWrap, dueTimeWrap);
 
   // "Дополнительно" is collapsed by default: priority and due only take the
   // screen when the user actually needs them. Draft values survive.
@@ -408,12 +420,22 @@ function buildLinkedResult(item, task){
   if (task) {
     const taskProject = state.projects.find(project => project.id === task.projectId);
     const taskDomain = state.domains.find(domain => domain.id === (task.domainId || taskProject?.domainId));
-    const parts = [
-      [taskDomain?.title, taskProject?.title].filter(Boolean).join(' / '),
-      PRIORITY_LABELS[task.priority] || `p${task.priority}`,
-      formatDue(task.due),
-    ].filter(Boolean);
-    meta.textContent = parts.join(' · ');
+    const location = [taskDomain?.title, taskProject?.title].filter(Boolean).join(' / ');
+    if (location) {
+      const locSpan = document.createElement('span');
+      locSpan.textContent = location;
+      meta.appendChild(locSpan);
+    }
+    const prioChip = document.createElement('span');
+    prioChip.className = `inbox-priority-chip inbox-priority-chip--p${task.priority || 2}`;
+    prioChip.textContent = PRIORITY_LABELS[task.priority] || 'Обычный';
+    meta.appendChild(prioChip);
+    const dueStr = formatDue(task.due);
+    if (dueStr) {
+      const dueSpan = document.createElement('span');
+      dueSpan.textContent = dueStr;
+      meta.appendChild(dueSpan);
+    }
   }
 
   const actions = document.createElement('div');
@@ -471,6 +493,28 @@ function buildLinkedResult(item, task){
     openInboxList();
   });
   actions.appendChild(revert);
+
+  const editRouted = document.createElement('button');
+  editRouted.type = 'button';
+  editRouted.className = 'inbox-button tertiary';
+  editRouted.textContent = '✎ Править';
+  editRouted.addEventListener('click', () => enterEditMode(item.id));
+  actions.appendChild(editRouted);
+
+  const deleteRouted = document.createElement('button');
+  deleteRouted.type = 'button';
+  deleteRouted.className = 'inbox-button destructive';
+  deleteRouted.textContent = 'Удалить';
+  deleteRouted.addEventListener('click', () => {
+    lastRemoval = deleteInbox(item.id);
+    if (lastRemoval) {
+      editState.clear(item.id);
+      routingDraftState.clear(item.id);
+      commit('inbox:delete');
+      openInboxList();
+    }
+  });
+  actions.appendChild(deleteRouted);
 
   wrap.append(title, meta, actions);
   return wrap;
@@ -572,7 +616,7 @@ function renderEditRow(item){
 
   const discard = document.createElement('button');
   discard.type = 'button';
-  discard.className = 'inbox-button secondary';
+  discard.className = 'inbox-button destructive';
   discard.textContent = 'Отменить правки';
   discard.addEventListener('click', () => {
     editState.clear(item.id);
@@ -599,7 +643,8 @@ function renderEditRow(item){
 
 function renderDisplayRow(item){
   const row = document.createElement('article');
-  row.className = 'inbox-row';
+  row.className = 'inbox-row inbox-row--active';
+  row.dataset.processingId = item.id;
 
   const body = document.createElement('div');
   body.className = 'inbox-row-body';
@@ -613,13 +658,14 @@ function renderDisplayRow(item){
 
   const time = document.createElement('span');
   time.className = 'inbox-time';
-  time.textContent = `Создано ${formatProcessingTime(item.createdAt)}`;
-
-  if (item.updatedAt && item.updatedAt > (item.createdAt || 0)) {
-    const edited = document.createElement('span');
-    edited.className = 'inbox-edited-marker';
-    edited.textContent = `· изменено ${formatProcessingTime(item.updatedAt)}`;
-    meta.append(edited);
+  const createdStr = formatProcessingTime(item.createdAt);
+  const editedStr = item.updatedAt && item.updatedAt > (item.createdAt || 0)
+    ? formatProcessingTime(item.updatedAt)
+    : '';
+  if (editedStr) {
+    time.textContent = `Создано ${createdStr} · изменено ${editedStr}`;
+  } else {
+    time.textContent = `Создано ${createdStr}`;
   }
 
   meta.append(time, typeChip(item));
@@ -691,16 +737,43 @@ function renderDisplayRow(item){
   const provenanceBlock = document.createElement('div');
   provenanceBlock.className = 'inbox-provenance';
   provenanceBlock.hidden = true;
-  const provenanceLines = [];
-  if (item.text !== item.rawText) provenanceLines.push(`Текущий текст: ${item.text}`);
-  provenanceLines.push(`Исходник: ${item.rawText}`);
-  provenanceLines.push(`Источник: ${item.source === 'mobile-capture' ? 'Mobile' : 'Desktop'}`);
-  provenanceLines.push(`Ввод: ${item.inputType === 'voice' ? 'Голос' : 'Текст'}`);
-  provenanceLines.push(`Захвачено: ${formatProcessingTime(item.createdAt)}`);
-  provenanceLines.forEach(lineText => {
+  if (item.text !== item.rawText) {
+    const currentLine = document.createElement('div');
+    currentLine.className = 'inbox-provenance-line';
+    const currentLabel = document.createElement('span');
+    currentLabel.className = 'inbox-provenance-label';
+    currentLabel.textContent = 'Текущий текст';
+    const currentVal = document.createElement('span');
+    currentVal.className = 'inbox-provenance-value';
+    currentVal.textContent = item.text;
+    currentLine.append(currentLabel, currentVal);
+    provenanceBlock.appendChild(currentLine);
+  }
+  const rawLine = document.createElement('div');
+  rawLine.className = 'inbox-provenance-line';
+  const rawLabel = document.createElement('span');
+  rawLabel.className = 'inbox-provenance-label';
+  rawLabel.textContent = 'Исходный текст';
+  const rawVal = document.createElement('span');
+  rawVal.className = 'inbox-provenance-value inbox-provenance-value--raw';
+  rawVal.textContent = item.rawText;
+  rawLine.append(rawLabel, rawVal);
+  provenanceBlock.appendChild(rawLine);
+  const metaLines = [
+    ['Источник', item.source === 'mobile-capture' ? 'Mobile' : 'Desktop'],
+    ['Ввод', item.inputType === 'voice' ? 'Голос' : 'Текст'],
+    ['Время захвата', formatProcessingTime(item.createdAt)],
+  ];
+  metaLines.forEach(([label, value]) => {
     const line = document.createElement('div');
     line.className = 'inbox-provenance-line';
-    line.textContent = lineText;
+    const lbl = document.createElement('span');
+    lbl.className = 'inbox-provenance-label';
+    lbl.textContent = label;
+    const val = document.createElement('span');
+    val.className = 'inbox-provenance-value';
+    val.textContent = value;
+    line.append(lbl, val);
     provenanceBlock.appendChild(line);
   });
   provenanceToggle.addEventListener('click', () => {
@@ -772,7 +845,7 @@ function renderDisplayRow(item){
 
   const remove = document.createElement('button');
   remove.type = 'button';
-  remove.className = 'inbox-button danger';
+  remove.className = 'inbox-button destructive';
   remove.textContent = 'Удалить';
   remove.addEventListener('click', () => {
     lastRemoval = deleteInbox(item.id);
@@ -792,7 +865,9 @@ function renderDisplayRow(item){
 // Compact queue row: non-active records show text + minimal meta only.
 function renderCompactRow(item){
   const row = document.createElement('article');
-  row.className = 'inbox-row inbox-row--compact';
+  const statusClass = (item.status === 'processed' || item.status === 'discarded')
+    ? ' inbox-row--processed' : '';
+  row.className = `inbox-row inbox-row--compact${statusClass}`;
 
   const text = document.createElement('div');
   text.className = 'inbox-row-text';
@@ -1150,7 +1225,7 @@ function renderBatchBar(container){
   PRIORITY_ORDER.forEach(value => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'inbox-type-button';
+    button.className = 'inbox-type-button inbox-priority-button';
     button.dataset.priority = String(value);
     if (value === batchPriority) button.classList.add('is-active');
     button.textContent = PRIORITY_LABELS[value];
@@ -1245,7 +1320,7 @@ export function openInboxList(){
   searchInput.setAttribute('aria-label', 'Найти во входящих');
   const batchToggle = document.createElement('button');
   batchToggle.type = 'button';
-  batchToggle.className = 'inbox-button secondary';
+  batchToggle.className = `inbox-button inbox-mode-toggle${batchMode ? ' is-active' : ''}`;
   batchToggle.textContent = batchMode ? 'Готово' : 'Выбрать несколько';
   batchToggle.addEventListener('click', () => {
     batchMode = !batchMode;
@@ -1278,6 +1353,7 @@ export function openInboxList(){
   kbdHint.className = 'inbox-kbd-hint';
   kbdHint.innerHTML =
     '<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> тип · <kbd>J</kbd>/<kbd>K</kbd> запись · <kbd>Enter</kbd> готово · <kbd>Esc</kbd> свернуть';
+  kbdHint.setAttribute('aria-hidden', 'true');
   body.appendChild(kbdHint);
 
   const listWrap = document.createElement('div');
@@ -1343,10 +1419,12 @@ export function openInboxList(){
     }
 
     if (batchMode) {
+      listWrap.classList.add('inbox-list-wrap--batch');
       renderBatchBar(listWrap);
       renderBatchRows(listWrap, items);
       return;
     }
+    listWrap.classList.remove('inbox-list-wrap--batch');
 
     const list = document.createElement('div');
     list.className = 'inbox-list';

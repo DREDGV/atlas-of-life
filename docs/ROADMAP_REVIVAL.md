@@ -28,7 +28,9 @@ Map              = понимание всей системы
 - keyboard workflow и batch processing входят в линейку 0.10.x;
 - AI позже ускоряет хороший workflow, а не заменяет плохой UX;
 - rawText никогда не уничтожается; связи resultRef ↔ sourceInboxId двусторонние;
-- все persisted-изменения — только через Core-команды; UI-черновики ephemeral.
+- все persisted-изменения — только через Core-команды; UI-черновики ephemeral;
+- рост функциональности должен сопровождаться ростом визуальной ясности;
+- Processing Center не должен превращаться в перегруженную панель параметров.
 
 ## Принципы развития
 
@@ -52,7 +54,7 @@ Map              = понимание всей системы
 
 - **B0 Foundation** — ✅ ЗАВЕРШЕНО (`0.10.0-alpha.1`): edit с сохранением rawText, `itemType` (task | thought | note | null) отдельно от `userHint`, processing status `new | reviewed | processed | discarded`, карточный ручной разбор.
 - **B1 Processing Routing** — ✅ ЗАВЕРШЕНО (`0.10.0-alpha.2`): безопасный Inbox → Task (`resultRef` ↔ `sourceInboxId`), Domain/Project/Priority/Due, безопасный revert, валидация destination, блокировка routed-записей, inline создание Domain/Project, routing draft.
-- **B2 Processing Flow UX** — ▶ ТЕКУЩИЙ ЭТАП (`0.10.0-alpha.3`): очередь «К разбору / Разобранные / Все», автоматические статусы, progressive disclosure («Что это?» → «Куда?» → «Дополнительно»), одна активная карточка, keyboard workflow (1/2/3, J/K, Enter), batch processing, session defaults, provenance «Исходник», локальный поиск, empty states.
+- **B2 Processing Flow UX** — ▶ ТЕКУЩИЙ ЭТАП (`0.10.0-alpha.3`): очередь «К разбору / Разобранные / Все», автоматические статусы, progressive disclosure («Что это?» → «Куда?» → «Дополнительно»), одна активная карточка, keyboard workflow (1/2/3, J/K, Enter), batch processing, session defaults, provenance «Исходник», локальный поиск, empty states. B2 включает visual clarity / interaction polish: clear active/compact/final states, semantic priority visualization, readable date/time controls, clear action hierarchy (primary/secondary/tertiary/destructive), batch-mode visual state, unified metadata format, improved provenance accordion.
 
 Развитие Processing внутри линейки:
 
