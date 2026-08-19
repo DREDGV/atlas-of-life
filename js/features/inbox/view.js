@@ -887,6 +887,18 @@ function renderCompactRow(item){
 
   if (item.itemType) meta.appendChild(typeChip(item));
 
+  // Routed tasks carry their priority as a compact colored marker, so the
+  // queue itself shows importance without expanding the row.
+  if (item.resultRef?.type === 'task') {
+    const task = state.tasks.find(entry => entry.id === item.resultRef.id);
+    if (task) {
+      const marker = document.createElement('span');
+      marker.className = `inbox-priority-marker inbox-priority-marker--p${task.priority || 2}`;
+      marker.textContent = PRIORITY_LABELS[task.priority] || 'Обычный';
+      meta.appendChild(marker);
+    }
+  }
+
   const chevron = document.createElement('span');
   chevron.className = 'inbox-compact-chevron';
   chevron.textContent = '›';
