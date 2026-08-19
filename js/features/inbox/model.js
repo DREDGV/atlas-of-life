@@ -173,6 +173,16 @@ export function updateInboxItem(id, patch = {}){
     }
     changes.status = status;
   }
+  if (Object.hasOwn(patch, 'domainHintId')) {
+    const domainHintId = patch.domainHintId;
+    if (
+      domainHintId !== null &&
+      (!Array.isArray(state.domains) || !state.domains.some(domain => domain.id === domainHintId))
+    ) {
+      throw new Error(`Unknown domain hint: ${domainHintId}`);
+    }
+    changes.domainHintId = domainHintId;
+  }
   return { item, changes };
 }
 
