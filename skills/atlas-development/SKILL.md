@@ -1,3 +1,9 @@
+---
+name: atlas-development
+description: Базовый workflow для обычной задачи разработки Atlas of Life — от чтения AGENTS.md и roadmap до focused checks, commit/push и отчёта.
+version: 1.0.0
+---
+
 # Skill: atlas-development
 
 Практический workflow для любой обычной задачи разработки Atlas of Life.

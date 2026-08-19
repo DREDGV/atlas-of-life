@@ -29,9 +29,9 @@ Capture → Inbox → Processing → Task / Thought / Note / context → Today �
   - Inbox `resultRef` ↔ Task `sourceInboxId` (двусторонняя связь);
   - безопасные routing/revert (routed-записи залочены по типу/статусу; revert не удаляет изменённую Task);
   - валидация destination (Project/Domain существуют);
-  - operation log (`js/core/operations.js`);
-  - routing drafts и capture hints — ephemeral UI state, не пишутся в storage;
-  - Capture hints (`userHint`, `domainHintId`) ≠ подтверждённая классификация (`itemType`).
+  - operation log (`js/core/operations.js`).
+- Capture hints (`userHint`, `domainHintId`) — persisted-подсказки: после успешного Capture сохраняются в Inbox item, но **не являются confirmed classification / final route** (подтверждённый тип — `itemType`).
+- Ephemeral UI state (не пишется в storage): routing drafts, session UI defaults, незавершённый Quick Capture hint selection.
 - Хранилище: `localStorage` через `js/storageAdapter.js`; схема версионируется миграциями в `js/storage.js`.
 
 ## Versioning
@@ -70,4 +70,4 @@ Capture → Inbox → Processing → Task / Thought / Note / context → Today �
 
 1. Прочитай этот файл и `docs/ROADMAP_REVIVAL.md`.
 2. Определи branch / PR / HEAD, проверь `git status`.
-3. Для обычной разработки используй skill `atlas-development`; для UI/UX задач — `atlas-ui-review`.
+3. Для обычной разработки используй skill `atlas-development` (`skills/atlas-development/SKILL.md`); для UI/UX задач — `atlas-ui-review` (`skills/atlas-ui-review/SKILL.md`).

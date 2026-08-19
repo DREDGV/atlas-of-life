@@ -1,3 +1,9 @@
+---
+name: atlas-ui-review
+description: Workflow для UI/UX-задач Atlas (скриншоты, живой интерфейс) — классификация замечаний, локальные визуальные фиксы, проверка состояний Processing Center.
+version: 1.0.0
+---
+
 # Skill: atlas-ui-review
 
 Для задач, когда пользователь показывает скриншот, живой интерфейс или просит улучшить UX Processing Center / Atlas Studio.
