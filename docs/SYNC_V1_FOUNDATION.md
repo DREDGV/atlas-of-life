@@ -12,30 +12,34 @@ Phone Capture → Inbox item → sync operation → Desktop → Processing
 
 ## Operation envelope
 
-Базовый envelope (совместим с `js/core/operations.js`):
+Immutable sync operation (создаётся в `js/core/operations.js`; `id` документирован
+как canonical operationId):
 
 ```json
 {
   "schema": 1,
   "id": "op-<uuid>",
   "deviceId": "…",
+  "sequence": 42,
   "timestamp": 1785700000000,
   "type": "inbox.capture | inbox.update | inbox.route_to_task | inbox.route_revert",
   "entityType": "inbox",
   "entityId": "…",
   "baseVersion": 1785700000000,
-  "payload": { },
-  "syncStatus": "pending"
+  "payload": { }
 }
 ```
 
 - `id` (operationId) — глобально уникальный; единственный ключ идемпотентности.
 - `deviceId` — устойчивый локальный идентификатор устройства (`js/core/device.js`).
 - `sequence` — локальный монотонный счётчик устройства (`js/sync/device.js`),
-  используется для локального порядка; глобальный порядок задаёт серверный
-  `serverSequence` на relay.
+  присваивается каждой операции при создании и присутствует в outbound
+  operation; глобальный порядок задаёт серверный `serverSequence` на relay.
 - `baseVersion` — версия сущности, от которой отталкивалось изменение
   (`updatedAt`); используется для детекции конфликта.
+
+`syncStatus` / `attempts` / `lastError` — **локальные метаданные доставки** и
+хранятся в записи durable outbox, а не в immutable operation.
 
 ## Разделение local history и durable outbox
 
@@ -58,11 +62,38 @@ Sync queue не зависит от того, что history когда-нибу
 ## Durable outbox
 
 - Persisted в localStorage (`atlas-sync-outbox-v1`), переживает reload/offline.
-- Состояния: `pending` → `sent` (отправлено, ждёт ack) → удаляется по ack;
-  `retryable` (transient) → повторная попытка; `failed` (permanent, после
-  `MAX_ATTEMPTS`), чтобы не крутиться бесконечно.
+- Состояния (локальные метаданные доставки): `pending` → `sent` (отправлено,
+  ждёт ack) → удаляется по ack; `retryable` (transient) → повторная попытка;
+  `failed` (permanent, после `MAX_ATTEMPTS`), чтобы не крутиться бесконечно.
 - Операция НЕ считается синхронизированной только потому, что HTTP-запрос
   отправлен: ack обязателен.
+- **Долговечность**: unacked записи никогда не выбрасываются молча ради
+  лимита — жёсткого cap у очереди нет (acked удаляются явно по ack). Ошибка
+  записи outbox в storage пробрасывается как ошибка, а не проглатывается как
+  успех (в командах она наблюдается через console.warn).
+
+## Recovery для sent / awaiting_ack
+
+- `sent`, не получивший ack (crash/reload между отправкой и ack, или partial
+  ack), после перезапуска движка снова становится `retryable` (детерминированная
+  recovery на `createSyncEngine`).
+- Повторная отправка безопасна благодаря idempotency по operationId.
+- Partial ack не считается успехом всего батча: только acked удаляются,
+  остальные `sent` → `retryable`.
+
+## Quarantine (persisted conflicts)
+
+Операция, которую нельзя применить (conflict / invalid / unsupported),
+записывается в durable quarantine `atlas-sync-conflicts-v1`:
+
+```json
+{ "operation": {…}, "serverSequence": 7, "reason": "…", "status": "conflict|invalid|unsupported", "detectedAt": … }
+```
+
+Cursor продвигается только после durable quarantine, чтобы одна плохая операция
+не блокировала поток и не зацикливалась. Конфликт виден через
+`engine.getStatus().conflicts` / `engine.getConflicts()`. Conflict resolution
+UI — не в C0.
 
 ## Idempotency и deduplication
 
@@ -73,15 +104,23 @@ Sync queue не зависит от того, что history когда-нибу
 
 ## Remote apply (только через Core)
 
-Входящая операция применяется через `js/sync/apply.js`:
-- `inbox.capture` → `addInboxLines` с оригинальными id/полями + `saveState()`;
-- `inbox.update` → `updateInboxItem` (те же guard'ы: rawText immutable,
-  lock routed-записей, валидация domainHintId);
-- `inbox.route_to_task` → `status=processed` + `resultRef` (как ссылка на
-  результат; сама Task в C0 не синхронизируется);
-- `inbox.route_revert` → снять `resultRef`, `status=reviewed`.
+Входящая операция применяется через **Core remote-apply команды**
+(`applyRemoteInboxCapture / Update / Route / Revert` в `js/core/commands.js`):
+атомарно (runAtomicCommand + saveState внутри команды, rollback при ошибке
+persistence), без записи в локальный operation log и **без порождения новой
+outbound sync-операции** (нет echo-loop).
 
-Транспорт/Sync UI не делает `state.inbox.push(...)` / `saveState()` напрямую.
+- `inbox.capture` → `applyRemoteInboxCapture` (addInboxLines с оригинальными
+  id/полями);
+- `inbox.update` → `applyRemoteInboxUpdate` (те же guard'ы: rawText immutable,
+  lock routed-записей, валидация domainHintId);
+- `inbox.route_to_task` → `applyRemoteInboxRoute` (`status=processed` +
+  `resultRef` как ссылка на результат; сама Task в C0 не синхронизируется);
+- `inbox.route_revert` → `applyRemoteInboxRevert` (снять `resultRef`,
+  `status=reviewed`).
+
+`js/sync/apply.js` и transport не мутируют persisted state и не вызывают
+`saveState()` напрямую.
 
 ## Transport boundary
 
@@ -145,5 +184,4 @@ background push, WebSocket realtime.
 
 ## Минимальная наблюдаемость
 
-`engine.getStatus()` → `{ deviceId, pending, cursor, lastSyncAt, lastError, conflicts }`.
-Полноценный Sync Dashboard не строится.
+`engine.getStatus()` → `{ deviceId, pending, cursor, lastSyncAt, lastError, conflicts }`; `engine.getConflicts()` → durable quarantine (persisted). Полноценный Sync Dashboard не строится.
