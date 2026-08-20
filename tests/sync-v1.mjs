@@ -319,6 +319,8 @@ const transport = createLocalRelay({
   assert(listOutbox().length === 0, 'Test 13c: route apply did not echo an outbound op');
 
   const originalSet = globalThis.localStorage.setItem;
+  const savedWarn = console.warn;
+  console.warn = () => {}; // saveState failure logging must not leak to stderr (CI/PS)
   globalThis.localStorage.setItem = function (key, value) {
     if (key === 'atlas_v2_data') { const e = new Error('Quota'); e.name = 'QuotaExceededError'; throw e; }
     return originalSet.call(this, key, value);
@@ -328,6 +330,7 @@ const transport = createLocalRelay({
     applyIncomingOperation({ id: 'op-revert', deviceId: 'remote', timestamp: 3, type: 'inbox.route_revert', entityType: 'inbox', entityId: 'inbox-dr', payload: { inboxAfter: { id: 'inbox-dr', status: 'reviewed', updatedAt: 300 } } });
   } catch (error) { threw = error; }
   globalThis.localStorage.setItem = originalSet;
+  console.warn = savedWarn;
   assert(threw !== null, 'Test 13d: saveState failure propagates');
   assert(state.inbox[0].resultRef?.id === 'task-r' && state.inbox[0].status === 'processed', 'Test 13e: atomic rollback — revert did not partially apply');
   console.log('✓ Test 13: Core remote apply (no echo, atomic rollback)');
