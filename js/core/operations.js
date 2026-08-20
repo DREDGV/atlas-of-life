@@ -1,5 +1,6 @@
 import { state } from '../state.js';
 import { getDeviceId } from './device.js';
+import { nextDeviceSequence } from '../sync/device.js';
 
 export const OPERATION_LOG_LIMIT = 1000;
 
@@ -22,6 +23,9 @@ function ensureOperationLog(){
   return state.operationLog;
 }
 
+// The immutable sync operation envelope. Delivery state (syncStatus, attempts,
+// lastError) is NOT part of the operation — it lives on the durable outbox
+// entry (js/sync/outbox.js). `sequence` is the per-device monotonic counter.
 export function appendOperation(input, options = {}){
   if (!input?.type) throw new Error('Operation type is required');
   const timestamp = Number(options.timestamp ?? input.timestamp) || Date.now();
@@ -29,13 +33,13 @@ export function appendOperation(input, options = {}){
     schema: 1,
     id: options.operationId || input.id || generateOperationId(),
     deviceId: options.deviceId || input.deviceId || getDeviceId(),
+    sequence: nextDeviceSequence(),
     timestamp,
     type: input.type,
     entityType: input.entityType || null,
     entityId: input.entityId || null,
     baseVersion: input.baseVersion ?? null,
     payload: snapshot(input.payload),
-    syncStatus: input.syncStatus || 'pending',
   };
   const log = ensureOperationLog();
   log.push(operation);

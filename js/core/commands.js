@@ -23,6 +23,17 @@ function finish(options){
   if (options.persist !== false) saveState();
 }
 
+// Enqueue a syncable operation after the command persisted successfully. An
+// outbox persistence failure must not fail the already-saved local change, but
+// it must be observable (console), never silently swallowed as success.
+function enqueueOutbound(operation){
+  try {
+    enqueueSyncOperation(operation);
+  } catch (error) {
+    console.warn('sync outbox enqueue failed', error?.message || error);
+  }
+}
+
 function cloneCommandValue(value){
   if (value === undefined) return undefined;
   if (typeof globalThis.structuredClone === 'function') {
@@ -187,7 +198,7 @@ function captureInboxMutation(text, options){
   }, { timestamp: options.now, deviceId: options.deviceId }));
   if (created.length) finish(options);
   // Enqueue for sync only after the command persisted successfully.
-  operations.forEach(operation => enqueueSyncOperation(operation));
+  operations.forEach(operation => enqueueOutbound(operation));
   return created;
 }
 
@@ -258,7 +269,7 @@ function updateInboxMutation(id, patch, options){
     },
   }, { timestamp: item.updatedAt, deviceId: options.deviceId });
   finish(options);
-  enqueueSyncOperation(operation);
+  enqueueOutbound(operation);
   return { item, before, operation };
 }
 
@@ -331,7 +342,7 @@ function routeInboxToTaskMutation(id, options){
     },
   }, { timestamp: now, deviceId: options.deviceId });
   finish(options);
-  enqueueSyncOperation(operation);
+  enqueueOutbound(operation);
   return { inboxItem, task };
 }
 
@@ -389,12 +400,107 @@ function revertInboxRouteMutation(id, options){
     },
   }, { timestamp: now, deviceId: options.deviceId });
   finish(options);
-  enqueueSyncOperation(operation);
+  enqueueOutbound(operation);
   return { inboxItem, task: removedTask };
 }
 
 export function revertInboxRoute(id, options = {}){
   return runAtomicCommand(() => revertInboxRouteMutation(id, options));
+}
+
+// ---------------------------------------------------------------------------
+// Sync remote apply (C0): Core-atomic, no local operation log entry, and no
+// outbound sync operation (no echo loop). Incoming sync operations are applied
+// through these commands; rollback on saveState failure is handled by
+// runAtomicCommand exactly like any other Core command.
+// ---------------------------------------------------------------------------
+
+function applyRemoteInboxCaptureMutation(payload, options){
+  if (!payload || typeof payload.rawText !== 'string') {
+    throw new Error('remote inbox.capture: payload.rawText missing');
+  }
+  if (state.inbox.some(item => item.id === payload.id)) return null; // idempotent
+  return addInboxLines(payload.rawText, {
+    splitLines: false,
+    now: payload.createdAt ?? options.now ?? Date.now(),
+    idFactory: () => payload.id,
+    inputType: payload.inputType,
+    source: payload.source,
+    status: payload.status,
+    userHint: payload.userHint,
+    domainHintId: payload.domainHintId,
+    itemType: payload.itemType,
+    deviceId: payload.deviceId,
+    entryPoint: payload.entryPoint,
+  });
+}
+
+export function applyRemoteInboxCapture(payload, options = {}){
+  return runAtomicCommand(() => {
+    const created = applyRemoteInboxCaptureMutation(payload, options);
+    finish(options);
+    return created;
+  });
+}
+
+function applyRemoteInboxUpdateMutation(id, after, options){
+  const item = state.inbox.find(entry => entry.id === id);
+  if (!item) throw new Error(`remote inbox.update: unknown inbox item ${id}`);
+  const patch = {};
+  if (Object.hasOwn(after, 'text')) patch.text = after.text;
+  if (Object.hasOwn(after, 'itemType')) patch.itemType = after.itemType;
+  if (Object.hasOwn(after, 'status')) patch.status = after.status;
+  if (Object.hasOwn(after, 'domainHintId')) patch.domainHintId = after.domainHintId;
+  const result = updateInboxItem(id, patch);
+  if (result) {
+    Object.assign(result.item, result.changes);
+    result.item.updatedAt = after.updatedAt ?? options.now ?? Date.now();
+  }
+  return result;
+}
+
+export function applyRemoteInboxUpdate(id, after, options = {}){
+  return runAtomicCommand(() => {
+    const result = applyRemoteInboxUpdateMutation(id, after, options);
+    finish(options);
+    return result;
+  });
+}
+
+function applyRemoteInboxRouteMutation(payload, options){
+  const after = payload?.inboxAfter || {};
+  const item = state.inbox.find(entry => entry.id === after.id);
+  if (!item) return null;
+  item.status = after.status || 'processed';
+  item.resultRef = after.resultRef || null;
+  item.updatedAt = after.updatedAt ?? options.now ?? Date.now();
+  return item;
+}
+
+export function applyRemoteInboxRoute(payload, options = {}){
+  return runAtomicCommand(() => {
+    const item = applyRemoteInboxRouteMutation(payload, options);
+    finish(options);
+    return item;
+  });
+}
+
+function applyRemoteInboxRevertMutation(payload, options){
+  const after = payload?.inboxAfter || {};
+  const item = state.inbox.find(entry => entry.id === after.id);
+  if (!item) return null;
+  delete item.resultRef;
+  item.status = after.status || 'reviewed';
+  item.updatedAt = after.updatedAt ?? options.now ?? Date.now();
+  return item;
+}
+
+export function applyRemoteInboxRevert(payload, options = {}){
+  return runAtomicCommand(() => {
+    const item = applyRemoteInboxRevertMutation(payload, options);
+    finish(options);
+    return item;
+  });
 }
 
 function convertInboxToTaskMutation(id, options){

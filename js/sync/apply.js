@@ -1,18 +1,19 @@
 // js/sync/apply.js — Core sync-apply layer.
 //
-// Incoming sync operations are applied to persisted state through the same
-// model mutations the Core commands use (addInboxLines / updateInboxItem),
-// followed by saveState(). No transport/UI code mutates state directly.
+// Incoming sync operations are applied through Core remote-apply commands
+// (js/core/commands.js): atomic, saveState() inside the command, rollback on
+// persistence failure, and NO outbound sync operation (no echo loop). This
+// module never mutates persisted state or calls saveState() itself.
 //
-// Invariants preserved on the receiving side:
-//   - rawText immutable (addInboxLines recreates text/rawText from the payload;
-//     updateInboxItem refuses rawText patches);
-//   - destination validation where applicable (domainHintId re-validated);
-//   - resultRef/sourceInboxId integrity: resultRef syncs as a result reference
-//     only — the Task itself is not synced in C0.
+// Invariants preserved: rawText immutable, routed lock, resultRef as a
+// reference only (Task itself is not synced in C0), destination validation.
 import { state } from '../state.js';
-import { saveState } from '../storage.js';
-import { addInboxLines, updateInboxItem } from '../features/inbox/model.js';
+import {
+  applyRemoteInboxCapture,
+  applyRemoteInboxRevert,
+  applyRemoteInboxRoute,
+  applyRemoteInboxUpdate,
+} from '../core/commands.js';
 
 const APPLIED_KEY = 'atlas-sync-applied-v1';
 const APPLIED_LIMIT = 500;
@@ -29,9 +30,7 @@ function readApplied(){
 }
 
 function writeApplied(list){
-  try {
-    globalThis.localStorage?.setItem(APPLIED_KEY, JSON.stringify(list));
-  } catch (_) {}
+  globalThis.localStorage?.setItem(APPLIED_KEY, JSON.stringify(list));
 }
 
 export function isApplied(operationId){
@@ -52,19 +51,10 @@ function applyInboxCapture(payload){
   }
   const existing = state.inbox.find(item => item.id === payload.id);
   if (existing) return; // already present — idempotent
-  addInboxLines(payload.rawText, {
-    splitLines: false,
-    now: payload.createdAt ?? Date.now(),
-    idFactory: () => payload.id,
-    inputType: payload.inputType,
-    source: payload.source,
-    status: payload.status,
-    userHint: payload.userHint,
-    domainHintId: payload.domainHintId,
-    itemType: payload.itemType,
-    deviceId: payload.deviceId,
-    entryPoint: payload.entryPoint,
-  });
+  const created = applyRemoteInboxCapture(payload, {});
+  if (!created || created.length !== 1) {
+    throw new Error('remote inbox.capture: failed to create the item');
+  }
 }
 
 function applyInboxUpdate(operation){
@@ -84,40 +74,21 @@ function applyInboxUpdate(operation){
     return { conflict: true };
   }
 
-  const patch = {};
-  if (Object.hasOwn(after, 'text')) patch.text = after.text;
-  if (Object.hasOwn(after, 'itemType')) patch.itemType = after.itemType;
-  if (Object.hasOwn(after, 'status')) patch.status = after.status;
-  if (Object.hasOwn(after, 'domainHintId')) patch.domainHintId = after.domainHintId;
-  const result = updateInboxItem(id, patch);
-  if (result) {
-    Object.assign(result.item, result.changes);
-    result.item.updatedAt = after.updatedAt ?? result.item.updatedAt;
-  }
+  applyRemoteInboxUpdate(id, after, {});
   return { conflict: false };
 }
 
 function applyInboxRoute(payload){
-  const after = payload?.inboxAfter || {};
-  const item = state.inbox.find(entry => entry.id === after.id);
-  if (!item) return; // no-op: routed item was never created here
-  item.status = after.status || 'processed';
-  item.resultRef = after.resultRef || null;
-  item.updatedAt = after.updatedAt ?? item.updatedAt;
+  applyRemoteInboxRoute(payload, {});
 }
 
 function applyInboxRevert(payload){
-  const after = payload?.inboxAfter || {};
-  const item = state.inbox.find(entry => entry.id === after.id);
-  if (!item) return;
-  delete item.resultRef;
-  item.status = after.status || 'reviewed';
-  item.updatedAt = after.updatedAt ?? item.updatedAt;
+  applyRemoteInboxRevert(payload, {});
 }
 
 // applyIncomingOperation returns { applied, deduped?, conflict?, unsupported? }.
-// It never corrupts state: invalid payloads throw before any saveState, and the
-// caller decides how to record the failure.
+// It never corrupts state: invalid payloads throw before any mutation, and the
+// engine decides how to quarantine a failed operation.
 export function applyIncomingOperation(operation){
   if (!operation?.id) throw new Error('operation missing id');
   if (isApplied(operation.id)) return { applied: false, deduped: true };
@@ -142,7 +113,6 @@ export function applyIncomingOperation(operation){
       return { applied: false, unsupported: true };
   }
 
-  saveState();
   markApplied(operation.id);
   return { applied: true };
 }

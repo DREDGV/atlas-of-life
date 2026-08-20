@@ -5,12 +5,23 @@
 //   pull  → apply incoming ops through Core (idempotent, cursor-ordered)
 //   push  → deliver pending outbox ops, acknowledge, mark acked
 //
-// Cursor advances only after an operation has been applied or resolved
-// (conflict/unsupported recorded, never silently clobbered), so a restart
-// never re-applies acknowledged operations.
+// Recovery semantics:
+//   - `sent` entries that were never acknowledged (crash/reload between send
+//     and ack, or a partial ack) become `retryable` again — replay is safe
+//     because apply is idempotent by operationId;
+//   - incoming operations that cannot be applied (conflict / invalid /
+//     unsupported) are durably quarantined BEFORE the cursor advances, so a
+//     single bad operation never blocks the stream and never loops forever.
 import { getSyncDeviceId } from './device.js';
-import { getPendingOps, updateOutboxEntry, markAcked, MAX_ATTEMPTS } from './outbox.js';
+import {
+  getPendingOps,
+  listOutbox,
+  updateOutboxEntry,
+  markAcked,
+  MAX_ATTEMPTS,
+} from './outbox.js';
 import { applyIncomingOperation } from './apply.js';
+import { recordConflict, listConflicts } from './quarantine.js';
 
 const CURSOR_KEY = 'atlas-sync-cursor-v1';
 
@@ -31,6 +42,20 @@ export function createSyncEngine({ transport, storage } = {}){
 
   const saveCursor = () => store.set(CURSOR_KEY, cursor);
 
+  // Deterministic recovery: any unacked `sent` entry from a previous run (or a
+  // partial ack) becomes eligible for retry. Idempotency makes replay safe.
+  function recoverSent(){
+    let recovered = 0;
+    for (const entry of listOutbox()) {
+      if (entry.syncStatus === 'sent') {
+        updateOutboxEntry(entry.operation.id, { syncStatus: 'retryable' });
+        recovered += 1;
+      }
+    }
+    return recovered;
+  }
+  recoverSent();
+
   async function pushOutbox(){
     const pending = getPendingOps();
     if (pending.length === 0) return { pushed: 0 };
@@ -40,10 +65,13 @@ export function createSyncEngine({ transport, storage } = {}){
 
     try {
       const result = await transport.pushOperations(pending.map(entry => entry.operation));
-      const ackedIds = result?.ackedIds || pending.map(entry => entry.operation.id);
+      // A partial ack is NOT a success for the whole batch: only acked ids are
+      // removed; every entry still `sent` after this becomes retryable.
+      const ackedIds = result?.ackedIds || [];
       ackedIds.forEach(id => markAcked(id));
+      recoverSent();
       lastError = null;
-      return { pushed: pending.length };
+      return { pushed: pending.length, acked: ackedIds.length };
     } catch (error) {
       const message = error?.message || String(error);
       lastError = message;
@@ -67,15 +95,20 @@ export function createSyncEngine({ transport, storage } = {}){
     for (const { serverSequence, operation } of operations) {
       try {
         const result = applyIncomingOperation(operation);
-        if (result.conflict) conflicts += 1;
-        if (result.unsupported) lastError = `unsupported op type: ${operation.type}`;
+        if (result.conflict) {
+          recordConflict({ operation, serverSequence, reason: 'baseVersion mismatch', status: 'conflict' });
+          conflicts += 1;
+        } else if (result.unsupported) {
+          recordConflict({ operation, serverSequence, reason: `unsupported type: ${operation.type}`, status: 'unsupported' });
+          conflicts += 1;
+        }
       } catch (error) {
-        // A permanently invalid operation must not loop forever: record it,
-        // mark it applied so the cursor can move past it, keep state intact.
+        // Permanently invalid operation: quarantine durably, then move past it.
+        recordConflict({ operation, serverSequence, reason: error?.message || String(error), status: 'invalid' });
+        conflicts += 1;
         lastError = `apply failed (${operation.type}): ${error?.message || error}`;
-        const { markApplied } = await import('./apply.js');
-        markApplied(operation.id);
       }
+      // Cursor advances only after apply OR durable quarantine.
       cursor = Math.max(cursor, serverSequence);
       saveCursor();
     }
@@ -102,5 +135,9 @@ export function createSyncEngine({ transport, storage } = {}){
     };
   }
 
-  return { sync, pull, pushOutbox, getStatus, get cursor(){ return cursor; } };
+  function getConflicts(){
+    return listConflicts();
+  }
+
+  return { sync, pull, pushOutbox, recoverSent, getStatus, getConflicts, get cursor(){ return cursor; } };
 }
