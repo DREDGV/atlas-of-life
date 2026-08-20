@@ -17,6 +17,7 @@ import {
   listOutbox,
   getPendingOps,
   markAcked,
+  updateOutboxEntry,
 } from '../js/sync/outbox.js';
 import {
   getSyncDeviceId,
@@ -84,12 +85,14 @@ const transport = createLocalRelay({
   switchClient(store);
   const op = { id: 'op-o1', deviceId: 'device-T', timestamp: 1000, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-1', payload: { rawText: 'x' } };
   enqueueSyncOperation(op);
-  assert(getPendingOps().length === 1, 'Test 2a: enqueued as pending');
-  assert(getPendingOps()[0].operation.id === 'op-o1' && getPendingOps()[0].sequence === 1, 'Test 2b: entry has operation + sequence');
-  assert(listOutbox().length === 1, 'Test 2c: persists (listOutbox reads durable store)');
+  const pending = getPendingOps();
+  assert(pending.length === 1, 'Test 2a: enqueued as pending');
+  assert(pending[0].operation.id === 'op-o1' && pending[0].operation.sequence === 1, 'Test 2b: entry has operation + sequence');
+  assert(pending[0].syncStatus === 'pending' && !('syncStatus' in pending[0].operation), 'Test 2c: delivery state lives on the entry, not the envelope');
+  assert(listOutbox().length === 1, 'Test 2d: persists (listOutbox reads durable store)');
   markAcked('op-o1');
-  assert(getPendingOps().length === 0 && listOutbox().length === 0, 'Test 2d: ack removes entry');
-  console.log('✓ Test 2: outbox create/persist/ack');
+  assert(getPendingOps().length === 0 && listOutbox().length === 0, 'Test 2e: ack removes entry');
+  console.log('✓ Test 2: outbox create/persist/ack + envelope split');
 }
 
 // Test 3: duplicate operation applies exactly once (idempotency)
@@ -215,6 +218,134 @@ const transport = createLocalRelay({
   assert(engineC.getStatus().cursor === cursorBefore, 'Test 9j: cursor stable, no regress');
   assert(state.inbox.length === 1, 'Test 9k: no duplicate after re-sync');
   console.log('✓ Test 9: Inbox vertical slice (create → process → replay)');
+}
+
+// Test 10 (blocker A): outbox is durable — no silent cap, no swallowed writes
+{
+  const store = makeStore();
+  switchClient(store);
+  for (let i = 0; i < 5; i += 1) {
+    enqueueSyncOperation({ id: `op-a${i}`, deviceId: 'device-X', timestamp: i, type: 'inbox.capture', entityType: 'inbox', entityId: `inbox-a${i}`, payload: { rawText: 'x' } });
+  }
+  assert(listOutbox().length === 5, 'Test 10a: unacked ops are never dropped for a size cap');
+  const originalSet = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = function (key, value) {
+    if (key === 'atlas-sync-outbox-v1') { throw new Error('quota'); }
+    return originalSet.call(this, key, value);
+  };
+  let threw = null;
+  try {
+    enqueueSyncOperation({ id: 'op-bad', deviceId: 'device-X', timestamp: 9, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-bad', payload: { rawText: 'y' } });
+  } catch (error) { threw = error; }
+  globalThis.localStorage.setItem = originalSet;
+  assert(threw !== null, 'Test 10b: outbox write failure is not swallowed as success');
+  assert(listOutbox().length === 5, 'Test 10c: failed enqueue left no half-applied entry');
+  console.log('✓ Test 10: outbox durability (no silent loss)');
+}
+
+// Test 11 (blocker B): recovery of sent / awaiting_ack + partial ack
+{
+  const store = makeStore();
+  switchClient(store);
+  enqueueSyncOperation({ id: 'op-s1', deviceId: 'device-X', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-s1', payload: { rawText: 'x' } });
+  // Simulate a crash after send, before ack: the entry is stuck in `sent`.
+  updateOutboxEntry('op-s1', { syncStatus: 'sent' });
+  assert(getPendingOps().length === 0, 'Test 11a: sent is not eligible while awaiting ack');
+
+  // crash + restart: recovery turns unacked sent back into retryable
+  const noAckTransport = {
+    pushOperations: async () => ({ ackedIds: [] }),
+    pullOperations: async () => ({ operations: [], newCursor: 0 }),
+    acknowledge: async () => {},
+  };
+  const engine2 = createSyncEngine({ transport: noAckTransport, storage: store });
+  assert(getPendingOps().length === 1 && getPendingOps()[0].syncStatus === 'retryable', 'Test 11b: crash recovery sent → retryable');
+
+  // A push that returns no ack leaves the op retryable (no permanently stuck sent)
+  await engine2.sync();
+  assert(getPendingOps().length === 1 && getPendingOps()[0].syncStatus === 'retryable', 'Test 11c: unacked after push stays retryable');
+
+  // partial ack: only acknowledged ops are removed, the rest stay retryable
+  enqueueSyncOperation({ id: 'op-s2', deviceId: 'device-X', timestamp: 2, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-s2', payload: { rawText: 'y' } });
+  const partialTransport = {
+    pushOperations: async (ops) => ({ ackedIds: [ops[0].id] }),
+    pullOperations: async () => ({ operations: [], newCursor: 0 }),
+    acknowledge: async () => {},
+  };
+  const engine3 = createSyncEngine({ transport: partialTransport, storage: store });
+  await engine3.sync();
+  const remaining = listOutbox();
+  assert(remaining.length === 1 && remaining[0].operation.id === 'op-s2', 'Test 11d: only the acked op was removed');
+  assert(remaining[0].syncStatus === 'retryable', 'Test 11e: unacked partial-batch op is retryable');
+  console.log('✓ Test 11: sent recovery + partial ack');
+}
+
+// Test 12 (blocker C): conflict/invalid operations are durably quarantined
+{
+  const store = makeStore({ 'atlas-device-id': 'device-C1' });
+  switchClient(store);
+  applyIncomingOperation({ id: 'op-seed', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-cq', payload: { id: 'inbox-cq', rawText: 'Запись', status: 'new', createdAt: 1000 } });
+  state.inbox[0].updatedAt = 9999; // local moved ahead of the incoming update
+
+  const relay = createLocalRelay({
+    storage: {
+      get: () => ({
+        ops: [{ serverSequence: 1, operation: { id: 'op-conf', deviceId: 'remote', timestamp: 2, type: 'inbox.update', entityType: 'inbox', entityId: 'inbox-cq', baseVersion: 1000, payload: { after: { id: 'inbox-cq', status: 'processed', updatedAt: 2000 } } } }],
+        nextSeq: 2,
+      }),
+      set: () => {},
+    },
+  });
+  const engine = createSyncEngine({ transport: relay, storage: store });
+  await engine.sync();
+  assert(engine.getStatus().conflicts >= 1, 'Test 12a: conflict counted');
+  assert(engine.getStatus().cursor === 1, 'Test 12b: cursor advanced past the conflict');
+  assert(state.inbox[0].status === 'new', 'Test 12c: local state not clobbered');
+  const conflicts = engine.getConflicts();
+  assert(conflicts.length >= 1 && conflicts[0].status === 'conflict', 'Test 12d: conflict durably quarantined');
+  const engine2 = createSyncEngine({ transport: relay, storage: store });
+  assert(engine2.getConflicts().length >= 1, 'Test 12e: quarantine survives reload');
+  console.log('✓ Test 12: durable conflict quarantine');
+}
+
+// Test 13 (blocker D): remote apply through Core — no echo, atomic rollback
+{
+  const store = makeStore();
+  switchClient(store);
+  applyIncomingOperation({ id: 'op-cr', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-dr', payload: { id: 'inbox-dr', rawText: 'Задача', itemType: 'task', status: 'new', createdAt: 100 } });
+  assert(listOutbox().length === 0, 'Test 13a: remote create produced no outbound op');
+  applyIncomingOperation({ id: 'op-route', deviceId: 'remote', timestamp: 2, type: 'inbox.route_to_task', entityType: 'inbox', entityId: 'inbox-dr', payload: { inboxAfter: { id: 'inbox-dr', status: 'processed', resultRef: { type: 'task', id: 'task-r' }, updatedAt: 200 } } });
+  assert(state.inbox[0].resultRef?.id === 'task-r' && state.inbox[0].status === 'processed', 'Test 13b: route applied through Core');
+  assert(listOutbox().length === 0, 'Test 13c: route apply did not echo an outbound op');
+
+  const originalSet = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = function (key, value) {
+    if (key === 'atlas_v2_data') { const e = new Error('Quota'); e.name = 'QuotaExceededError'; throw e; }
+    return originalSet.call(this, key, value);
+  };
+  let threw = null;
+  try {
+    applyIncomingOperation({ id: 'op-revert', deviceId: 'remote', timestamp: 3, type: 'inbox.route_revert', entityType: 'inbox', entityId: 'inbox-dr', payload: { inboxAfter: { id: 'inbox-dr', status: 'reviewed', updatedAt: 300 } } });
+  } catch (error) { threw = error; }
+  globalThis.localStorage.setItem = originalSet;
+  assert(threw !== null, 'Test 13d: saveState failure propagates');
+  assert(state.inbox[0].resultRef?.id === 'task-r' && state.inbox[0].status === 'processed', 'Test 13e: atomic rollback — revert did not partially apply');
+  console.log('✓ Test 13: Core remote apply (no echo, atomic rollback)');
+}
+
+// Test 14 (blocker E): envelope normalization in the outbound path
+{
+  const store = makeStore();
+  switchClient(store);
+  const created = captureInbox('Тест envelope', { deviceId: 'device-X' });
+  assert(created.length === 1, 'Test 14a: op created');
+  const pending = getPendingOps();
+  assert(pending.length === 1, 'Test 14b: op enqueued');
+  const op = pending[0].operation;
+  assert(typeof op.sequence === 'number' && op.sequence >= 1, 'Test 14c: sequence is part of the outbound operation');
+  assert(!('syncStatus' in op), 'Test 14d: syncStatus is NOT part of the operation envelope');
+  assert(pending[0].syncStatus === 'pending', 'Test 14e: delivery state lives on the outbox entry');
+  console.log('✓ Test 14: envelope split (sequence in op, delivery state on entry)');
 }
 
 console.log('\n✅ All Stage C0 sync tests passed.');
