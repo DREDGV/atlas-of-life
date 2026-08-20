@@ -50,11 +50,11 @@ Map              = понимание всей системы
 
 Результат: надёжный захват текста и голоса (ru-RU), draft lifecycle, offline, Share Target, shortcuts, 0 потерянного текста в mini-stress. Native Android больше не является автоматическим следующим этапом: PWA жизнеспособна, native-слой подключается только под конкретные возможности.
 
-### 0.10.x — Processing Center Core 🔴 АКТИВНО
+### 0.10.x — Processing Center Core ✅ ЗАВЕРШЕНО
 
 - **B0 Foundation** — ✅ ЗАВЕРШЕНО (`0.10.0-alpha.1`): edit с сохранением rawText, `itemType` (task | thought | note | null) отдельно от `userHint`, processing status `new | reviewed | processed | discarded`, карточный ручной разбор.
 - **B1 Processing Routing** — ✅ ЗАВЕРШЕНО (`0.10.0-alpha.2`): безопасный Inbox → Task (`resultRef` ↔ `sourceInboxId`), Domain/Project/Priority/Due, безопасный revert, валидация destination, блокировка routed-записей, inline создание Domain/Project, routing draft.
-- **B2 Processing Flow UX** — ▶ ТЕКУЩИЙ ЭТАП (`0.10.0-alpha.3`): очередь «К разбору / Разобранные / Все», автоматические статусы, progressive disclosure («Что это?» → «Куда?» → «Дополнительно»), одна активная карточка, keyboard workflow (1/2/3, J/K, Enter), batch processing, session defaults, provenance «Исходник», локальный поиск, empty states. B2 включает visual clarity / interaction polish: clear active/compact/final states, semantic priority visualization, readable date/time controls, clear action hierarchy (primary/secondary/tertiary/destructive), batch-mode visual state, unified metadata format, improved provenance accordion.
+- **B2 Processing Flow UX** — ✅ ЗАВЕРШЕНО (`0.10.0-alpha.3`): очередь «К разбору / Разобранные / Все», автоматические статусы, progressive disclosure, одна активная карточка, keyboard workflow, batch processing, session defaults, provenance, поиск, empty states, visual clarity pass (семантические приоритеты, иерархия действий, маркеры приоритета в компактных строках, читаемые date/time, batch-mode visual state).
 
 Развитие Processing внутри линейки:
 
@@ -72,9 +72,12 @@ AI / Auto Processing
 
 AI не является условием Definition of Done для 0.10.x.
 
-### 0.11.x — Sync v1
+### 0.11.x — Sync v1 🔴 АКТИВНО
 
 Первый сквозной контур: Phone Capture → Inbox → Processing → Desktop → результат → Phone. Синхронизируются операции, а не перезапись общего JSON. `operationId`, `deviceId`, `sequence`, idempotency, retry, ack, server cursor, deduplication.
+
+- **C0 Sync Foundation / первый Inbox vertical slice** — ▶ ТЕКУЩИЙ ЭТАП (`0.11.0-alpha.1`): архитектура (`docs/SYNC_V1_FOUNDATION.md`), device identity, durable outbox, idempotency/dedupe, transport abstraction + dev/local relay, Core sync-apply, cursor/pull, retry; синхронизируется жизненный цикл Inbox/Processing (creation, state, itemType, text/rawText, hints, discarded/processed, resultRef как ссылка). Полный Task sync — далее.
+- **C1+** — remote transport (production backend), расширение на Tasks, conflict resolution, и т.д. — не в C0.
 
 ### 0.12.x — Today 2.0 (desktop + mobile)
 
