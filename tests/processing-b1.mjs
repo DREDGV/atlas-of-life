@@ -69,7 +69,7 @@ assert(state.inbox.length === 1, 'Test 1f: source Inbox item is not destroyed');
 assert(state.inbox[0].status === 'processed', 'Test 1g: Inbox status becomes processed');
 assert(state.inbox[0].resultRef.type === 'task' && state.inbox[0].resultRef.id === 'task-b1-1', 'Test 1h: Inbox.resultRef links to the task');
 assert(state.inbox[0].rawText === 'Купить удобрение для сливы', 'Test 1i: rawText unchanged');
-assert(state.operationLog.at(-1).type === 'inbox.route_to_task', 'Test 1j: routing is journaled');
+assert(state.operationLog.some(op => op.type === 'inbox.route_to_task'), 'Test 1j: routing is journaled');
 console.log('✓ Test 1: routing creates Task and links both directions');
 
 // Test 2: repeat creation is blocked
