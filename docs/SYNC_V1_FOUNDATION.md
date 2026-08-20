@@ -1,6 +1,6 @@
 # Sync v1 — Foundation (Stage C0)
 
-Обновлено: 2026-08-19. Версия: `0.11.0-alpha.1`.
+Обновлено: 2026-08-20. Версия: `0.11.0-alpha.2` (C0 — foundation, C1 — real remote).
 
 Sync v1 синхронизирует **операции, а не замену всего JSON**. Первый вертикальный
 контур — жизненный цикл Inbox/Processing, а не весь граф Atlas.
@@ -132,11 +132,14 @@ pullOperations(cursor) → { operations: [{serverSequence, operation}], newCurso
 acknowledge(opIds)   → void
 ```
 
-В этом PR реализован **dev/local relay transport** (`createLocalRelay`):
-глобальный `serverSequence` + pull по cursor. Это test/dev transport для
-доказательства vertical slice двумя локальными клиентами, НЕ production
-межустройственная интернет-синхронизация. Облачный backend/Firebase/Supabase
-не подключаются.
+- **Dev/local relay transport** (`createLocalRelay`, C0) — глобальный
+  `serverSequence` + pull по cursor в localStorage; тестовый механизм для
+  доказательства vertical slice двумя локальными клиентами.
+- **Remote HTTP transport** (`createHttpTransport`, C1) — тот же контракт
+  поверх `fetch` против Atlas Sync service (`server/sync-server.js`):
+  `POST /v1/ops/push`, `GET /v1/ops/pull?after&excludeDevice&limit`;
+  Bearer-токен устройства; 401 → `unauthorized` для UX повторной привязки.
+  Детали сервера, безопасности и деплоя — `docs/SYNC_C1_REMOTE.md`.
 
 ## Cursor / pull model
 
@@ -175,12 +178,12 @@ acknowledge(opIds)   → void
 - discarded / processed
 - `resultRef` как ссылка на результат (Task в C0 не синхронизируется)
 
-## Что НЕ синхронизируется (остаётся на C1+)
+## Что НЕ синхронизируется (остаётся на C2+)
 
 Tasks, Projects, Domains, Map layout, settings, Today, Note/Thought entities,
 attachments/audio, полная история, AI data. Не начинаются: accounts,
-authentication, encryption, cloud integration, native Android sync service,
-background push, WebSocket realtime.
+authentication (есть только парная привязка устройств, см. C1), encryption,
+native Android sync service, background push, WebSocket realtime.
 
 ## Минимальная наблюдаемость
 

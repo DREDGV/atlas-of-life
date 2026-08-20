@@ -301,11 +301,11 @@ assert(
 );
 console.log('✓ Test 16: complete Mobile Capture import graph is isolated and precached');
 
-// Test 17: version and cache are 0.11.0-alpha.1
+// Test 17: version and cache are 0.11.0-alpha.2
 const { APP_VERSION } = await import('../js/version.js');
-assert(APP_VERSION === '0.11.0-alpha.1', 'Test 17: version should be 0.11.0-alpha.1');
-assert(swContent.includes("const CACHE_NAME = 'atlas-capture-0.11.0-alpha.1'"), 'Test 17: SW cache should be alpha.1');
-console.log('✓ Test 17: version and cache are 0.11.0-alpha.1');
+assert(APP_VERSION === '0.11.0-alpha.2', 'Test 17: version should be 0.11.0-alpha.2');
+assert(swContent.includes("const CACHE_NAME = 'atlas-capture-0.11.0-alpha.2'"), 'Test 17: SW cache should be alpha.2');
+console.log('✓ Test 17: version and cache are 0.11.0-alpha.2');
 
 // Test 18: lifecycle, permission and accessibility wiring exists in the Capture shell
 const captureAppContent = readFileSync(join(projectRoot, 'js', 'capture', 'app.js'), 'utf-8');

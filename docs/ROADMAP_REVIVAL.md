@@ -1,6 +1,6 @@
 # Атлас Жизни — дорожная карта возрождения
 
-Обновлено: 18 августа 2026 года.
+Обновлено: 20 августа 2026 года.
 
 ## Видение продукта
 
@@ -76,8 +76,9 @@ AI не является условием Definition of Done для 0.10.x.
 
 Первый сквозной контур: Phone Capture → Inbox → Processing → Desktop → результат → Phone. Синхронизируются операции, а не перезапись общего JSON. `operationId`, `deviceId`, `sequence`, idempotency, retry, ack, server cursor, deduplication.
 
-- **C0 Sync Foundation / первый Inbox vertical slice** — ▶ ТЕКУЩИЙ ЭТАП (`0.11.0-alpha.1`): архитектура (`docs/SYNC_V1_FOUNDATION.md`), device identity, durable outbox, idempotency/dedupe, transport abstraction + dev/local relay, Core sync-apply, cursor/pull, retry; синхронизируется жизненный цикл Inbox/Processing (creation, state, itemType, text/rawText, hints, discarded/processed, resultRef как ссылка). Полный Task sync — далее.
-- **C1+** — remote transport (production backend), расширение на Tasks, conflict resolution, и т.д. — не в C0.
+- **C0 Sync Foundation / первый Inbox vertical slice** — ✅ ЗАВЕРШЕНО (`0.11.0-alpha.1`): архитектура (`docs/SYNC_V1_FOUNDATION.md`), device identity, durable outbox, idempotency/dedupe, transport abstraction + dev/local relay, Core sync-apply, cursor/pull, retry; синхронизируется жизненный цикл Inbox/Processing (creation, state, itemType, text/rawText, hints, discarded/processed, resultRef как ссылка). Полный Task sync — далее.
+- **C1 Real Remote Sync** — ▶ ТЕКУЩИЙ ЭТАП (`0.11.0-alpha.2`): настоящий remote transport — минимальный Atlas Sync service (Node HTTP + SQLite, ноль зависимостей, `server/`), реализующий C0-контракт (`/v1/ops/push`, `/v1/ops/pull`); минимальная изоляция данных через парную привязку (одноразовый код → bearer-токен устройства, SHA-256, отзыв) и admin bootstrap-токен только на сервере; клиент (`js/sync/http-transport.js` + `runtime.js`); Sync включён в рабочее приложение (Studio-чип + модал, info-панель Capture, статусы ожидание/ошибка/привязка); offline-first: ошибка pull не блокирует push, outbox durable, retry; деплой-пакет для VDS (`deploy/vds/`, HTTPS через certbot на `*.sslip.io`). Детали — `docs/SYNC_C1_REMOTE.md`.
+- **C2+** — расширение на Tasks, полная история, conflict-resolution UI, encryption at rest — не в C1.
 
 ### 0.12.x — Today 2.0 (desktop + mobile)
 
