@@ -510,7 +510,12 @@ export function createSyncServer(options = {}){
     }
   });
 
-  server.on('close', () => store.close());
+  let closed = false;
+  server.on('close', () => {
+    if (closed) return;
+    closed = true;
+    store.close();
+  });
   return server;
 }
 

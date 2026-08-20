@@ -778,3 +778,28 @@ body {
     flex-direction: row;
   }
 }
+
+/* ===== Sync v1 (C1) ===== */
+.info-sync h3 { font-size: 15px; color: var(--text); margin: 0 0 8px; }
+.capture-sync-body { display: flex; flex-direction: column; gap: 10px; }
+.atlas-sync-hint { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 0 0 4px; }
+.atlas-sync-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12px; color: var(--text-muted); }
+.atlas-sync-field input { background: var(--bg-input); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.atlas-sync-field input:focus { outline: none; border-color: var(--accent); }
+.atlas-sync-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.atlas-sync-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.atlas-sync-row-label { color: var(--text-muted); }
+.atlas-sync-row-value { color: var(--text); text-align: right; word-break: break-all; }
+.atlas-sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+.atlas-sync-btn { border: 1px solid var(--border); background: var(--bg-input); color: var(--text); border-radius: 10px; padding: 10px 14px; font-size: 13px; cursor: pointer; }
+.atlas-sync-btn:hover { border-color: var(--accent); }
+.atlas-sync-btn-primary { border-color: var(--accent); color: var(--accent); }
+.atlas-sync-btn-danger { color: var(--danger, #ff6b6b); border-color: var(--danger, #ff6b6b); }
+.atlas-sync-btn:disabled { opacity: 0.55; cursor: default; }
+.atlas-sync-error { color: var(--danger, #ff6b6b); font-size: 12px; margin: 8px 0; line-height: 1.4; }
+.atlas-sync-code { margin: 10px 0 2px; padding: 10px; border: 1px dashed var(--accent); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.atlas-sync-code-digits { font-size: 24px; letter-spacing: 8px; font-weight: 700; color: var(--accent); }
+.atlas-sync-code-expires { font-size: 11px; color: var(--text-muted); }
+.atlas-sync-conflicts { margin-top: 12px; font-size: 12px; }
+.atlas-sync-conflicts summary { cursor: pointer; color: var(--warn, #f2c94c); margin-bottom: 6px; }
+.atlas-sync-conflicts-list { margin: 0; padding-left: 18px; color: var(--text-muted); line-height: 1.6; }
