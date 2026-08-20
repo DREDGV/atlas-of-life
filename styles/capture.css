@@ -803,3 +803,31 @@ body {
 .atlas-sync-conflicts { margin-top: 12px; font-size: 12px; }
 .atlas-sync-conflicts summary { cursor: pointer; color: var(--warn, #f2c94c); margin-bottom: 6px; }
 .atlas-sync-conflicts-list { margin: 0; padding-left: 18px; color: var(--text-muted); line-height: 1.6; }
+
+/* ===== Sync v1 C2: processing state + routed result ===== */
+.inbox-row-status {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.inbox-row-status[data-state="pending"] { color: var(--text-muted); background: var(--bg-input); }
+.inbox-row-status[data-state="processed"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.inbox-row-status[data-state="discarded"] { color: var(--text-muted); background: var(--bg-input); opacity: .75; }
+
+.inbox-result {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-input);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.inbox-result-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.inbox-result-line { font-size: 12px; color: var(--text-muted); }
+.inbox-result-done { font-size: 12px; color: var(--accent); margin-top: 2px; }
+.inbox-result-missing { font-size: 12px; color: var(--text-muted); font-style: italic; }

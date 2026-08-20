@@ -40,7 +40,10 @@ export const OPERATION_TYPES = new Set([
   'inbox.update',
   'inbox.route_to_task',
   'inbox.route_revert',
+  'task.result.upsert',
+  'task.result.remove',
 ]);
+export const ENTITY_TYPES = new Set(['inbox', 'task']);
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_PAYLOAD_BYTES = 256 * 1024;
@@ -122,7 +125,7 @@ function normalizeOperation(operation){
   if (!id || !/^op-[\w.-]{8,}$/.test(id)) return null;
   if (!deviceId) return null;
   if (!OPERATION_TYPES.has(operation.type)) return null;
-  if (operation.entityType !== 'inbox' || !entityId) return null;
+  if (!ENTITY_TYPES.has(operation.entityType) || !entityId) return null;
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
   if (baseVersion !== null && !Number.isFinite(baseVersion)) return null;
   if (!Number.isFinite(sequence) || sequence <= 0) return null;
@@ -143,7 +146,7 @@ function normalizeOperation(operation){
     sequence,
     timestamp,
     type: operation.type,
-    entityType: 'inbox',
+    entityType: operation.entityType,
     entityId,
     baseVersion,
     payload,

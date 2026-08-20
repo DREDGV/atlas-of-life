@@ -11,6 +11,9 @@ export const state = {
   tasks:[],
   inbox:[],
   operationLog:[],
+  // Sync v1 C2: read-only projections of routed Tasks for remote devices.
+  // The desktop is the single writer; other devices only render these.
+  taskProjections:[],
   maxEdges:300
 };
 

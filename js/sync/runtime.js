@@ -33,6 +33,7 @@ export function createSyncRuntime(options = {}){
   let started = false;
   let inFlight = false;
   let requestTimer = null;
+  let lastCyclePulled = 0;
   const subscribers = new Set();
 
   function buildEngine(){
@@ -75,6 +76,9 @@ export function createSyncRuntime(options = {}){
       lastError: status.lastError,
       authFailed: Boolean(status.authFailed),
       cursor: status.cursor,
+      // How many operations the LAST completed cycle applied locally — the
+      // apps use this to re-render after a remote change (0 = nothing new).
+      pulled: lastCyclePulled,
     };
   }
 
@@ -101,6 +105,7 @@ export function createSyncRuntime(options = {}){
     notify();
     try {
       const result = await engine.sync();
+      lastCyclePulled = Number(result?.pulled) || 0;
       return result;
     } finally {
       inFlight = false;

@@ -202,6 +202,99 @@ function renderRecentItems() {
   });
 }
 
+const PRIORITY_LABELS = { 1: 'Низкий', 2: 'Обычный', 3: 'Высокий', 4: 'Критичный' };
+
+function getTaskProjection(taskId) {
+  const list = Array.isArray(state.taskProjections) ? state.taskProjections : [];
+  return list.find(entry => entry.id === taskId) || null;
+}
+
+// Task due is structured ({ date: 'YYYY-MM-DD', time: 'HH:MM' | null }) —
+// render the human label for both structured and legacy timestamp forms.
+function formatDueLabel(due) {
+  if (!due) return null;
+  if (typeof due === 'object' && due.date) {
+    const parts = String(due.date).split('-').map(Number);
+    if (parts.length === 3 && parts.every(Number.isFinite)) {
+      const date = new Date(parts[0], parts[1] - 1, parts[2]);
+      const label = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+      return due.time ? `${label}, ${due.time}` : label;
+    }
+    return null;
+  }
+  const ts = Number(due);
+  if (!Number.isFinite(ts) || ts <= 0) return null;
+  return new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+}
+
+// Processing state badge: К разбору / Разобрана · тип / Отброшена.
+function buildInboxStatusBadge(item) {
+  const badge = document.createElement('span');
+  badge.className = 'inbox-row-status';
+  if (item.status === 'discarded') {
+    badge.textContent = 'Отброшена';
+    badge.dataset.state = 'discarded';
+  } else if (item.status === 'processed') {
+    if (item.resultRef?.type === 'task') {
+      badge.textContent = '✓ Разобрана';
+      badge.dataset.state = 'processed';
+    } else {
+      const labels = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
+      badge.textContent = `✓ Разобрана · ${labels[item.itemType] || 'Запись'}`;
+      badge.dataset.state = 'processed';
+    }
+  } else {
+    badge.textContent = 'К разбору';
+    badge.dataset.state = 'pending';
+  }
+  return badge;
+}
+
+// C2: the routed result card. Renders the read-only Task projection when
+// present, otherwise the honest fallback (no broken reference).
+function buildTaskResultCard(item) {
+  const card = document.createElement('div');
+  card.className = 'inbox-result';
+  const projection = getTaskProjection(item.resultRef.id);
+  if (!projection) {
+    const missing = document.createElement('div');
+    missing.className = 'inbox-result-missing';
+    missing.textContent = 'Результат недоступен на этом устройстве';
+    card.appendChild(missing);
+    return card;
+  }
+
+  const title = document.createElement('div');
+  title.className = 'inbox-result-title';
+  title.textContent = projection.title;
+
+  const lines = [];
+  const location = [projection.projectTitle || projection.domainTitle]
+    .filter(Boolean)
+    .join(' · ');
+  if (location) lines.push(location);
+  const priorityLabel = PRIORITY_LABELS[projection.priority] || null;
+  const dueLabel = formatDueLabel(projection.due);
+  const meta = [priorityLabel, dueLabel].filter(Boolean).join(' · ');
+  if (meta) lines.push(meta);
+
+  card.appendChild(title);
+  lines.forEach(text => {
+    const line = document.createElement('div');
+    line.className = 'inbox-result-line';
+    line.textContent = text;
+    card.appendChild(line);
+  });
+
+  if (projection.status === 'done') {
+    const done = document.createElement('div');
+    done.className = 'inbox-result-done';
+    done.textContent = '✓ Выполнено';
+    card.appendChild(done);
+  }
+  return card;
+}
+
 function renderInboxList() {
   const container = document.getElementById('inboxList');
   if (!container) return;
@@ -254,6 +347,10 @@ function renderInboxList() {
 
     meta.append(time, typeIcon, source, hint);
     body.append(textEl, meta);
+    body.appendChild(buildInboxStatusBadge(item));
+    if (item.resultRef?.type === 'task') {
+      body.appendChild(buildTaskResultCard(item));
+    }
 
     const actions = document.createElement('div');
     actions.className = 'inbox-row-actions';
@@ -747,6 +844,15 @@ function initSync() {
       console.warn('sync panel failed to render', error?.message || error);
     }
   }
+
+  // Remote operations were applied → refresh the visible lists.
+  syncRuntime.subscribe(status => {
+    if (status.pulled > 0) {
+      updateCounter();
+      renderRecentItems();
+      if (currentView === 'inbox') renderInboxList();
+    }
+  });
 
   // The header status line reflects the delivery state while sync is
   // configured; otherwise it stays the classic network indicator.

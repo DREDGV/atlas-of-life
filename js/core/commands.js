@@ -17,6 +17,7 @@ const COMMAND_ARRAY_KEYS = [
   'tasks',
   'inbox',
   'operationLog',
+  'taskProjections',
 ];
 
 function finish(options){
@@ -32,6 +33,55 @@ function enqueueOutbound(operation){
   } catch (error) {
     console.warn('sync outbox enqueue failed', error?.message || error);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sync v1 C2 — Task Result Bridge.
+//
+// A routed Task exists in full only on the desktop. Remote devices get a
+// read-only display projection (`state.taskProjections`) via dedicated
+// operations: `task.result.upsert` / `task.result.remove`. Derived data with
+// a single writer (the desktop that routed the item) — no conflict machinery,
+// no Task CRUD replication, no competing truth about the Task.
+// ---------------------------------------------------------------------------
+
+function buildTaskResultProjection(task){
+  if (!task || !task.id) return null;
+  let project = null;
+  let domain = null;
+  if (task.projectId) {
+    project = state.projects.find(entry => entry.id === task.projectId) || null;
+    if (project) domain = state.domains.find(entry => entry.id === project.domainId) || null;
+  }
+  if (!domain && task.domainId) {
+    domain = state.domains.find(entry => entry.id === task.domainId) || null;
+  }
+  return {
+    id: String(task.id),
+    title: String(task.title || '').slice(0, 200),
+    sourceInboxId: task.sourceInboxId ? String(task.sourceInboxId) : null,
+    domainId: task.domainId ? String(task.domainId) : (domain?.id ? String(domain.id) : null),
+    domainTitle: domain?.title ?? null,
+    projectId: task.projectId ? String(task.projectId) : null,
+    projectTitle: project?.title ?? null,
+    priority: Number(task.priority) || 2,
+    due: task.due ?? null,
+    status: TASK_STATUSES.has(task.status) ? task.status : 'backlog',
+    updatedAt: Number(task.updatedAt) || Date.now(),
+  };
+}
+
+function enqueueTaskResultOperation(type, task, options){
+  const operation = appendOperation({
+    type,
+    entityType: 'task',
+    entityId: task.id,
+    payload: type === 'task.result.upsert'
+      ? { projection: buildTaskResultProjection(task) }
+      : { id: task.id, sourceInboxId: task.sourceInboxId || null },
+  }, { timestamp: options.now ?? Date.now(), deviceId: options.deviceId });
+  enqueueOutbound(operation);
+  return operation;
 }
 
 function cloneCommandValue(value){
@@ -343,6 +393,8 @@ function routeInboxToTaskMutation(id, options){
   }, { timestamp: now, deviceId: options.deviceId });
   finish(options);
   enqueueOutbound(operation);
+  // C2: ship the routed result to remote devices (read-only projection).
+  enqueueTaskResultOperation('task.result.upsert', task, options);
   return { inboxItem, task };
 }
 
@@ -401,6 +453,10 @@ function revertInboxRouteMutation(id, options){
   }, { timestamp: now, deviceId: options.deviceId });
   finish(options);
   enqueueOutbound(operation);
+  // C2: the routed result no longer exists — clear it on remote devices.
+  if (taskIndex >= 0) {
+    enqueueTaskResultOperation('task.result.remove', { id: ref.id, sourceInboxId: inboxItem.id }, options);
+  }
   return { inboxItem, task: removedTask };
 }
 
@@ -503,6 +559,69 @@ export function applyRemoteInboxRevert(payload, options = {}){
   });
 }
 
+// C2 remote apply: read-only Task result projections. These are derived
+// display data with a single writer — applied unconditionally (idempotency is
+// per operationId upstream), guarded only against stale deliveries.
+
+function applyRemoteTaskResultUpsertMutation(payload){
+  const projection = payload?.projection;
+  if (!projection || !projection.id || typeof projection.title !== 'string') {
+    throw new Error('remote task.result.upsert: projection.id/title missing');
+  }
+  if (!Array.isArray(state.taskProjections)) state.taskProjections = [];
+  const incoming = {
+    id: String(projection.id),
+    title: String(projection.title).slice(0, 200),
+    sourceInboxId: projection.sourceInboxId ? String(projection.sourceInboxId) : null,
+    domainId: projection.domainId ? String(projection.domainId) : null,
+    domainTitle: typeof projection.domainTitle === 'string' ? projection.domainTitle : null,
+    projectId: projection.projectId ? String(projection.projectId) : null,
+    projectTitle: typeof projection.projectTitle === 'string' ? projection.projectTitle : null,
+    priority: Number(projection.priority) || 2,
+    due: projection.due && typeof projection.due === 'object' && projection.due.date
+      ? { date: String(projection.due.date), time: projection.due.time ? String(projection.due.time) : null }
+      : (Number(projection.due) || null),
+    status: typeof projection.status === 'string' ? projection.status : 'backlog',
+    updatedAt: Number(projection.updatedAt) || Date.now(),
+  };
+  const index = state.taskProjections.findIndex(entry => entry.id === incoming.id);
+  if (index >= 0) {
+    const existing = state.taskProjections[index];
+    // A stale delivery must never regress a newer projection.
+    if (existing.updatedAt > incoming.updatedAt) return existing;
+    state.taskProjections[index] = incoming;
+    return incoming;
+  }
+  state.taskProjections.push(incoming);
+  return incoming;
+}
+
+export function applyRemoteTaskResultUpsert(payload, options = {}){
+  return runAtomicCommand(() => {
+    const applied = applyRemoteTaskResultUpsertMutation(payload);
+    finish(options);
+    return applied;
+  });
+}
+
+function applyRemoteTaskResultRemoveMutation(payload){
+  const id = payload?.id;
+  if (!id) throw new Error('remote task.result.remove: id missing');
+  if (!Array.isArray(state.taskProjections)) state.taskProjections = [];
+  const index = state.taskProjections.findIndex(entry => entry.id === id);
+  if (index < 0) return null;
+  const [removed] = state.taskProjections.splice(index, 1);
+  return removed;
+}
+
+export function applyRemoteTaskResultRemove(payload, options = {}){
+  return runAtomicCommand(() => {
+    const removed = applyRemoteTaskResultRemoveMutation(payload);
+    finish(options);
+    return removed;
+  });
+}
+
 function convertInboxToTaskMutation(id, options){
   const result = convertInboxItemToTask(id, options);
   if (!result) return null;
@@ -593,6 +712,10 @@ function updateTaskMutation(taskId, patch, options){
     },
   }, { timestamp: task.updatedAt, deviceId: options.deviceId });
   finish(options);
+  // C2: keep the remote result projection in sync with the routed Task.
+  if (task.sourceInboxId) {
+    enqueueTaskResultOperation('task.result.upsert', task, options);
+  }
   return { task, before, operation };
 }
 
@@ -631,6 +754,10 @@ function moveTaskMutation(taskId, destination, options){
     },
   }, { timestamp: task.updatedAt, deviceId: options.deviceId });
   finish(options);
+  // C2: moved routed Task — its display placement changed on remote devices.
+  if (task.sourceInboxId) {
+    enqueueTaskResultOperation('task.result.upsert', task, options);
+  }
   return { task, before, operation };
 }
 
@@ -667,6 +794,10 @@ function deleteTaskMutation(taskId, options){
     payload: { task, index },
   }, { timestamp: options.now, deviceId: options.deviceId });
   finish(options);
+  // C2: the routed result is gone — remote devices show the defined fallback.
+  if (task.sourceInboxId) {
+    enqueueTaskResultOperation('task.result.remove', task, options);
+  }
   return { task, index, operation };
 }
 
