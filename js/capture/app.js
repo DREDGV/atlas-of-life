@@ -269,7 +269,7 @@ function buildTaskResultCard(item) {
   title.textContent = projection.title;
 
   const lines = [];
-  const location = [projection.projectTitle || projection.domainTitle]
+  const location = [projection.domainTitle, projection.projectTitle]
     .filter(Boolean)
     .join(' · ');
   if (location) lines.push(location);
