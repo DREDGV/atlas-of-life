@@ -1,6 +1,7 @@
 import { state, normalizeTags } from '../state.js';
 import { saveState } from '../storage.js';
 import { appendOperation } from './operations.js';
+import { enqueueSyncOperation } from '../sync/outbox.js';
 import {
   addInboxLines,
   convertInboxItemToTask,
@@ -178,15 +179,15 @@ function applyTaskPlacement(task, destination){
 
 function captureInboxMutation(text, options){
   const created = addInboxLines(text, options);
-  created.forEach(item => {
-    appendOperation({
-      type: 'inbox.capture',
-      entityType: 'inbox',
-      entityId: item.id,
-      payload: item,
-    }, { timestamp: options.now, deviceId: options.deviceId });
-  });
+  const operations = created.map(item => appendOperation({
+    type: 'inbox.capture',
+    entityType: 'inbox',
+    entityId: item.id,
+    payload: item,
+  }, { timestamp: options.now, deviceId: options.deviceId }));
   if (created.length) finish(options);
+  // Enqueue for sync only after the command persisted successfully.
+  operations.forEach(operation => enqueueSyncOperation(operation));
   return created;
 }
 
@@ -257,6 +258,7 @@ function updateInboxMutation(id, patch, options){
     },
   }, { timestamp: item.updatedAt, deviceId: options.deviceId });
   finish(options);
+  enqueueSyncOperation(operation);
   return { item, before, operation };
 }
 
@@ -318,7 +320,7 @@ function routeInboxToTaskMutation(id, options){
   inboxItem.resultRef = { type: 'task', id: task.id };
   inboxItem.updatedAt = now;
 
-  appendOperation({
+  const operation = appendOperation({
     type: 'inbox.route_to_task',
     entityType: 'task',
     entityId: task.id,
@@ -329,6 +331,7 @@ function routeInboxToTaskMutation(id, options){
     },
   }, { timestamp: now, deviceId: options.deviceId });
   finish(options);
+  enqueueSyncOperation(operation);
   return { inboxItem, task };
 }
 
@@ -375,7 +378,7 @@ function revertInboxRouteMutation(id, options){
   inboxItem.status = 'reviewed';
   inboxItem.updatedAt = now;
 
-  appendOperation({
+  const operation = appendOperation({
     type: 'inbox.route_revert',
     entityType: 'inbox',
     entityId: inboxItem.id,
@@ -386,6 +389,7 @@ function revertInboxRouteMutation(id, options){
     },
   }, { timestamp: now, deviceId: options.deviceId });
   finish(options);
+  enqueueSyncOperation(operation);
   return { inboxItem, task: removedTask };
 }
 
