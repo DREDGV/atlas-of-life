@@ -41,6 +41,7 @@ const log = getOperationLog();
 assert(log.length === OPERATION_LOG_LIMIT, 'Operation log must respect its size limit');
 assert(log[0].id === 'op-1', 'Operation log must discard the oldest entries first');
 assert(log.at(-1).id === `op-${OPERATION_LOG_LIMIT}`, 'Newest operation must be preserved');
-assert(log.at(-1).syncStatus === 'pending', 'New local operations must be pending sync');
+assert(typeof log.at(-1).sequence === 'number', 'Operations carry a monotonic device sequence');
+assert(!('syncStatus' in log.at(-1)), 'Delivery metadata (syncStatus) lives on the outbox entry, not the envelope');
 
 console.log('Operation log test passed.');

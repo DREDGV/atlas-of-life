@@ -16,6 +16,31 @@
 
 ---
 
+## 0.11.0-alpha.1 - 2026-08-19
+
+### Stage C0 — Sync v1 Foundation
+
+#### Добавлено
+- **Sync-архитектура**: `docs/SYNC_V1_FOUNDATION.md` — операции вместо замены всего JSON; operation envelope, device identity, durable outbox, remote apply через Core, idempotency/dedupe, ack, retry, cursor, conflict behavior
+- **Device identity**: устойчивый локальный `deviceId` (переиспользует `js/core/device.js`) + локальный монотонный `sequence` (`js/sync/device.js`)
+- **Durable Sync Outbox** (`js/sync/outbox.js`): persisted очередь, не зависит от обрезки `operationLog`; состояния `pending` → `sent` → acked; `retryable` → `failed` (после MAX_ATTEMPTS)
+- **Idempotency/dedupe** (`js/sync/apply.js`): применённые operationId хранятся отдельно; повторная операция не применяется дважды
+- **Transport boundary** (`js/sync/relay.js`): интерфейс `pushOperations` / `pullOperations(cursor)` / `acknowledge` + dev/local relay transport (явно test/dev, не production backend)
+- **Sync engine** (`js/sync/engine.js`): pull → apply (Core sync-apply) → push → ack; cursor обновляется после успешного apply, не регрессирует; retry без дублей; developer-visible status (deviceId/pending/cursor/lastSync/lastError/conflicts)
+- **Первый vertical slice**: Inbox creation / processing state / itemType / text+rawText / hints / discarded+processed / `resultRef` как ссылка на результат (Task пока не синхронизируется); remote apply идёт только через Core (не прямые state мутации)
+- **Conflict behavior C0**: ordering по `serverSequence`, dedupe по operationId, `baseVersion` mismatch → detect+refuse (без silent last-write-wins)
+
+#### Не в этом PR (C1+)
+- Full sync (Tasks/Projects/Domains/Map/settings/Today/attachments/history/AI)
+- accounts, authentication, encryption, cloud integration, native Android sync, background push, WebSocket realtime
+
+#### Техническое
+- `js/core/commands.js`: syncable Inbox-команды ставят операцию в outbox после успешного сохранения
+- Focused regression tests: `tests/sync-v1.mjs`
+- **Версия**: `0.11.0-alpha.1`; PWA cache `atlas-capture-0.11.0-alpha.1`
+
+---
+
 ## 0.10.0-alpha.3 - 2026-08-18
 
 ### Stage B2 — Processing Flow UX

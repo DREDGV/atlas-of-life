@@ -22,3 +22,8 @@ export function getDeviceId(){
   } catch (_) {}
   return memoryDeviceId;
 }
+
+// Test helper: clear the memoized id so a fresh localStorage is re-read.
+export function resetDeviceIdForTest(){
+  memoryDeviceId = null;
+}
