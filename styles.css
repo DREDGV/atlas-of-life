@@ -345,7 +345,6 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .inbox-result--discarded{background:rgba(239,68,68,.05);border-color:rgba(239,68,68,.2)}
 .inbox-result--discarded .inbox-result-title{color:#fca5a5}
 /* Due field fine-tune */
-.inbox-due-optional{font-weight:400;text-transform:none;opacity:.5;margin-left:3px}
 .inbox-input--date::-webkit-calendar-picker-indicator,.inbox-input--time::-webkit-calendar-picker-indicator{opacity:.85}
 /* Keyboard hints live at the bottom, quiet */
 .inbox-kbd-hint{margin:10px 0 0;opacity:.45}

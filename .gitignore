@@ -9,17 +9,17 @@ __pycache__/
 *.so
 *.a
 *.out
-
-# Dependencies
-.venv/
-venv/
-node_modules/
 dist/
 build/
 target/
-.gradle/
-.mypy_cache/
-.pytest_cache/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
 
 # Logs and temp files
 *.log
@@ -27,18 +27,13 @@ target/
 *.swp
 *.swo
 
-# Environment
-.env
-.env.local
-*.env.*
-
 # Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# System
+# System files
 .DS_Store
 Thumbs.db
 
@@ -46,6 +41,14 @@ Thumbs.db
 coverage/
 htmlcov/
 .coverage
+
+# Python specific
+.mypy_cache/
+.pytest_cache/
+
+# Java/Gradle
+.gradle/
+*.class
 
 # Compressed files
 *.zip
