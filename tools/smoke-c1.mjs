@@ -13,111 +13,41 @@
 // Usage: node tools/smoke-c1.mjs
 // Requires: playwright (installed), Chromium + Firefox browsers.
 import { chromium, firefox } from 'playwright';
-import { createServer } from 'node:http';
-import { readFileSync, existsSync, rmSync } from 'node:fs';
-import { join, extname, normalize } from 'node:path';
-import { createSyncServer } from '../server/sync-server.js';
+import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  ROOT,
+  assert,
+  closeAll,
+  log,
+  makeAdminToken,
+  pairDevice,
+  startStaticServer,
+  startSyncServer,
+  waitFor,
+} from './smoke-shared.mjs';
 
-const ROOT = join(import.meta.dirname, '..');
 const DB_PATH = join(ROOT, 'output', '.smoke-c1.sqlite');
-const ADMIN_TOKEN = `smoke-admin-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-
-function mimeFor(file){
-  const map = {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.mjs': 'text/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.json': 'application/json',
-    '.webmanifest': 'application/manifest+json',
-    '.svg': 'image/svg+xml',
-    '.png': 'image/png',
-    '.ico': 'image/x-icon',
-  };
-  return map[extname(file).toLowerCase()] || 'application/octet-stream';
-}
-
-// Minimal static file server for the apps (no directory listing, no dotfiles).
-function createStaticServer(){
-  return createServer((request, response) => {
-    try {
-      const url = new URL(request.url || '/', 'http://localhost');
-      let pathname = decodeURIComponent(url.pathname);
-      if (pathname === '/') pathname = '/index.html';
-      if (pathname.endsWith('/')) pathname += 'index.html';
-      const file = normalize(join(ROOT, pathname));
-      if (!file.startsWith(ROOT) || pathname.includes('..') || pathname.split('/').some(part => part.startsWith('.'))) {
-        response.writeHead(403).end('forbidden');
-        return;
-      }
-      const body = readFileSync(file);
-      response.writeHead(200, { 'Content-Type': mimeFor(file), 'Cache-Control': 'no-store' });
-      response.end(body);
-    } catch (_) {
-      response.writeHead(404).end('not found');
-    }
-  });
-}
-
-function assert(condition, message){
-  if (!condition) throw new Error(message);
-}
-
-function log(step, message){
-  console.log(`  [smoke] ${step}: ${message}`);
-}
-
-async function waitFor(fn, { timeout = 20000, interval = 300, label = 'condition' } = {}){
-  const start = Date.now();
-  let lastError = null;
-  while (Date.now() - start < timeout) {
-    try {
-      const value = await fn();
-      if (value) return value;
-    } catch (error) {
-      lastError = error;
-    }
-    await new Promise(resolve => setTimeout(resolve, interval));
-  }
-  throw new Error(`Timed out waiting for ${label}${lastError ? ` (${lastError.message})` : ''}`);
-}
+const ADMIN_TOKEN = makeAdminToken();
 
 // ---------------------------------------------------------------------------
 
 if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
 
-const staticServer = createStaticServer();
-await new Promise(resolve => staticServer.listen(0, '127.0.0.1', resolve));
-const staticPort = staticServer.address().port;
-const appOrigin = `http://127.0.0.1:${staticPort}`;
-
-const syncServer = createSyncServer({
+const staticEntry = await startStaticServer();
+const syncEntry = await startSyncServer({
   token: ADMIN_TOKEN,
   dbPath: DB_PATH,
-  allowedOrigins: [appOrigin],
+  allowedOrigins: [staticEntry.origin],
 });
-await new Promise(resolve => syncServer.listen(0, '127.0.0.1', resolve));
-const syncPort = syncServer.address().port;
-const syncEndpoint = `http://127.0.0.1:${syncPort}`;
 
 let browserA = null;
 let browserB = null;
 let failure = null;
-let liveSyncServer = syncServer;
+let liveSyncServer = syncEntry.server;
 let restarted = null;
 
 try {
-  // Pairing codes created with the admin token (what the operator does on the VDS).
-  async function createCode(){
-    const response = await fetch(`${syncEndpoint}/v1/pair/codes`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
-      body: '{}',
-    });
-    assert(response.ok, 'pairing code request failed');
-    return (await response.json()).code;
-  }
-
   browserA = await chromium.launch({ headless: true });
   browserB = await firefox.launch({ headless: true });
 
@@ -131,25 +61,18 @@ try {
   pageB.on('pageerror', error => errors.push(`B: ${error.message}`));
 
   // --- 1. Open both apps --------------------------------------------------
-  await pageA.goto(`${appOrigin}/capture/`, { waitUntil: 'domcontentloaded' });
+  await pageA.goto(`${staticEntry.origin}/capture/`, { waitUntil: 'domcontentloaded' });
   await pageA.waitForSelector('#btnSave', { timeout: 15000 });
   log('open', 'capture PWA loaded in Chromium');
 
-  await pageB.goto(`${appOrigin}/`, { waitUntil: 'domcontentloaded' });
+  await pageB.goto(`${staticEntry.origin}/`, { waitUntil: 'domcontentloaded' });
   await pageB.waitForSelector('#btnInbox', { timeout: 15000 });
   log('open', 'Atlas Studio loaded in Firefox');
 
   // --- 2. Pair both devices through the real runtime API -------------------
-  const codeA = await createCode();
-  await pageA.evaluate(async ({ endpoint, code }) => {
-    await window.atlasSync.pair({ endpoint, code, deviceName: 'Smoke Phone A' });
-  }, { endpoint: syncEndpoint, code: codeA });
+  await pairDevice(pageA, syncEntry.endpoint, ADMIN_TOKEN, 'Smoke Phone A');
   log('pair', 'browser A paired (Chromium)');
-
-  const codeB = await createCode();
-  await pageB.evaluate(async ({ endpoint, code }) => {
-    await window.atlasSync.pair({ endpoint, code, deviceName: 'Smoke Desktop B' });
-  }, { endpoint: syncEndpoint, code: codeB });
+  await pairDevice(pageB, syncEntry.endpoint, ADMIN_TOKEN, 'Smoke Desktop B');
   log('pair', 'browser B paired (Firefox)');
 
   await waitFor(async () => {
@@ -229,7 +152,7 @@ try {
   log('idempotency', 're-sync produced no duplicates on either device');
 
   // --- 7. Offline first: capture while the sync service is down --------------
-  await new Promise(resolve => syncServer.close(resolve));
+  await new Promise(resolve => syncEntry.server.close(resolve));
   await pageA.fill('#captureText', 'Запись без сервера');
   await pageA.click('#btnSave');
   await waitFor(async () => {
@@ -240,8 +163,9 @@ try {
   log('offline', 'capture during server outage kept locally + queued');
 
   // Server comes back; the 30s poll would deliver it — trigger manually.
-  restarted = createSyncServer({ token: ADMIN_TOKEN, dbPath: DB_PATH, allowedOrigins: [appOrigin] });
-  await new Promise(resolve => restarted.listen(syncPort, '127.0.0.1', resolve));
+  const { createSyncServer } = await import('../server/sync-server.js');
+  restarted = createSyncServer({ token: ADMIN_TOKEN, dbPath: DB_PATH, allowedOrigins: [staticEntry.origin] });
+  await new Promise(resolve => restarted.listen(syncEntry.port, '127.0.0.1', resolve));
   liveSyncServer = restarted;
   await pageA.evaluate(() => window.atlasSync.syncNow());
   await waitFor(async () => {
@@ -265,8 +189,7 @@ try {
 } finally {
   if (browserA) await browserA.close().catch(() => {});
   if (browserB) await browserB.close().catch(() => {});
-  await new Promise(resolve => staticServer.close(resolve));
-  try { await new Promise(resolve => liveSyncServer.close(resolve)); } catch (_) {}
+  try { await closeAll(staticEntry, { server: liveSyncServer }); } catch (_) {}
   if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
 }
 

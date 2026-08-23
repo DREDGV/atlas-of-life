@@ -1,6 +1,7 @@
 // js/view_today.js
 import { state, normalizeTags } from './state.js';
 import { updateTask } from './core/commands.js';
+import { requestSyncNow } from './sync/runtime.js';
 
 export function renderToday(){
   const wrap = document.getElementById('viewToday');
@@ -23,6 +24,7 @@ export function renderToday(){
     cb.onchange=(e)=>{
       const id = e.target.closest('.todo').dataset.id;
       updateTask(id, { status: e.target.checked?'done':'today' });
+      requestSyncNow(); // C2: routed Task result follows immediately
       renderToday();
     };
   });

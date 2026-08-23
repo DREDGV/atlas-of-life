@@ -5,8 +5,8 @@
 // The smoke scripts import: createStaticServer, startSyncServer, createCode,
 // pairDevice, waitFor, log, assert, ADMIN_TOKEN.
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, rmSync } from 'node:fs';
-import { join, extname, normalize } from 'node:path';
+import { mkdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { join, dirname, extname, normalize } from 'node:path';
 import { createSyncServer } from '../server/sync-server.js';
 
 export const ROOT = join(import.meta.dirname, '..');
@@ -83,6 +83,7 @@ export async function startStaticServer(){
 
 export async function startSyncServer({ token, dbPath, allowedOrigins }){
   if (dbPath && existsSync(dbPath)) rmSync(dbPath, { force: true });
+  if (dbPath) mkdirSync(dirname(dbPath), { recursive: true });
   const server = createSyncServer({ token, dbPath: dbPath || ':memory:', allowedOrigins });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   return { server, endpoint: `http://127.0.0.1:${server.address().port}`, port: server.address().port };

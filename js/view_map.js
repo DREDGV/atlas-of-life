@@ -12,6 +12,7 @@ import {
 import { openInspectorFor } from "./inspector.js";
 import { moveTask, undoTaskMove } from "./core/commands.js";
 import { saveState } from "./storage.js";
+import { requestSyncNow } from "./sync/runtime.js";
 import { logEvent } from "./utils/analytics.js";
 
 let canvas,
@@ -1312,6 +1313,7 @@ window.addEventListener("mouseup", (e) => {
           pos: { x: draggedNode.x, y: draggedNode.y },
         }, { reason: "map.attach_domain" });
         taskMoveCommitted = rememberTaskMove(result);
+        requestSyncNow(); // C2: routed Task placement follows immediately
         const toast = document.getElementById("toast");
         if (toast) {
           toast.className = "toast ok";
@@ -1397,6 +1399,7 @@ window.addEventListener("mouseup", (e) => {
         pos: { x: draggedNode.x, y: draggedNode.y },
       }, { reason: "map.reposition" });
       taskMoveCommitted = rememberTaskMove(result);
+      requestSyncNow(); // C2: routed Task placement follows immediately
       moved = taskMoveCommitted;
     }
   }
@@ -1512,6 +1515,7 @@ export function confirmAttach() {
     return false;
   }
   rememberTaskMove(result);
+  requestSyncNow(); // C2: routed Task placement follows immediately
   pendingAttach = null;
   // hide toast
   const toast = document.getElementById("toast");
@@ -1580,6 +1584,7 @@ function confirmDetach() {
       return false;
     }
     rememberTaskMove(result);
+    requestSyncNow(); // C2: routed Task placement follows immediately
     pendingDetach = null;
     const toast = document.getElementById("toast");
     if (toast) {
@@ -1703,6 +1708,7 @@ function openMoveTaskModal(task, targetDomainId, dropPosition = null) {
       });
       if (!result) return;
       rememberTaskMove(result);
+      requestSyncNow(); // C2: routed Task placement follows immediately
       const toast = document.getElementById("toast");
       if (toast) {
         toast.className = "toast ok";

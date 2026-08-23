@@ -9,6 +9,7 @@ import {
   daysSince,
   statusPill,
 } from "./state.js";
+import { requestSyncNow } from "./sync/runtime.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
 function drawMap() {
   return window.mapApi && window.mapApi.drawMap && window.mapApi.drawMap();
@@ -220,6 +221,7 @@ export function openInspectorFor(obj) {
           tags: tagsInput.value.split(/[\s,#]+/),
         });
         if (!result) return;
+        requestSyncNow(); // C2: routed Task result follows immediately
         drawMap();
         renderToday();
         openInspectorFor(forInspector(result.task, "task"));
@@ -243,6 +245,7 @@ export function openInspectorFor(obj) {
       b.onclick = () => {
         const result = updateTask(obj.id, { status: b.dataset.st });
         if (!result) return;
+        requestSyncNow(); // C2: routed Task result follows immediately
         drawMap();
         renderToday();
         openInspectorFor(forInspector(result.task, "task"));
@@ -251,6 +254,7 @@ export function openInspectorFor(obj) {
     document.getElementById("delTask").onclick = () => {
       if (confirm("Удалить задачу?")) {
         deleteTask(obj.id);
+        requestSyncNow(); // C2: routed result removal follows immediately
         drawMap();
         renderToday();
         openInspectorFor(null);
