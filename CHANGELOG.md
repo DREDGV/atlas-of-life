@@ -16,6 +16,34 @@
 
 ---
 
+## 0.11.0-alpha.2 - 2026-08-20
+
+### Stage C1 — Real Remote Sync
+
+#### Добавлено
+- **Удалённый Sync-сервис** (`server/sync-server.js` + `server/start.js`): минимальный Node.js HTTP + SQLite (`node:sqlite`, ноль npm-зависимостей) сервис, говорящий на том же транспортном контракте, что и C0 dev relay (`pushOperations` / `pullOperations(cursor)`): `POST /v1/ops/push` (дедупликация по operationId, монотонный `serverSequence`, per-op валидация с ограничением размера), `GET /v1/ops/pull?after&excludeDevice&limit`, `GET /health`
+- **Минимальная изоляция данных (без account-системы)**: admin bootstrap-токен только в окружении сервера (генерируется при установке, в Git не попадает); парная привязка устройств — одноразовый 8-значный код (HMAC, TTL 5 мин) → персональный bearer-токен устройства (хранится как SHA-256, можно отозвать, повторная привязка инвалидирует старый); push требует совпадения deviceId с токеном; rate limit на привязку; CORS только по явному allowlist
+- **Клиентский транспорт** (`js/sync/http-transport.js`): C0-контракт поверх fetch; 401 → `code: 'unauthorized'` для UX «нужна привязка»
+- **Конфигурация** (`js/sync/config.js`): endpoint + токен устройства в localStorage; https обязателен (http — только localhost для разработки); секретов в репозитории нет
+- **Runtime** (`js/sync/runtime.js`): boot-sync, debounced `requestSync()` после локальных изменений, триггеры `online` / `visibilitychange`, polling 30 с, защита от параллельных циклов, pair/unpair/createPairingCode, подписки на статус
+- **UX статуса Sync** (`js/sync/ui.js` + интеграция): Studio — чип «Синхронизация» в шапке + модал (форма привязки, статусные строки, «Код для нового устройства», отключение, список конфликтов); Capture PWA — секция «Синхронизация» в info-панели + статус в шапке («Ожидают отправки: N», «Ошибка», «Нужна привязка»)
+- **Deploy-пакет для VDS** (`deploy/vds/`): systemd-юнит (isolated user, ProtectSystem), Apache vhost (статический Atlas + проксирование `/v1/*` — один origin, без CORS на реальных устройствах), установщик, README; `tools/build-sync-deploy.mjs` собирает upload-бандл; HTTPS через certbot на `*.sslip.io` (без покупки домена)
+
+#### Изменено
+- **Engine** (`js/sync/engine.js`): ошибка pull больше не блокирует push (offline-first); `lastSyncAt` персистентный и ставится только при реально успешном направлении; `failed` и `authFailed` видны в статусе; счётчик конфликтов инициализируется из durable quarantine
+- Capture PWA: `window.state` для отладки (как в Studio)
+
+#### Техническое
+- `tests/sync-server.mjs` — сервис через реальный HTTP (pairing, push/pull, дедуп, валидация, CORS, rate limit)
+- `tests/sync-http.mjs` — два независимых клиента через живой сервис: полный цикл Phone→Remote→Desktop→Remote→Phone, offline-долговечность, retry после рестарта сервера, отзыв + повторная привязка
+- `tools/smoke-c1.mjs` — двухбраузерный live smoke (Chromium + Firefox, реальный UI Capture, реальный HTTP): полный round trip, без дублей, offline + доставка после восстановления сервиса
+- PWA precache дополнен модулями sync (офлайн-граф остаётся полным); **версия** `0.11.0-alpha.2`, кэш `atlas-capture-0.11.0-alpha.2`
+
+#### Не в этом PR (C2+)
+- Full Task/Project/Domain sync, полная история, conflict-resolution UI, encryption at rest, background push, WebSocket realtime
+
+---
+
 ## 0.11.0-alpha.1 - 2026-08-19
 
 ### Stage C0 — Sync v1 Foundation

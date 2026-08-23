@@ -12,6 +12,10 @@
 //   - incoming operations that cannot be applied (conflict / invalid /
 //     unsupported) are durably quarantined BEFORE the cursor advances, so a
 //     single bad operation never blocks the stream and never loops forever.
+//
+// Offline-first (C1): a failed pull never blocks the push of local
+// operations, and a failed push never blocks local work — the outbox stays
+// durable and delivery resumes when the network is back.
 import { getSyncDeviceId } from './device.js';
 import {
   getPendingOps,
@@ -24,6 +28,7 @@ import { applyIncomingOperation } from './apply.js';
 import { recordConflict, listConflicts } from './quarantine.js';
 
 const CURSOR_KEY = 'atlas-sync-cursor-v1';
+const LAST_SYNC_KEY = 'atlas-sync-last-sync-at';
 
 export function createSyncEngine({ transport, storage } = {}){
   const store = storage || {
@@ -36,9 +41,10 @@ export function createSyncEngine({ transport, storage } = {}){
   };
 
   let cursor = Number(store.get(CURSOR_KEY)) || 0;
-  let lastSyncAt = null;
+  let lastSyncAt = Number(store.get(LAST_SYNC_KEY)) || null;
   let lastError = null;
-  let conflicts = 0;
+  let authFailed = false;
+  let conflicts = listConflicts().length;
 
   const saveCursor = () => store.set(CURSOR_KEY, cursor);
 
@@ -70,11 +76,11 @@ export function createSyncEngine({ transport, storage } = {}){
       const ackedIds = result?.ackedIds || [];
       ackedIds.forEach(id => markAcked(id));
       recoverSent();
-      lastError = null;
       return { pushed: pending.length, acked: ackedIds.length };
     } catch (error) {
       const message = error?.message || String(error);
       lastError = message;
+      if (error?.code === 'unauthorized') authFailed = true;
       pending.forEach(entry => {
         const attempts = (entry.attempts || 0) + 1;
         const syncStatus = attempts >= MAX_ATTEMPTS ? 'failed' : 'retryable';
@@ -112,25 +118,47 @@ export function createSyncEngine({ transport, storage } = {}){
       cursor = Math.max(cursor, serverSequence);
       saveCursor();
     }
-    if (operations.length > 0) lastSyncAt = Date.now();
     return { pulled: operations.length, newCursor: cursor };
   }
 
   // Full cycle: apply remote first, then deliver local. Idempotent and safe to
   // call repeatedly (dedupe by operationId + cursor).
+  //
+  // C1 offline-first: a pull failure is recorded but never blocks the push —
+  // local operations must still reach the remote when the network allows it.
   async function sync(){
-    const pulled = await pull();
+    let pulled = 0;
+    let pullFailed = false;
+    try {
+      const result = await pull();
+      pulled = result.pulled;
+      if (result.newCursor != null) cursor = result.newCursor;
+      authFailed = false;
+    } catch (error) {
+      pullFailed = true;
+      lastError = error?.message || String(error);
+      if (error?.code === 'unauthorized') authFailed = true;
+    }
     const pushed = await pushOutbox();
-    return { pulled: pulled.pulled, pushed: pushed.pushed, failed: pushed.failed || 0, cursor };
+    // The cycle counts as a successful sync only if at least one direction
+    // actually worked — otherwise "последняя синхронизация" would lie.
+    if (!pullFailed && !(pushed.failed > 0)) {
+      lastSyncAt = Date.now();
+      store.set(LAST_SYNC_KEY, String(lastSyncAt));
+    }
+    return { pulled, pushed: pushed.pushed, failed: pushed.failed || 0, cursor };
   }
 
   function getStatus(){
+    const outbox = listOutbox();
     return {
       deviceId: getSyncDeviceId(),
       pending: getPendingOps().length,
+      failed: outbox.filter(entry => entry.syncStatus === 'failed').length,
       cursor,
       lastSyncAt,
       lastError,
+      authFailed,
       conflicts,
     };
   }

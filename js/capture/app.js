@@ -14,10 +14,15 @@ import {
   createVoiceController,
   queryMicrophonePermission,
 } from './voice.js';
+import { createSyncRuntime, requestSyncNow } from '../sync/runtime.js';
+import { createSyncPanel } from '../sync/ui.js';
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
 const MIC_INTRO_KEY = 'atlas_capture_mic_intro_v1';
+
+// Expose state globally for debugging/automation (same convention as Studio).
+try { window.state = state; } catch (_) {}
 
 let currentView = 'capture';
 let currentUserHint = null;
@@ -359,6 +364,7 @@ function saveCapture() {
       updateCounter();
       renderRecentItems();
       showToast('Запись сохранена во Входящих');
+      requestSyncNow(); // C1: durable capture is in the outbox — deliver it
     }
   } catch (err) {
     updateStatus('Не удалось сохранить');
@@ -661,6 +667,7 @@ function init() {
 
   initVoice();
   initOnlineStatus();
+  initSync();
   registerCaptureServiceWorker({
     showToast,
     flushDraft: flushCaptureDraft,
@@ -700,22 +707,74 @@ function clearShareParamsFromUrl() {
   } catch (_) {}
 }
 
-function initOnlineStatus() {
-  const updateOnlineStatus = () => {
-    const online = navigator.onLine;
-    const statusEl = document.getElementById('status');
-    if (online) {
-      safeSetText(statusEl, 'Онлайн · текстовые записи сохраняются локально');
-      statusEl.classList.remove('offline');
-    } else {
-      safeSetText(statusEl, 'Офлайн · текстовые записи работают. Голос может быть недоступен.');
-      statusEl.classList.add('offline');
-    }
-  };
+function updateOnlineStatus() {
+  const online = navigator.onLine;
+  const statusEl = document.getElementById('status');
+  if (!statusEl) return;
+  if (online) {
+    safeSetText(statusEl, 'Онлайн · текстовые записи сохраняются локально');
+    statusEl.classList.remove('offline');
+  } else {
+    safeSetText(statusEl, 'Офлайн · текстовые записи работают. Голос может быть недоступен.');
+    statusEl.classList.add('offline');
+  }
+}
 
+function initOnlineStatus() {
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
   updateOnlineStatus();
+}
+
+// Sync v1 (C1): remote transport runtime + status + pairing panel.
+// Fire-and-forget by design: a sync failure never blocks capture.
+function initSync() {
+  let syncRuntime = null;
+  try {
+    syncRuntime = createSyncRuntime({});
+    syncRuntime.start();
+    window.atlasSync = syncRuntime;
+  } catch (error) {
+    console.warn('sync runtime failed to start', error?.message || error);
+    return;
+  }
+
+  const panelMount = document.getElementById('infoSyncBody');
+  if (panelMount) {
+    try {
+      createSyncPanel({ runtime: syncRuntime, mount: panelMount });
+    } catch (error) {
+      console.warn('sync panel failed to render', error?.message || error);
+    }
+  }
+
+  // The header status line reflects the delivery state while sync is
+  // configured; otherwise it stays the classic network indicator.
+  syncRuntime.subscribe(status => {
+    const statusEl = document.getElementById('status');
+    if (!statusEl) return;
+    if (!status.configured) {
+      updateOnlineStatus();
+      return;
+    }
+    statusEl.classList.remove('offline');
+    if (!status.online) {
+      safeSetText(statusEl, 'Офлайн · синхронизация ждёт сети');
+      statusEl.classList.add('offline');
+    } else if (status.syncing) {
+      safeSetText(statusEl, 'Синхронизация…');
+    } else if (status.authFailed) {
+      safeSetText(statusEl, 'Синхронизация: нужна привязка');
+    } else if (status.lastError) {
+      safeSetText(statusEl, 'Синхронизация: ошибка');
+    } else if (status.pending > 0) {
+      safeSetText(statusEl, `Ожидают отправки: ${status.pending}`);
+    } else if (status.failed > 0) {
+      safeSetText(statusEl, `Ошибки отправки: ${status.failed}`);
+    } else {
+      safeSetText(statusEl, 'Синхронизация включена');
+    }
+  });
 }
 
 function showShareChoiceDialog(shareDraft, existingDraft) {

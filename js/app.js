@@ -18,6 +18,8 @@ import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
 import { createTask } from "./core/commands.js";
 import { APP_VERSION, APP_LABEL } from "./version.js";
+import { createSyncRuntime, requestSyncNow } from "./sync/runtime.js";
+import { createSyncBadge, openSyncModal } from "./sync/ui.js";
 
 // I18N
 const I18N = {
@@ -1042,6 +1044,7 @@ function submitQuick(text) {
   drawMap();
   renderToday();
   updateWip();
+  requestSyncNow();
   
   //_emit state change event
   if (window.bus) window.bus.emit('state:changed', { reason: 'quick-add' });
@@ -1054,6 +1057,25 @@ async function init() {
   const brandEl = document.querySelector("header .brand");
   if (brandEl) brandEl.textContent = APP_LABEL;
   document.title = APP_LABEL;
+  // Sync v1 (C1): remote transport runtime + status badge in the header.
+  // Fire-and-forget by design: a sync failure never blocks local work.
+  let syncRuntime = null;
+  try {
+    syncRuntime = createSyncRuntime({});
+    syncRuntime.start();
+    window.atlasSync = syncRuntime;
+    const syncChip = document.getElementById("btnSync");
+    if (syncChip) {
+      const badge = createSyncBadge({
+        runtime: syncRuntime,
+        onClick: () => openSyncModal({ runtime: syncRuntime }),
+      });
+      badge.el.classList.add("chip");
+      syncChip.replaceWith(badge.el);
+    }
+  } catch (error) {
+    console.warn("sync runtime failed to start", error?.message || error);
+  }
   renderSidebar();
   setupHeader();
   setupQuickAdd();
@@ -1064,6 +1086,7 @@ async function init() {
       layoutMap();
       drawMap();
       updateWip();
+      requestSyncNow();
     },
   });
   // ensure header chips reflect persisted view
