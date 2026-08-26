@@ -16,6 +16,32 @@
 
 ---
 
+## 0.11.0-alpha.3 - 2026-08-20
+
+### Stage C2 — Task Result Bridge
+
+#### Добавлено
+- **Read-only проекция routed Task** (`state.taskProjections`, persisted): телефон получает понятный результат обработки («✓ Разобрана → Задача · title · Дача · Сад · Высокий · 24 августа · ✓ Выполнено») **без репликации Task CRUD** — на телефоне нет копии задачи, нет второй истины о Task, десктоп остаётся единственным писателем
+- **Новые sync-операции** `task.result.upsert` / `task.result.remove`: эмитятся при routing (вместе с `inbox.route_to_task`), при update/move/delete задач, рождённых из Inbox (`sourceInboxId`), и при revert (если задача удалена); revert изменённой задачи не эмитит ничего (refused)
+- **Remote-apply через Core** (`applyRemoteTaskResultUpsert/Remove`): атомарно, без echo, со stale-guard (старая доставка не откатывает более новую проекцию); dedupe по operationId как обычно
+- **Обработка изменений после routing** (§9.5 мастер-плана): переименование/приоритет/срок/статус/перемещение следуют на телефон; удаление Task → определённый fallback «Результат недоступен на этом устройстве»; route revert → проекция удаляется
+- **Сервер** принимает новые типы (`entityType`: inbox | task)
+- **Live refresh после sync**: runtime отдаёт `pulled`; Studio обновляет список Inbox (не прерывая открытую карточку обработки), Capture обновляет списки
+
+#### Изменено
+- `storage.js`: load/save/export/import учитывают `taskProjections`; structured `due` (`{date,time}`) сохраняется как есть
+- Capture PWA: статусные бейджи обработки в списке Входящих (К разбору / ✓ Разобрана · тип / Отброшена)
+
+#### Техническое
+- `tests/sync-c2.mjs`: эмиссия, содержимое проекции (titles из Domains/Projects), revert/refused, remote apply guard'ы, live HTTP — проекция следует desktop→phone при update/delete
+- `tools/smoke-c2.mjs`: двухбраузерный smoke результата (Chromium phone + Firefox desktop): route → карточка результата → update (done) → delete → fallback; `tools/smoke-shared.mjs` — общий scaffolding smokes
+- **Версия**: `0.11.0-alpha.3`; PWA cache `atlas-capture-0.11.0-alpha.3`
+
+#### Не в этом PR (C3+)
+- Conflict-resolution UX, device management, initial bootstrap, Full Task Sync
+
+---
+
 ## 0.11.0-alpha.2 - 2026-08-20
 
 ### Stage C1 — Real Remote Sync

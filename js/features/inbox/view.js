@@ -98,6 +98,16 @@ function updateCounter(){
   counter.hidden = count === 0;
 }
 
+// Sync v1 (C1/C2): refresh the visible Inbox UI after remote operations were
+// applied. Never interrupts an open processing card — only the list refreshes,
+// so a user mid-processing is not yanked back to the queue.
+export function refreshInboxAfterRemoteApply(){
+  updateCounter();
+  if (!root || root.hidden) return;
+  if (currentDialogView !== 'list') return;
+  openInboxList();
+}
+
 function closeInbox(){
   // Leaving the overlay exits edit mode; the draft itself stays preserved.
   editState.exit();

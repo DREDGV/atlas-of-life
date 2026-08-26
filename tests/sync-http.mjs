@@ -188,6 +188,40 @@ assert(tokenA && tokenB, 'setup: both clients paired');
   console.log('✓ Test 3: revocation + re-pair recovery');
 }
 
+// --- Test 4 (W1): failed outbox entries recover once the network is back -----
+// A long outage exhausts MAX_ATTEMPTS → entries become `failed`. They must NOT
+// stay stuck forever: the first successful sync cycle re-promotes and
+// delivers them (offline → retry → online promise).
+{
+  switchClient(storeA, 'device-e2e-a');
+  storeA.setItem('atlas-sync-token', tokenA);
+  captureInbox('Запись из долгого офлайна', { deviceId: 'device-e2e-a' });
+  assert(getPendingOps().length === 1, 'Test 4a: capture queued');
+
+  // A transport that is always down: every attempt fails and increments the
+  // counter until the entry reaches `failed`.
+  const deadTransport = {
+    pushOperations: async () => { throw Object.assign(new Error('network down'), { code: 'network' }); },
+    pullOperations: async () => { throw Object.assign(new Error('network down'), { code: 'network' }); },
+    acknowledge: async () => {},
+  };
+  const engine = createSyncEngine({ transport: deadTransport, storage: storeA });
+  for (let i = 0; i < 5; i += 1) {
+    const result = await engine.sync();
+    assert(result.failed === 1, `Test 4b: attempt ${i + 1} fails`);
+  }
+  assert(engine.getStatus().failed === 1, 'Test 4c: entry exhausted MAX_ATTEMPTS and is failed');
+  assert(getPendingOps().length === 0, 'Test 4d: failed entries are not pending');
+
+  // Network returns: the real transport (live server) — the same engine
+  // delivers the previously failed op in one cycle.
+  const liveEngine = createSyncEngine({ transport: makeTransport(storeA), storage: storeA });
+  const recovered = await liveEngine.sync();
+  assert(recovered.pushed === 1 && getPendingOps().length === 0, 'Test 4e: failed entry re-promoted and delivered');
+  assert(liveEngine.getStatus().failed === 0, 'Test 4f: no failed entries remain');
+  console.log('✓ Test 4: failed outbox entries recover after the network returns');
+}
+
 await new Promise(resolve => server.close(resolve));
 if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
 console.log('\n✅ All Stage C1 HTTP end-to-end tests passed.');

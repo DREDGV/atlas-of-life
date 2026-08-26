@@ -16,6 +16,7 @@ import { renderToday } from "./view_today.js";
 import { parseQuick } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
+import { refreshInboxAfterRemoteApply } from "./features/inbox/view.js";
 import { createTask } from "./core/commands.js";
 import { APP_VERSION, APP_LABEL } from "./version.js";
 import { createSyncRuntime, requestSyncNow } from "./sync/runtime.js";
@@ -1061,7 +1062,13 @@ async function init() {
   // Fire-and-forget by design: a sync failure never blocks local work.
   let syncRuntime = null;
   try {
-    syncRuntime = createSyncRuntime({});
+    syncRuntime = createSyncRuntime({
+      onStatus: (status) => {
+        // Remote changes arrived: refresh the visible Inbox UI (never a card
+        // the user is actively processing — see refreshInboxAfterRemoteApply).
+        if (status.pulled > 0) refreshInboxAfterRemoteApply();
+      },
+    });
     syncRuntime.start();
     window.atlasSync = syncRuntime;
     const syncChip = document.getElementById("btnSync");

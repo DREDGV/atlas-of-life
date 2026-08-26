@@ -62,6 +62,23 @@ export function createSyncEngine({ transport, storage } = {}){
   }
   recoverSent();
 
+  // W1 recovery: `failed` marks "gave up after MAX_ATTEMPTS", but every push
+  // failure in this design is transient (network / server outage) — there is
+  // no per-op permanent rejection from the remote. Once a sync cycle proves
+  // the network works again, failed entries must become deliverable again;
+  // otherwise a short outage permanently stalls the outbox and the
+  // offline → retry → online promise breaks.
+  function promoteFailed(){
+    let promoted = 0;
+    for (const entry of listOutbox()) {
+      if (entry.syncStatus === 'failed') {
+        updateOutboxEntry(entry.operation.id, { syncStatus: 'retryable', attempts: 0, lastError: null });
+        promoted += 1;
+      }
+    }
+    return promoted;
+  }
+
   async function pushOutbox(){
     const pending = getPendingOps();
     if (pending.length === 0) return { pushed: 0 };
@@ -140,13 +157,20 @@ export function createSyncEngine({ transport, storage } = {}){
       if (error?.code === 'unauthorized') authFailed = true;
     }
     const pushed = await pushOutbox();
+    // W1: the network just proved itself — re-promote any previously failed
+    // entries and deliver them in the same cycle (bounded: stop at the first
+    // failing pass). This restores catch-up after a long offline window.
+    let pushResult = pushed;
+    if (!(pushed.failed > 0) && promoteFailed() > 0) {
+      pushResult = await pushOutbox();
+    }
     // The cycle counts as a successful sync only if at least one direction
     // actually worked — otherwise "последняя синхронизация" would lie.
-    if (!pullFailed && !(pushed.failed > 0)) {
+    if (!pullFailed && !(pushResult.failed > 0)) {
       lastSyncAt = Date.now();
       store.set(LAST_SYNC_KEY, String(lastSyncAt));
     }
-    return { pulled, pushed: pushed.pushed, failed: pushed.failed || 0, cursor };
+    return { pulled, pushed: pushResult.pushed, failed: pushResult.failed || 0, cursor };
   }
 
   function getStatus(){

@@ -13,6 +13,8 @@ import {
   applyRemoteInboxRevert,
   applyRemoteInboxRoute,
   applyRemoteInboxUpdate,
+  applyRemoteTaskResultRemove,
+  applyRemoteTaskResultUpsert,
 } from '../core/commands.js';
 
 const APPLIED_KEY = 'atlas-sync-applied-v1';
@@ -108,6 +110,12 @@ export function applyIncomingOperation(operation){
       break;
     case 'inbox.route_revert':
       applyInboxRevert(operation.payload);
+      break;
+    case 'task.result.upsert':
+      applyRemoteTaskResultUpsert(operation.payload, {});
+      break;
+    case 'task.result.remove':
+      applyRemoteTaskResultRemove(operation.payload, {});
       break;
     default:
       return { applied: false, unsupported: true };

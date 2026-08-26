@@ -46,6 +46,29 @@ function normalizeInboxEntries(entries){
     .filter(Boolean);
 }
 
+// Sync v1 C2: read-only projections of routed Tasks (rendered on devices that
+// do not have the real Task). Missing/legacy data degrades to an empty list.
+function normalizeTaskProjections(entries){
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter(entry => entry && typeof entry === 'object' && entry.id && typeof entry.title === 'string')
+    .map(entry => ({
+      id: String(entry.id),
+      title: entry.title,
+      sourceInboxId: entry.sourceInboxId ? String(entry.sourceInboxId) : null,
+      domainId: entry.domainId ? String(entry.domainId) : null,
+      domainTitle: typeof entry.domainTitle === 'string' ? entry.domainTitle : null,
+      projectId: entry.projectId ? String(entry.projectId) : null,
+      projectTitle: typeof entry.projectTitle === 'string' ? entry.projectTitle : null,
+      priority: Number(entry.priority) || 2,
+      due: entry.due && typeof entry.due === 'object' && entry.due.date
+        ? { date: String(entry.due.date), time: entry.due.time ? String(entry.due.time) : null }
+        : (Number(entry.due) || null),
+      status: typeof entry.status === 'string' ? entry.status : 'backlog',
+      updatedAt: Number(entry.updatedAt) || 0,
+    }));
+}
+
 const MIGRATIONS = [
   // 0 -> 1
   (data) => {
@@ -119,6 +142,7 @@ export function loadState(){
     state.tasks = normalizeEntities(data.tasks);
     state.inbox = normalizeInboxEntries(data.inbox);
     state.operationLog = normalizeOperationLog(data.operationLog);
+    state.taskProjections = normalizeTaskProjections(data.taskProjections);
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -163,6 +187,7 @@ export function saveState(){
       tasks: normalizeEntities(state.tasks),
       inbox: normalizeInboxEntries(state.inbox),
       operationLog: normalizeOperationLog(state.operationLog),
+      taskProjections: normalizeTaskProjections(state.taskProjections),
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,
@@ -204,6 +229,7 @@ export function exportJson(){
     tasks: normalizeEntities(state.tasks),
     inbox: normalizeInboxEntries(state.inbox),
     operationLog: normalizeOperationLog(state.operationLog),
+    taskProjections: normalizeTaskProjections(state.taskProjections),
     maxEdges: state.maxEdges,
     showLinks: !!state.showLinks,
     showAging: !!state.showAging,
@@ -242,6 +268,7 @@ export function importJson(file){
         state.tasks = normalizeEntities(data.tasks);
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
+        state.taskProjections = normalizeTaskProjections(data.taskProjections);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         if(typeof data.showLinks==='boolean') state.showLinks = data.showLinks; else state.showLinks = true;
         if(typeof data.showAging==='boolean') state.showAging = data.showAging; else state.showAging = true;
@@ -279,6 +306,7 @@ export function importJsonV26(file){
         state.tasks = normalizeEntities(data.tasks);
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
+        state.taskProjections = normalizeTaskProjections(data.taskProjections);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         state.showLinks = typeof data.showLinks==='boolean' ? data.showLinks : true;
         state.showAging = typeof data.showAging==='boolean' ? data.showAging : true;
