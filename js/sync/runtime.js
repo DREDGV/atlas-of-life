@@ -230,11 +230,13 @@ export function createSyncRuntime(options = {}){
     getStatus: snapshot,
     getConflicts: () => (engine ? engine.getConflicts() : []),
     // C3: resolve a quarantined conflict (keep local / accept remote / keep
-    // both / keep deleted / dismiss). State change runs through Core.
+    // both / keep deleted / dismiss). State change runs through Core; any
+    // resulting outbound ops (restore, copy capture) are delivered promptly.
     resolveConflict: (conflict, action) => {
       if (!engine) throw new Error('Sync is not configured');
       const resolved = engine.resolveConflict(conflict, action);
       notify();
+      requestSync();
       return resolved;
     },
     subscribe,

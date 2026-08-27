@@ -87,6 +87,7 @@ function showToastWithUndo(message) {
       updateCounter();
       renderInboxList();
       renderRecentItems();
+      requestSyncNow(); // C3/W2: the restoration reaches other devices immediately
       toast.hidden = true;
     }
   });
@@ -367,6 +368,7 @@ function renderInboxList() {
         updateCounter();
         renderInboxList();
         renderRecentItems();
+        requestSyncNow(); // C3/W2: the deletion reaches other devices immediately
         showToastWithUndo('Запись удалена');
       }
     });

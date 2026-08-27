@@ -781,7 +781,18 @@ function resolveConflictMutation(conflict, action, options){
   }
 
   if (action === 'accept_remote' || action === 'keep_both' || action === 'restore_apply') {
-    applyRemoteStateForConflict(op);
+    const applied = applyRemoteStateForConflict(op);
+    // restore_apply must propagate: other devices removed the record because of
+    // this device's earlier delete — the restoration intent goes back too.
+    if (action === 'restore_apply' && applied) {
+      const restoreOp = appendOperation({
+        type: 'inbox.restore',
+        entityType: 'inbox',
+        entityId: applied.id,
+        payload: { item: cloneCommandValue(applied), index: 0 },
+      }, { timestamp: options.now ?? Date.now(), deviceId: options.deviceId });
+      enqueueOutbound(restoreOp);
+    }
   }
   // 'keep_local' / 'keep_deleted' / 'dismiss': no state change.
 

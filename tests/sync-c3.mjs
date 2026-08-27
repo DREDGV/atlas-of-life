@@ -136,6 +136,7 @@ function outboxOpsOfType(type){
   resolveConflict(conflict, 'restore_apply', { deviceId: 'device-c3-d' });
   assert(state.inbox.length === 1 && state.inbox[0].status === 'processed', 'Test 3a: restore_apply rebuilt the record with remote state');
   assert(state.inbox[0].id === 'inbox-r2' && state.inbox[0].itemType === 'thought', 'Test 3b: id and type preserved');
+  assert(outboxOpsOfType('inbox.restore').length === 1, 'Test 3c: the restoration is enqueued (converges with other devices)');
   console.log('✓ Test 3: deleted_race resolution — restore_apply');
 
   // keep_deleted: nothing is restored
