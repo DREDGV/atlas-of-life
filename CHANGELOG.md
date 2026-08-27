@@ -16,6 +16,30 @@
 
 ---
 
+## 0.11.0-alpha.4 - 2026-08-26
+
+### Stage C3 — Conflicts & Recovery
+
+#### Добавлено
+- **Человеческие конфликты вместо «detect + refuse»**: quarantine обогащён (`conflictStatus`: base_version / deleted_race / unsupported / invalid; `resolution`: pending / resolved; `resolutionAction`; `resolvedAt`); `conflicts` в статусе = число неразрешённых; resolution durable (переживает reload)
+- **Действия разрешения в панели Sync** (без технических терминов): base_version — «Оставить локальную» / «Принять удалённую» / «Сохранить обе» (копия локальной версии создаётся и доставляется через inbox.capture, оригинал принимает remote); deleted_race — «Оставить удалённой» / «Восстановить и применить» (запись восстанавливается с remote-состоянием и **восстановление доставляется остальным** через inbox.restore — иначе устройства разошлись бы); invalid/unsupported — «Пропустить»
+- **W2 — удаление/восстановление Inbox синхронизируется**: `inbox.delete` / `inbox.restore` enqueue + серверные типы + идемпотентный remote apply; удалил на телефоне → исчезает на ПК, «Отменить» → восстанавливается везде; update/route для локально удалённой записи → `deleted_race` (раньше падал/quarantine-invalid)
+- **W3 — rename Domain/Project обновляет телефон**: Core-команды `updateDomain` / `updateProject` пере-эмитят `task.result.upsert` для routed-задач домена/проекта (проекция не показывает старое имя); обработчики rename в Studio переведены на команды + мгновенный sync
+- Capture PWA: удаление/восстановление записи триггерят мгновенный sync (как захват)
+
+#### Исправлено
+- `failed`-записи outbox больше не застревают навсегда после долгого офлайна — первый успешный цикл возвращает их в доставку (W1, stabilize)
+
+#### Техническое
+- `tests/sync-c3.mjs` — delete/restore sync, классификация гонок, матрица разрешения, durability, rename re-emit, live HTTP round trip
+- `tools/smoke-c3.mjs` — двухбраузерный smoke: delete-синхронизация → deleted_race → разрешение в панели → сходимость; без дублей
+- **Версия** `0.11.0-alpha.4`; PWA cache `atlas-capture-0.11.0-alpha.4`
+
+#### Не в этом PR (C4+)
+- Device management, initial bootstrap, diagnostics export, Full Task Sync, CRDT
+
+---
+
 ## 0.11.0-alpha.3 - 2026-08-20
 
 ### Stage C2 — Task Result Bridge

@@ -219,9 +219,9 @@ outbox ждёт
 | Этап | Версия | Назначение | Статус |
 |---|---|---|---|
 | C0 | `0.11.0-alpha.1` | Sync Foundation + local Inbox vertical slice | ✅ DONE |
-| C1 | `0.11.0-alpha.2` | Real Remote Sync | ✅ DONE (Draft PR #17; VDS-деплой и физический прогон отложены решением пользователя) |
-| C2 | `0.11.0-alpha.3` | Routed Result / Task Bridge | 🔴 CURRENT |
-| C3 | `0.11.0-alpha.4` | Multi-device Conflicts & Recovery | Planned |
+| C1 | `0.11.0-alpha.2` | Real Remote Sync | ✅ DONE (PR #17) |
+| C2 | `0.11.0-alpha.3` | Routed Result / Task Bridge | ✅ DONE (PR #20) |
+| C3 | `0.11.0-alpha.4` | Multi-device Conflicts & Recovery | 🔴 CURRENT |
 | C4 | `0.11.0-alpha.5` | Sync v1 Product Closure | Planned |
 
 Это рабочая структура, а не священная табличка.
@@ -748,6 +748,17 @@ C2 готов, когда:
 # 10. C3 — Multi-device Conflicts & Recovery
 
 **Целевая версия:** `0.11.0-alpha.4`
+
+**Реализованный подход (26.08.2026): классификация + человеческое разрешение без CRDT.**
+
+Подробности — `docs/SYNC_C3_CONFLICTS.md`. Кратко: quarantine обогащён
+`conflictStatus`/`resolution`; гонка «update для локально удалённой записи»
+классифицируется как `deleted_race` (а не падает/quarantine-invalid);
+пользователь разрешает в панели Sync: base_version → оставить/принять/
+сохранить обе, deleted_race → оставить удалённой/восстановить и применить
+(восстановление доставляется остальным); resolution durable. Дополнительно
+в C3: синхронизация удаления/восстановления Inbox (W2) и обновление
+проекций результата при rename Domain/Project (W3).
 
 ## 10.1 Цель
 
