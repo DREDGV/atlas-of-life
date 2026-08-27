@@ -421,3 +421,13 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .atlas-sync-conflict-resolved { font-size: 11px; color: var(--ok); }
 .atlas-sync-conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .atlas-sync-conflict-actions .atlas-sync-btn { padding: 4px 8px; font-size: 11px; }
+
+/* ===== Sync v1 C4: devices + diagnostics ===== */
+.atlas-sync-devices { margin-top: 14px; font-size: 12px; }
+.atlas-sync-devices summary { cursor: pointer; color: var(--muted); margin-bottom: 6px; }
+.atlas-sync-devices-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.atlas-sync-device { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--panel-2); border-radius: 8px; }
+.atlas-sync-device-name { color: var(--text); font-weight: 600; }
+.atlas-sync-device-meta { color: var(--muted); font-size: 11px; }
+.atlas-sync-device .atlas-sync-btn { align-self: flex-start; margin-top: 4px; }
+.atlas-sync-devices-empty { color: var(--muted); font-size: 12px; }

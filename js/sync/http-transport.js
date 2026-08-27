@@ -120,6 +120,16 @@ export function createHttpTransport({ endpoint, getToken, fetchImpl }){
       const result = await request('/v1/pair/codes', { method: 'POST', body: {} });
       return { code: result?.code, expiresAt: Number(result?.expiresAt) || 0 };
     },
+
+    // C4 device management — the authenticated device sees its own sync-space.
+    async listDevices(){
+      const result = await request('/v1/devices');
+      return Array.isArray(result?.devices) ? result.devices : [];
+    },
+
+    async renameSelf(deviceName){
+      return request('/v1/devices/rename', { method: 'POST', body: { deviceName } });
+    },
   };
 }
 

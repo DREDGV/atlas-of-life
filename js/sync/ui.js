@@ -228,8 +228,14 @@ export function createSyncPanel({ runtime, mount }){
       revoke.disabled = true;
       await runtime.unpair();
     });
-    actions.append(syncNow, createCode, revoke);
+    const diagnostics = el('button', 'atlas-sync-btn', 'Экспорт диагностики');
+    diagnostics.type = 'button';
+    diagnostics.title = 'Сохранить техническую информацию о синхронизации (без секретов)';
+    diagnostics.addEventListener('click', () => exportDiagnostics(runtime));
+    actions.append(syncNow, createCode, revoke, diagnostics);
     wrap.appendChild(actions);
+
+    wrap.appendChild(buildDevicesSection(runtime));
 
     const conflicts = runtime.getConflicts();
     const unresolved = conflicts.filter(entry => entry.resolution !== 'resolved');
@@ -356,3 +362,75 @@ export function openSyncModal({ runtime, title = 'Синхронизация' })
 // Helper for capturing the pairing code entered in a dialog created by the
 // host app (kept for symmetry with claimPairingCode usage).
 export { claimPairingCode };
+
+// ---------------------------------------------------------------------------
+// C4: device management + diagnostics export
+// ---------------------------------------------------------------------------
+
+// Download a diagnostic JSON snapshot. No secrets: the token never leaves
+// localStorage and is not part of the payload.
+function exportDiagnostics(runtime){
+  try {
+    const diagnostics = runtime.getDiagnostics();
+    const blob = new Blob([JSON.stringify(diagnostics, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `atlas-sync-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  } catch (error) {
+    console.warn('diagnostics export failed', error?.message || error);
+  }
+}
+
+function buildDevicesSection(runtime){
+  const details = el('details', 'atlas-sync-devices');
+  details.appendChild(el('summary', 'atlas-sync-devices-summary', 'Мои устройства'));
+  const list = el('ul', 'atlas-sync-devices-list');
+  details.appendChild(list);
+  list.appendChild(el('li', 'atlas-sync-devices-empty', 'Загрузка…'));
+
+  runtime.listDevices()
+    .then(devices => {
+      list.replaceChildren();
+      if (devices.length === 0) {
+        list.appendChild(el('li', 'atlas-sync-devices-empty', 'Пока нет устройств'));
+        return;
+      }
+      const selfId = runtime.getStatus().deviceId;
+      for (const device of devices) {
+        const item = el('li', 'atlas-sync-device');
+        const name = el('span', 'atlas-sync-device-name', device.deviceName || 'Без имени');
+        if (device.deviceId === selfId) name.textContent = `${name.textContent} (это устройство)`;
+        const meta = el('div', 'atlas-sync-device-meta',
+          `id ${shortId(device.deviceId)} · вход ${formatTime(device.lastSeenAt)}`);
+        item.append(name, meta);
+        if (device.deviceId === selfId) {
+          const rename = el('button', 'atlas-sync-btn', 'Переименовать');
+          rename.type = 'button';
+          rename.addEventListener('click', async () => {
+            const next = window.prompt('Новое имя устройства:', device.deviceName || 'Atlas device');
+            if (!next || !next.trim()) return;
+            try {
+              await runtime.renameSelf(next.trim());
+            } catch (error) {
+              item.after(el('div', 'atlas-sync-error', error?.message || String(error)));
+            }
+          });
+          item.appendChild(rename);
+        }
+        list.appendChild(item);
+      }
+    })
+    .catch(error => {
+      list.replaceChildren();
+      list.appendChild(el('li', 'atlas-sync-devices-empty', `Не удалось загрузить: ${error?.message || error}`));
+    });
+
+  return details;
+}

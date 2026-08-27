@@ -248,6 +248,15 @@ function createStore(dbPath, pairing){
   const countDevices = db.prepare(
     'SELECT COUNT(*) AS count FROM sync_devices WHERE revoked_at IS NULL'
   );
+  const listDevices = db.prepare(`
+    SELECT device_id, device_name, created_at, last_seen_at
+    FROM sync_devices
+    WHERE revoked_at IS NULL
+    ORDER BY created_at ASC
+  `);
+  const renameDevice = db.prepare(
+    'UPDATE sync_devices SET device_name = ? WHERE device_id = ?'
+  );
 
   return {
     authenticate(token){
@@ -259,6 +268,24 @@ function createStore(dbPath, pairing){
 
     revokeDevice(deviceId){
       return revokeDevice.run(Date.now(), deviceId).changes === 1;
+    },
+
+    // C4 device management: every device of the same sync-space may see the
+    // list; renaming applies to the authenticated device only.
+    devices(){
+      return listDevices.all().map(row => ({
+        deviceId: row.device_id,
+        deviceName: row.device_name,
+        createdAt: row.created_at,
+        lastSeenAt: row.last_seen_at,
+      }));
+    },
+
+    renameDevice(deviceId, deviceName){
+      const name = boundedString(deviceName, 80);
+      if (!name) throw Object.assign(new Error('Invalid device name'), { statusCode: 400 });
+      renameDevice.run(name, deviceId);
+      return { deviceId, deviceName: name };
     },
 
     createPairingCode(createdBy){
@@ -490,6 +517,28 @@ export function createSyncServer(options = {}){
         }
         store.revokeDevice(credential.deviceId);
         return send(200, { revoked: true });
+      }
+
+      // C4 device management
+      if (request.method === 'GET' && url.pathname === '/v1/devices') {
+        return send(200, { devices: store.devices() });
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/devices/rename') {
+        if (credential.type !== 'device') {
+          return send(403, { error: 'device_credential_required' });
+        }
+        const body = await readJson(request);
+        return send(200, store.renameDevice(credential.deviceId, body?.deviceName));
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/devices/revoke') {
+        // Admin can revoke any device of the sync-space (device recovery path).
+        if (credential.type !== 'admin') {
+          return send(403, { error: 'admin_credential_required' });
+        }
+        const body = await readJson(request);
+        const deviceId = boundedString(body?.deviceId, 160);
+        if (!deviceId) return send(400, { error: 'invalid_request', message: 'deviceId required' });
+        return send(200, { revoked: store.revokeDevice(deviceId) });
       }
 
       if (request.method === 'POST' && url.pathname === '/v1/ops/push') {
