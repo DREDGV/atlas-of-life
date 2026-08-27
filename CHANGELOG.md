@@ -16,6 +16,28 @@
 
 ---
 
+## 0.11.0-alpha.5 - 2026-08-26
+
+### Stage C4 — Sync v1 Product Closure
+
+#### Добавлено
+- **Device management**: сервер `GET /v1/devices` (список устройств sync-space: имя, последний вход), `POST /v1/devices/rename` (себя), `POST /v1/devices/revoke` (admin — путь восстановления при утере устройства); UI — секция «Мои устройства» в панели Sync (список, переименование себя)
+- **Bootstrap нового устройства**: свежий клиент привязывается и в один sync воспроизводит **весь** stream с нуля (captures, updates, routes, deletes, restores, проекции результата) — без ручного JSON-импорта; snapshot-сервис не строится (replay достаточно, мастер-план §11.2)
+- **Экспорт диагностики**: кнопка в панели Sync → JSON (appVersion, deviceId, endpoint, pending/failed/conflicts, cursor, lastSyncAt, lastError, …) **без секретов** (проверено тестом)
+- **Disable/unlink явно отделён от удаления данных**: «Отключить синхронизацию» = revoke-self + очистка конфигурации; локальные данные Atlas не трогаются (подтверждение в диалоге)
+
+#### Техническое
+- `tests/sync-c4.mjs` — device management (list/rename/admin-revoke), bootstrap-replay свежего клиента, diagnostics без секретов, renameSelf без потери токена
+- `tools/smoke-c4.mjs` — три независимых браузера: новое устройство bootstrap'ится из нуля, панель «Мои устройства» показывает все три, переименование применяется на сервере и в конфиге
+- **Версия** `0.11.0-alpha.5`; PWA cache `atlas-capture-0.11.0-alpha.5`
+
+#### Stage C закрыт
+- 0.11.x Sync v1: C0 Foundation → C1 Remote → C2 Result Bridge → C3 Conflicts → C4 Closure.
+- Следующий крупный этап — 0.12.x Today 2.0 (по roadmap; не начинается без команды).
+- Остаётся на будущее: Full Sync (Tasks/Projects/Domains/History), encryption at rest, background push, WebSocket realtime.
+
+---
+
 ## 0.11.0-alpha.4 - 2026-08-26
 
 ### Stage C3 — Conflicts & Recovery

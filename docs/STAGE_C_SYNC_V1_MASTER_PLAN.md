@@ -2,11 +2,11 @@
 
 **Документ:** `STAGE_C_SYNC_V1_MASTER_PLAN.md`  
 **Статус:** рабочий мастер-план Stage C  
-**Дата:** 20 августа 2026  
+**Дата:** 26 августа 2026  
 **Линейка версий:** `0.11.x`  
-**Текущий этап:** C2 — Task Result Bridge  
+**Текущий этап:** C4 — Sync v1 Product Closure  
 **База:** `revival-preparation`  
-**C0:** завершён и замержен в `revival-preparation`
+**C0–C3:** завершены и в `revival-preparation` (C3 — Draft PR #21)
 
 ---
 
@@ -221,8 +221,8 @@ outbox ждёт
 | C0 | `0.11.0-alpha.1` | Sync Foundation + local Inbox vertical slice | ✅ DONE |
 | C1 | `0.11.0-alpha.2` | Real Remote Sync | ✅ DONE (PR #17) |
 | C2 | `0.11.0-alpha.3` | Routed Result / Task Bridge | ✅ DONE (PR #20) |
-| C3 | `0.11.0-alpha.4` | Multi-device Conflicts & Recovery | 🔴 CURRENT |
-| C4 | `0.11.0-alpha.5` | Sync v1 Product Closure | Planned |
+| C3 | `0.11.0-alpha.4` | Multi-device Conflicts & Recovery | ✅ DONE (Draft PR #21) |
+| C4 | `0.11.0-alpha.5` | Sync v1 Product Closure | 🔴 CURRENT (Draft PR #22) |
 
 Это рабочая структура, а не священная табличка.
 
