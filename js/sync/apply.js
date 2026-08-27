@@ -10,6 +10,8 @@
 import { state } from '../state.js';
 import {
   applyRemoteInboxCapture,
+  applyRemoteInboxDelete,
+  applyRemoteInboxRestore,
   applyRemoteInboxRevert,
   applyRemoteInboxRoute,
   applyRemoteInboxUpdate,
@@ -64,7 +66,12 @@ function applyInboxUpdate(operation){
   const id = after.id || operation.entityId;
   if (!id) throw new Error('inbox.update: id missing');
   const item = state.inbox.find(entry => entry.id === id);
-  if (!item) throw new Error(`inbox.update: unknown inbox item ${id}`);
+  if (!item) {
+    // C3 deleted-race: the record was deleted on this device while the remote
+    // still edited it. Not invalid — a real multi-device collision the user
+    // can resolve (restore+apply or keep deleted).
+    return { conflict: true, conflictStatus: 'deleted_race', reason: 'запись удалена на этом устройстве' };
+  }
 
   // baseVersion conflict: if the local item moved past the version this update
   // was based on, refuse instead of clobbering (silent last-write-wins).
@@ -73,7 +80,7 @@ function applyInboxUpdate(operation){
     item.updatedAt != null &&
     Number(operation.baseVersion) !== Number(item.updatedAt)
   ) {
-    return { conflict: true };
+    return { conflict: true, conflictStatus: 'base_version', reason: 'изменена на двух устройствах' };
   }
 
   applyRemoteInboxUpdate(id, after, {});
@@ -81,11 +88,21 @@ function applyInboxUpdate(operation){
 }
 
 function applyInboxRoute(payload){
+  const after = payload?.inboxAfter || {};
+  if (!state.inbox.some(entry => entry.id === after.id)) {
+    return { conflict: true, conflictStatus: 'deleted_race', reason: 'запись удалена на этом устройстве' };
+  }
   applyRemoteInboxRoute(payload, {});
+  return { conflict: false };
 }
 
 function applyInboxRevert(payload){
+  const after = payload?.inboxAfter || {};
+  if (!state.inbox.some(entry => entry.id === after.id)) {
+    return { conflict: true, conflictStatus: 'deleted_race', reason: 'запись удалена на этом устройстве' };
+  }
   applyRemoteInboxRevert(payload, {});
+  return { conflict: false };
 }
 
 // applyIncomingOperation returns { applied, deduped?, conflict?, unsupported? }.
@@ -96,20 +113,31 @@ export function applyIncomingOperation(operation){
   if (isApplied(operation.id)) return { applied: false, deduped: true };
 
   let conflict = false;
+  let conflictStatus = null;
   switch (operation.type) {
     case 'inbox.capture':
       applyInboxCapture(operation.payload);
       break;
     case 'inbox.update': {
       const result = applyInboxUpdate(operation);
-      if (result.conflict) return { applied: false, conflict: true };
+      if (result.conflict) return { applied: false, conflict: true, conflictStatus: result.conflictStatus || 'base_version' };
       break;
     }
-    case 'inbox.route_to_task':
-      applyInboxRoute(operation.payload);
+    case 'inbox.route_to_task': {
+      const result = applyInboxRoute(operation.payload);
+      if (result.conflict) return { applied: false, conflict: true, conflictStatus: 'deleted_race' };
       break;
-    case 'inbox.route_revert':
-      applyInboxRevert(operation.payload);
+    }
+    case 'inbox.route_revert': {
+      const result = applyInboxRevert(operation.payload);
+      if (result.conflict) return { applied: false, conflict: true, conflictStatus: 'deleted_race' };
+      break;
+    }
+    case 'inbox.delete':
+      applyRemoteInboxDelete(operation.payload, {});
+      break;
+    case 'inbox.restore':
+      applyRemoteInboxRestore(operation.payload, {});
       break;
     case 'task.result.upsert':
       applyRemoteTaskResultUpsert(operation.payload, {});

@@ -831,3 +831,10 @@ body {
 .inbox-result-line { font-size: 12px; color: var(--text-muted); }
 .inbox-result-done { font-size: 12px; color: var(--accent); margin-top: 2px; }
 .inbox-result-missing { font-size: 12px; color: var(--text-muted); font-style: italic; }
+
+/* ===== Sync v1 C3: conflict resolution ===== */
+.atlas-sync-conflict { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.atlas-sync-conflict.is-resolved { opacity: 0.55; }
+.atlas-sync-conflict-resolved { font-size: 11px; color: var(--accent); }
+.atlas-sync-conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.atlas-sync-conflict-actions .atlas-sync-btn { padding: 6px 10px; font-size: 11px; }

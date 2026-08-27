@@ -414,3 +414,10 @@ footer{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(
 .atlas-sync-conflicts{margin-top:14px;font-size:12px}
 .atlas-sync-conflicts summary{cursor:pointer;color:var(--warn);margin-bottom:6px}
 .atlas-sync-conflicts-list{margin:0;padding-left:18px;color:var(--muted);line-height:1.6}
+
+/* ===== Sync v1 C3: conflict resolution ===== */
+.atlas-sync-conflict { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--panel-2); }
+.atlas-sync-conflict.is-resolved { opacity: .55; }
+.atlas-sync-conflict-resolved { font-size: 11px; color: var(--ok); }
+.atlas-sync-conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.atlas-sync-conflict-actions .atlas-sync-btn { padding: 4px 8px; font-size: 11px; }

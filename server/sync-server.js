@@ -40,6 +40,8 @@ export const OPERATION_TYPES = new Set([
   'inbox.update',
   'inbox.route_to_task',
   'inbox.route_revert',
+  'inbox.delete',
+  'inbox.restore',
   'task.result.upsert',
   'task.result.remove',
 ]);

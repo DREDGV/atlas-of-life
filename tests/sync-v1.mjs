@@ -148,19 +148,18 @@ const transport = createLocalRelay({
   console.log('✓ Test 6: resultRef survives + revert');
 }
 
-// Test 7: invalid operation does not corrupt state
+// Test 7: update for an unknown record does not corrupt state — C3 classifies
+// it as a deleted_race conflict instead of throwing (a real multi-device
+// collision: the record was deleted locally while the remote still edited it).
 {
   const store = makeStore();
   switchClient(store);
   applyIncomingOperation({ id: 'op-c3', deviceId: 'device-X', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-v', payload: { id: 'inbox-v', rawText: 'Целая запись', status: 'new' } });
   const before = JSON.stringify(state.inbox);
-  let threw = null;
-  try {
-    applyIncomingOperation({ id: 'op-bad', deviceId: 'device-X', timestamp: 2, type: 'inbox.update', entityType: 'inbox', entityId: 'inbox-missing', payload: { after: { id: 'inbox-missing', status: 'processed' } } });
-  } catch (error) { threw = error; }
-  assert(threw !== null, 'Test 7a: invalid op throws');
+  const result = applyIncomingOperation({ id: 'op-bad', deviceId: 'device-X', timestamp: 2, type: 'inbox.update', entityType: 'inbox', entityId: 'inbox-missing', payload: { after: { id: 'inbox-missing', status: 'processed' } } });
+  assert(result.conflict === true && result.conflictStatus === 'deleted_race', 'Test 7a: unknown-record update reported as deleted_race conflict');
   assert(JSON.stringify(state.inbox) === before, 'Test 7b: state unchanged');
-  console.log('✓ Test 7: invalid op does not corrupt state');
+  console.log('✓ Test 7: deleted-race update does not corrupt state');
 }
 
 // Test 8: baseVersion conflict → detect + refuse (no silent last-write-wins)

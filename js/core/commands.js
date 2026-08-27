@@ -259,7 +259,7 @@ export function captureInbox(text, options = {}){
 function deleteInboxMutation(id, options){
   const removal = removeInboxItem(id);
   if (!removal) return null;
-  appendOperation({
+  const operation = appendOperation({
     type: 'inbox.delete',
     entityType: 'inbox',
     entityId: removal.item.id,
@@ -267,6 +267,7 @@ function deleteInboxMutation(id, options){
     payload: removal,
   }, { timestamp: options.now, deviceId: options.deviceId });
   finish(options);
+  enqueueOutbound(operation); // C3: deletions now sync (W2)
   return removal;
 }
 
@@ -276,13 +277,14 @@ export function deleteInbox(id, options = {}){
 
 function undoDeleteInboxMutation(removal, options){
   if (!restoreInboxItem(removal)) return false;
-  appendOperation({
+  const operation = appendOperation({
     type: 'inbox.restore',
     entityType: 'inbox',
     entityId: removal.item.id,
     payload: removal,
   }, { timestamp: options.now, deviceId: options.deviceId });
   finish(options);
+  enqueueOutbound(operation); // C3: restores now sync (W2)
   return true;
 }
 
@@ -622,6 +624,180 @@ export function applyRemoteTaskResultRemove(payload, options = {}){
   });
 }
 
+// ---------------------------------------------------------------------------
+// C3 remote apply — Inbox deletion / restoration (W2). Both are idempotent:
+// deleting an already-absent record and restoring an already-present one are
+// harmless no-ops, which makes replay and re-delivery safe.
+// ---------------------------------------------------------------------------
+
+function applyRemoteInboxDeleteMutation(payload){
+  const id = payload?.item?.id || payload?.id;
+  if (!id) throw new Error('remote inbox.delete: item id missing');
+  if (!Array.isArray(state.inbox)) state.inbox = [];
+  const index = state.inbox.findIndex(item => item.id === id);
+  if (index < 0) return null; // already gone — idempotent
+  const [removed] = state.inbox.splice(index, 1);
+  return removed;
+}
+
+export function applyRemoteInboxDelete(payload, options = {}){
+  return runAtomicCommand(() => {
+    const removed = applyRemoteInboxDeleteMutation(payload);
+    finish(options);
+    return removed;
+  });
+}
+
+function applyRemoteInboxRestoreMutation(payload){
+  const removal = payload?.removal || payload;
+  const item = removal?.item;
+  if (!item || !item.id) throw new Error('remote inbox.restore: item id missing');
+  if (!Array.isArray(state.inbox)) state.inbox = [];
+  if (state.inbox.some(entry => entry.id === item.id)) return null; // already present — idempotent
+  const index = Math.max(0, Math.min(Number(removal.index) || state.inbox.length, state.inbox.length));
+  state.inbox.splice(index, 0, cloneCommandValue(item));
+  return item;
+}
+
+export function applyRemoteInboxRestore(payload, options = {}){
+  return runAtomicCommand(() => {
+    const restored = applyRemoteInboxRestoreMutation(payload);
+    finish(options);
+    return restored;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// C3 conflict resolution — user-driven, local. The quarantined operation is
+// re-applied (or deliberately not) according to the user's choice, and the
+// quarantine entry is marked resolved by the engine afterwards.
+// ---------------------------------------------------------------------------
+
+function conflictItemId(conflict){
+  return conflict?.operation?.entityId ||
+    conflict?.operation?.payload?.after?.id ||
+    conflict?.operation?.payload?.inboxAfter?.id ||
+    null;
+}
+
+function makeInboxId(){
+  if (globalThis.crypto?.randomUUID) return `inbox-${globalThis.crypto.randomUUID()}`;
+  return `inbox-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Rebuild a full inbox item from a remote snapshot (update/route payloads
+// carry the complete item at the time of the operation).
+function restoreInboxFromSnapshot(after){
+  if (!after || !after.id || typeof after.text !== 'string') return null;
+  return {
+    id: String(after.id),
+    text: String(after.text),
+    rawText: typeof after.rawText === 'string' ? after.rawText : String(after.text),
+    inputType: after.inputType || 'text',
+    source: after.source || 'desktop-capture',
+    status: after.status || 'new',
+    userHint: after.userHint ?? null,
+    itemType: after.itemType ?? null,
+    domainHintId: after.domainHintId ?? null,
+    deviceId: after.deviceId || null,
+    entryPoint: after.entryPoint || 'app',
+    resultRef: after.resultRef ?? null,
+    createdAt: Number(after.createdAt) || Date.now(),
+    updatedAt: Number(after.updatedAt) || Date.now(),
+  };
+}
+
+// Force-apply the quarantined operation's final state to the local Inbox
+// record (used by accept_remote / keep_both / restore_apply resolutions).
+function applyRemoteStateForConflict(op){
+  switch (op.type) {
+    case 'inbox.update': {
+      const after = op.payload?.after;
+      if (!after?.id) throw new Error('conflict update op missing after.id');
+      let item = state.inbox.find(entry => entry.id === after.id);
+      if (!item) {
+        const restored = restoreInboxFromSnapshot(after);
+        if (!restored) throw new Error('conflict update: cannot rebuild the record');
+        state.inbox.push(restored);
+        item = restored;
+      }
+      if (Object.hasOwn(after, 'text')) item.text = String(after.text).trim();
+      if (Object.hasOwn(after, 'itemType')) item.itemType = after.itemType ?? null;
+      if (Object.hasOwn(after, 'status')) item.status = after.status;
+      if (Object.hasOwn(after, 'domainHintId')) item.domainHintId = after.domainHintId ?? null;
+      if (Object.hasOwn(after, 'updatedAt')) item.updatedAt = Number(after.updatedAt) || item.updatedAt;
+      return item;
+    }
+    case 'inbox.route_to_task': {
+      const after = op.payload?.inboxAfter;
+      if (!after?.id) throw new Error('conflict route op missing inboxAfter.id');
+      let item = state.inbox.find(entry => entry.id === after.id);
+      if (!item) {
+        const restored = restoreInboxFromSnapshot(after);
+        if (!restored) throw new Error('conflict route: cannot rebuild the record');
+        state.inbox.push(restored);
+        item = restored;
+      }
+      item.status = after.status || 'processed';
+      item.resultRef = after.resultRef || null;
+      item.updatedAt = after.updatedAt ?? Date.now();
+      return item;
+    }
+    case 'inbox.route_revert': {
+      const after = op.payload?.inboxAfter;
+      if (!after?.id) throw new Error('conflict revert op missing inboxAfter.id');
+      const item = state.inbox.find(entry => entry.id === after.id);
+      if (!item) throw new Error('conflict revert: record unavailable');
+      delete item.resultRef;
+      item.status = after.status || 'reviewed';
+      item.updatedAt = after.updatedAt ?? Date.now();
+      return item;
+    }
+    default:
+      throw new Error(`resolveConflict: unsupported operation ${op.type}`);
+  }
+}
+
+function resolveConflictMutation(conflict, action, options){
+  const op = conflict?.operation;
+  if (!op) throw new Error('resolveConflict: conflict missing operation');
+  const id = conflictItemId(conflict);
+
+  if (action === 'keep_both') {
+    // Keep a copy of the LOCAL version as a new record (it must propagate),
+    // then the remote version takes over the original id.
+    const local = id ? state.inbox.find(entry => entry.id === id) : null;
+    if (local) {
+      const copy = { ...cloneCommandValue(local), id: makeInboxId(), updatedAt: options.now ?? Date.now() };
+      state.inbox.push(copy);
+      const captureOp = appendOperation({
+        type: 'inbox.capture',
+        entityType: 'inbox',
+        entityId: copy.id,
+        payload: copy,
+      }, { timestamp: options.now ?? Date.now(), deviceId: options.deviceId });
+      enqueueOutbound(captureOp);
+    }
+  }
+
+  if (action === 'accept_remote' || action === 'keep_both' || action === 'restore_apply') {
+    applyRemoteStateForConflict(op);
+  }
+  // 'keep_local' / 'keep_deleted' / 'dismiss': no state change.
+
+  return { id, action };
+}
+
+// The user resolved a quarantined conflict. Only the state part lives here;
+// the quarantine entry itself is marked resolved by the engine.
+export function resolveConflict(conflict, action, options = {}){
+  return runAtomicCommand(() => {
+    const result = resolveConflictMutation(conflict, action, options);
+    finish(options);
+    return result;
+  });
+}
+
 function convertInboxToTaskMutation(id, options){
   const result = convertInboxItemToTask(id, options);
   if (!result) return null;
@@ -855,6 +1031,103 @@ function createDomainMutation(input, options){
 
 export function createDomain(input, options = {}){
   return runAtomicCommand(() => createDomainMutation(input, options));
+}
+
+// ---------------------------------------------------------------------------
+// C3 (W3): Domain/Project updates. Renames must refresh the C2 result
+// projections on remote devices — the phone caches domainTitle/projectTitle
+// inside the projection, so a rename without a re-emit would show a stale
+// name forever. Only routed Tasks (sourceInboxId) get a re-emit; tasks from
+// outside the Inbox flow are out of scope.
+// ---------------------------------------------------------------------------
+
+function routedTasksInDomain(domainId){
+  return state.tasks.filter(task => {
+    if (!task?.sourceInboxId) return false;
+    if (task.domainId === domainId) return true;
+    if (task.projectId) {
+      const project = state.projects.find(entry => entry.id === task.projectId);
+      return project?.domainId === domainId;
+    }
+    return false;
+  });
+}
+
+function updateDomainMutation(domainId, patch, options){
+  const domain = state.domains.find(item => item.id === domainId);
+  if (!domain) return null;
+  const changes = {};
+  if (Object.hasOwn(patch, 'title')) {
+    const title = String(patch.title ?? '').trim();
+    if (!title) throw new Error('Domain title cannot be empty');
+    if (state.domains.some(d => d.id !== domainId && d.title.toLowerCase() === title.toLowerCase())) {
+      throw new Error('Такой домен уже есть');
+    }
+    changes.title = title;
+  }
+  if (Object.hasOwn(patch, 'color')) changes.color = String(patch.color ?? '').trim();
+  const comparable = Object.entries(changes).some(([key, value]) =>
+    JSON.stringify(domain[key] ?? null) !== JSON.stringify(value ?? null)
+  );
+  if (!comparable) return { domain, before: snapshot(domain), operation: null };
+
+  const before = snapshot(domain);
+  Object.assign(domain, changes);
+  domain.updatedAt = options.now ?? Date.now();
+  const operation = appendOperation({
+    type: 'domain.update',
+    entityType: 'domain',
+    entityId: domain.id,
+    payload: { before, after: domain },
+  }, { timestamp: domain.updatedAt, deviceId: options.deviceId });
+  finish(options);
+  // W3: routed result projections carry the domain title — refresh them.
+  routedTasksInDomain(domain.id).forEach(task => {
+    enqueueTaskResultOperation('task.result.upsert', task, options);
+  });
+  return { domain, before, operation };
+}
+
+export function updateDomain(domainId, patch, options = {}){
+  return runAtomicCommand(() => updateDomainMutation(domainId, patch, options));
+}
+
+function updateProjectMutation(projectId, patch, options){
+  const project = state.projects.find(item => item.id === projectId);
+  if (!project) return null;
+  const changes = {};
+  if (Object.hasOwn(patch, 'title')) {
+    const title = String(patch.title ?? '').trim();
+    if (!title) throw new Error('Project title cannot be empty');
+    changes.title = title;
+  }
+  if (Object.hasOwn(patch, 'priority')) changes.priority = patch.priority || 2;
+  const comparable = Object.entries(changes).some(([key, value]) =>
+    JSON.stringify(project[key] ?? null) !== JSON.stringify(value ?? null)
+  );
+  if (!comparable) return { project, before: snapshot(project), operation: null };
+
+  const before = snapshot(project);
+  Object.assign(project, changes);
+  project.updatedAt = options.now ?? Date.now();
+  const operation = appendOperation({
+    type: 'project.update',
+    entityType: 'project',
+    entityId: project.id,
+    payload: { before, after: project },
+  }, { timestamp: project.updatedAt, deviceId: options.deviceId });
+  finish(options);
+  // W3: routed result projections carry the project title — refresh them.
+  state.tasks
+    .filter(task => task?.sourceInboxId && task.projectId === projectId)
+    .forEach(task => {
+      enqueueTaskResultOperation('task.result.upsert', task, options);
+    });
+  return { project, before, operation };
+}
+
+export function updateProject(projectId, patch, options = {}){
+  return runAtomicCommand(() => updateProjectMutation(projectId, patch, options));
 }
 
 function promoteTaskToProjectMutation(taskId, options){

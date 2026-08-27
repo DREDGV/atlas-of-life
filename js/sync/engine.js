@@ -25,7 +25,8 @@ import {
   MAX_ATTEMPTS,
 } from './outbox.js';
 import { applyIncomingOperation } from './apply.js';
-import { recordConflict, listConflicts } from './quarantine.js';
+import { recordConflict, listConflicts, listUnresolvedConflicts, resolveConflictEntry } from './quarantine.js';
+import { resolveConflict } from '../core/commands.js';
 
 const CURSOR_KEY = 'atlas-sync-cursor-v1';
 const LAST_SYNC_KEY = 'atlas-sync-last-sync-at';
@@ -44,7 +45,10 @@ export function createSyncEngine({ transport, storage } = {}){
   let lastSyncAt = Number(store.get(LAST_SYNC_KEY)) || null;
   let lastError = null;
   let authFailed = false;
-  let conflicts = listConflicts().length;
+  // Conflict count reflects UNRESOLVED quarantine entries (C3): resolved ones
+  // no longer demand attention.
+  const unresolvedCount = () => listUnresolvedConflicts().length;
+  let conflicts = unresolvedCount();
 
   const saveCursor = () => store.set(CURSOR_KEY, cursor);
 
@@ -119,16 +123,31 @@ export function createSyncEngine({ transport, storage } = {}){
       try {
         const result = applyIncomingOperation(operation);
         if (result.conflict) {
-          recordConflict({ operation, serverSequence, reason: 'baseVersion mismatch', status: 'conflict' });
-          conflicts += 1;
+          recordConflict({
+            operation,
+            serverSequence,
+            reason: result.reason || 'conflict',
+            status: 'conflict',
+            conflictStatus: result.conflictStatus || 'base_version',
+          });
         } else if (result.unsupported) {
-          recordConflict({ operation, serverSequence, reason: `unsupported type: ${operation.type}`, status: 'unsupported' });
-          conflicts += 1;
+          recordConflict({
+            operation,
+            serverSequence,
+            reason: `unsupported type: ${operation.type}`,
+            status: 'unsupported',
+            conflictStatus: 'unsupported',
+          });
         }
       } catch (error) {
         // Permanently invalid operation: quarantine durably, then move past it.
-        recordConflict({ operation, serverSequence, reason: error?.message || String(error), status: 'invalid' });
-        conflicts += 1;
+        recordConflict({
+          operation,
+          serverSequence,
+          reason: error?.message || String(error),
+          status: 'invalid',
+          conflictStatus: 'invalid',
+        });
         lastError = `apply failed (${operation.type}): ${error?.message || error}`;
       }
       // Cursor advances only after apply OR durable quarantine.
@@ -183,7 +202,7 @@ export function createSyncEngine({ transport, storage } = {}){
       lastSyncAt,
       lastError,
       authFailed,
-      conflicts,
+      conflicts: unresolvedCount(),
     };
   }
 
@@ -191,5 +210,17 @@ export function createSyncEngine({ transport, storage } = {}){
     return listConflicts();
   }
 
-  return { sync, pull, pushOutbox, recoverSent, getStatus, getConflicts, get cursor(){ return cursor; } };
+  // C3: the user resolved a quarantined conflict — apply the chosen action to
+  // local state (Core command) and durably mark the entry resolved.
+  function resolveConflictEntryUser(conflict, action){
+    const op = conflict?.operation;
+    if (!op) throw new Error('resolveConflict: conflict missing operation');
+    resolveConflict(conflict, action, { deviceId: getSyncDeviceId() });
+    const resolved = resolveConflictEntry(op.id, action);
+    if (!resolved) throw new Error('resolveConflict: quarantine entry not found');
+    conflicts = unresolvedCount();
+    return resolved;
+  }
+
+  return { sync, pull, pushOutbox, recoverSent, getStatus, getConflicts, resolveConflict: resolveConflictEntryUser, get cursor(){ return cursor; } };
 }

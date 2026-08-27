@@ -232,12 +232,17 @@ export function createSyncPanel({ runtime, mount }){
     wrap.appendChild(actions);
 
     const conflicts = runtime.getConflicts();
+    const unresolved = conflicts.filter(entry => entry.resolution !== 'resolved');
     if (conflicts.length > 0) {
       const details = el('details', 'atlas-sync-conflicts');
-      details.appendChild(el('summary', 'atlas-sync-conflicts-summary', `Конфликты и пропущенные операции (${conflicts.length})`));
+      details.appendChild(el('summary', 'atlas-sync-conflicts-summary',
+        unresolved.length > 0
+          ? `Требуют решения: ${unresolved.length}${conflicts.length > unresolved.length ? ` (решено ${conflicts.length - unresolved.length})` : ''}`
+          : `Конфликты (решено: ${conflicts.length})`));
       const list = el('ul', 'atlas-sync-conflicts-list');
       for (const entry of conflicts.slice(-20).reverse()) {
         const item = el('li');
+        item.className = entry.resolution === 'resolved' ? 'atlas-sync-conflict is-resolved' : 'atlas-sync-conflict';
         const type = entry.operation?.type || 'unknown';
         const reason = entry.reason || '';
         const when = formatTime(entry.detectedAt);
@@ -245,6 +250,12 @@ export function createSyncPanel({ runtime, mount }){
           el('strong', null, type),
           el('span', null, ` — ${reason} · ${when}`),
         );
+        if (entry.resolution === 'resolved') {
+          item.appendChild(el('div', 'atlas-sync-conflict-resolved',
+            `решено: ${entry.resolutionAction || 'dismiss'}`));
+        } else {
+          item.appendChild(buildConflictActions(entry));
+        }
         list.appendChild(item);
       }
       details.appendChild(list);
@@ -252,6 +263,42 @@ export function createSyncPanel({ runtime, mount }){
     }
 
     return wrap;
+  }
+
+  // C3: user actions for a pending conflict. The wording is human, not
+  // technical — no "baseVersion mismatch" in the UI.
+  function buildConflictActions(entry){
+    const actions = el('div', 'atlas-sync-conflict-actions');
+    const opType = entry.operation?.type || '';
+    const conflictStatus = entry.conflictStatus || (entry.status || '');
+
+    const addAction = (label, action, primary) => {
+      const button = el('button', `atlas-sync-btn${primary ? ' atlas-sync-btn-primary' : ''}`, label);
+      button.type = 'button';
+      button.addEventListener('click', async () => {
+        try {
+          await runtime.resolveConflict(entry, action);
+        } catch (error) {
+          button.after(el('div', 'atlas-sync-error', error?.message || String(error)));
+        }
+      });
+      actions.appendChild(button);
+    };
+
+    if (conflictStatus === 'deleted_race') {
+      addAction('Оставить удалённой', 'keep_deleted');
+      addAction('Восстановить и применить', 'restore_apply', true);
+      return actions;
+    }
+    if (conflictStatus === 'base_version' && opType === 'inbox.update') {
+      addAction('Оставить локальную', 'keep_local');
+      addAction('Принять удалённую', 'accept_remote');
+      addAction('Сохранить обе', 'keep_both');
+      return actions;
+    }
+    // invalid / unsupported / other: dismissing is the only sensible action.
+    addAction('Пропустить', 'dismiss');
+    return actions;
   }
 
   render();
