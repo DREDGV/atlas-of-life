@@ -83,6 +83,10 @@ export function createSyncEngine({ transport, storage } = {}){
     return promoted;
   }
 
+  function findOutboxEntry(id){
+    return listOutbox().find(entry => entry.operation?.id === id) || null;
+  }
+
   async function pushOutbox(){
     const pending = getPendingOps();
     if (pending.length === 0) return { pushed: 0 };
@@ -96,8 +100,22 @@ export function createSyncEngine({ transport, storage } = {}){
       // removed; every entry still `sent` after this becomes retryable.
       const ackedIds = result?.ackedIds || [];
       ackedIds.forEach(id => markAcked(id));
+      // P1 review fix: per-op server rejections are TERMINAL. Unlike transient
+      // network failures they must never retry — a malformed operation would
+      // otherwise loop forever between retryable → failed → promoteFailed.
+      // Mark BEFORE recoverSent so the rejected entries are not resurrected.
+      const serverConflicts = result?.conflicts || [];
+      for (const conflict of serverConflicts) {
+        const operationId = conflict?.operationId;
+        if (!operationId) continue;
+        updateOutboxEntry(operationId, {
+          syncStatus: 'rejected',
+          attempts: (findOutboxEntry(operationId)?.attempts || 0) + 1,
+          lastError: `server rejected: ${conflict?.reason || 'invalid_operation'}`,
+        });
+      }
       recoverSent();
-      return { pushed: pending.length, acked: ackedIds.length };
+      return { pushed: pending.length, acked: ackedIds.length, rejected: serverConflicts.length };
     } catch (error) {
       const message = error?.message || String(error);
       lastError = message;
@@ -189,15 +207,26 @@ export function createSyncEngine({ transport, storage } = {}){
       lastSyncAt = Date.now();
       store.set(LAST_SYNC_KEY, String(lastSyncAt));
     }
-    return { pulled, pushed: pushResult.pushed, failed: pushResult.failed || 0, cursor };
+    return {
+      pulled,
+      pushed: pushResult.pushed,
+      acked: pushResult.acked || 0,
+      rejected: pushResult.rejected || 0,
+      failed: pushResult.failed || 0,
+      cursor,
+    };
   }
 
   function getStatus(){
     const outbox = listOutbox();
+    const rejectedEntries = outbox.filter(entry => entry.syncStatus === 'rejected');
     return {
       deviceId: getSyncDeviceId(),
       pending: getPendingOps().length,
       failed: outbox.filter(entry => entry.syncStatus === 'failed').length,
+      rejected: rejectedEntries.length,
+      // Server-side reasons only (no operation payloads, no secrets).
+      rejectedReasons: rejectedEntries.slice(-5).map(entry => entry.lastError || 'server rejected'),
       cursor,
       lastSyncAt,
       lastError,

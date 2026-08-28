@@ -877,6 +877,8 @@ function initSync() {
       safeSetText(statusEl, 'Синхронизация: ошибка');
     } else if (status.pending > 0) {
       safeSetText(statusEl, `Ожидают отправки: ${status.pending}`);
+    } else if (status.rejected > 0) {
+      safeSetText(statusEl, `Отклонено сервером: ${status.rejected}`);
     } else if (status.failed > 0) {
       safeSetText(statusEl, `Ошибки отправки: ${status.failed}`);
     } else {

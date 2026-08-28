@@ -10,7 +10,7 @@ import { captureInbox, updateInbox } from '../js/core/commands.js';
 import { loadState } from '../js/storage.js';
 import { createSyncEngine } from '../js/sync/engine.js';
 import { createHttpTransport, claimPairingCode } from '../js/sync/http-transport.js';
-import { getPendingOps, listOutbox } from '../js/sync/outbox.js';
+import { getPendingOps, listOutbox, enqueueSyncOperation } from '../js/sync/outbox.js';
 import { resetSyncDeviceForTest } from '../js/sync/device.js';
 import { createSyncServer } from '../server/sync-server.js';
 import { existsSync, rmSync } from 'node:fs';
@@ -220,6 +220,47 @@ assert(tokenA && tokenB, 'setup: both clients paired');
   assert(recovered.pushed === 1 && getPendingOps().length === 0, 'Test 4e: failed entry re-promoted and delivered');
   assert(liveEngine.getStatus().failed === 0, 'Test 4f: no failed entries remain');
   console.log('✓ Test 4: failed outbox entries recover after the network returns');
+}
+
+// --- Test 5 (P1 review): server-rejected ops are terminal, never retried -----
+// The server refuses a malformed operation with a per-op conflict. The client
+// must move it to a terminal `rejected` state (visible in status), and later
+// successful cycles must NEVER resurrect it — otherwise an invalid operation
+// would loop forever between retryable/failed/promoteFailed.
+{
+  switchClient(storeA, 'device-e2e-a');
+  storeA.setItem('atlas-sync-token', tokenA);
+  const engine = createSyncEngine({ transport: makeTransport(storeA), storage: storeA });
+
+  // A hand-built envelope the server cannot accept: unknown type → invalid_operation.
+  enqueueSyncOperation({
+    id: 'op-rejected-1', deviceId: 'device-e2e-a', sequence: 900, timestamp: Date.now(),
+    type: 'task.wild', entityType: 'task', entityId: 'task-1',
+    payload: { id: 'task-1', title: 'никогда не будет принята' },
+  });
+  assert(getPendingOps().length === 1, 'Test 5a: malformed op queued');
+
+  const result = await engine.sync();
+  assert(result.pushed === 1 && result.acked === 0 && result.rejected === 1, 'Test 5b: attempted once, not acked, marked rejected');
+  const status = engine.getStatus();
+  assert(status.rejected === 1, `Test 5c: malformed op moved to terminal rejected (got ${status.rejected})`);
+  assert(status.pending === 0 && status.failed === 0, 'Test 5d: rejected is neither pending nor failed');
+  assert(getPendingOps().length === 0, 'Test 5e: rejected is not pending');
+
+  // Several successful cycles must NOT resurrect the rejected entry.
+  captureInbox('Нормальная запись', { deviceId: 'device-e2e-a' });
+  const first = await engine.sync();
+  assert(first.pushed === 1 && first.rejected === 0, 'Test 5f: the healthy op is delivered');
+  for (let i = 0; i < 2; i += 1) {
+    const cycle = await engine.sync();
+    assert(cycle.pushed === 0 && !cycle.failed, `Test 5g: cycle ${i + 2} is clean (no retries of the rejected op)`);
+  }
+  const after = engine.getStatus();
+  assert(after.rejected === 1, 'Test 5h: rejected entry stays terminal across healthy cycles');
+  assert(after.pending === 0 && after.failed === 0, 'Test 5i: rejected never re-enters the delivery pipeline');
+  const entry = listOutbox().find(item => item.operation.id === 'op-rejected-1');
+  assert(entry && entry.syncStatus === 'rejected' && typeof entry.lastError === 'string', 'Test 5j: server reason surfaced on the entry (no payload required)');
+  console.log('✓ Test 5: server-rejected ops are terminal and never retried');
 }
 
 await new Promise(resolve => server.close(resolve));

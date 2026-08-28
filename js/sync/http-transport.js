@@ -87,7 +87,13 @@ export function createHttpTransport({ endpoint, getToken, fetchImpl }){
           operations: ops,
         },
       });
-      return { ackedIds: Array.isArray(result?.ackedIds) ? result.ackedIds : [] };
+      return {
+        ackedIds: Array.isArray(result?.ackedIds) ? result.ackedIds : [],
+        // Per-op server rejections (invalid_operation, operation_id_conflict,
+        // …). The engine turns these into a TERMINAL outbox status — unlike
+        // transient network failures they must never be retried.
+        conflicts: Array.isArray(result?.conflicts) ? result.conflicts : [],
+      };
     },
 
     async pullOperations(cursor = 0, opts = {}){

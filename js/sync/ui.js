@@ -58,6 +58,9 @@ export function createSyncBadge({ runtime, onClick }){
     } else if (status.pending > 0) {
       text = `Ожидают: ${status.pending}`;
       state = 'pending';
+    } else if (status.rejected > 0) {
+      text = `Отклонено: ${status.rejected}`;
+      state = 'error';
     } else if (status.failed > 0) {
       text = `Ошибки: ${status.failed}`;
       state = 'error';
@@ -184,9 +187,16 @@ export function createSyncPanel({ runtime, mount }){
       row('Последняя синхронизация', formatTime(status.lastSyncAt)),
       row('Ожидают отправки', String(status.pending)),
       row('Ошибки отправки', String(status.failed)),
+      row('Отклонено сервером', String(status.rejected)),
       row('Конфликты', String(status.conflicts)),
     );
     wrap.appendChild(rows);
+
+    if (status.rejected > 0 && Array.isArray(status.rejectedReasons) && status.rejectedReasons.length > 0) {
+      const rejected = el('div', 'atlas-sync-error');
+      rejected.textContent = `Сервер отклонил операции: ${status.rejectedReasons.join('; ')}`;
+      wrap.appendChild(rejected);
+    }
 
     if (status.lastError) {
       const error = el('div', 'atlas-sync-error');
