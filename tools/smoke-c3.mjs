@@ -102,7 +102,30 @@ try {
     const s = await pageA.evaluate(() => window.atlasSync.getStatus());
     return s.pending === 0 && !s.lastError;
   }, { label: 'A pushed the delete' });
-  log('delete', 'phone deleted the record; the desktop will honor it (W2)');
+  log('delete', 'phone deleted the record; the desktop will classify the raced delete (W2)');
+
+  // B had already processed the record (newer version) → the delete is a
+  // delete_restore_race on B. The user keeps the processed record.
+  await pageB.evaluate(() => window.atlasSync.syncNow());
+  await waitFor(async () => {
+    return await pageB.evaluate(() => window.atlasSync.getStatus().conflicts === 1);
+  }, { timeout: 45000, label: 'B quarantined the raced delete (act 1)' });
+  await pageB.click('.atlas-sync-badge');
+  await waitFor(async () => {
+    return await pageB.evaluate(() => {
+      const buttons = [...document.querySelectorAll('.atlas-sync-conflict-actions .atlas-sync-btn')];
+      return buttons.some(button => button.textContent === 'Оставить запись');
+    });
+  }, { label: 'B panel offers «Оставить запись» for the raced delete' });
+  await pageB.evaluate(() => {
+    const button = [...document.querySelectorAll('.atlas-sync-conflict-actions .atlas-sync-btn')]
+      .find(el => el.textContent === 'Оставить запись');
+    button.click();
+  });
+  await waitFor(async () => {
+    return await pageB.evaluate(() => window.atlasSync.getStatus().conflicts === 0);
+  }, { label: 'B resolved the raced delete (kept the processed record)' });
+  log('keep-record', 'desktop kept its processed record (delete_restore_race resolved)');
 
   // --- 3. The desktop's earlier update hits the phone as deleted_race ---------
   await pageA.evaluate(() => window.atlasSync.syncNow());
@@ -167,7 +190,117 @@ try {
   assert(fatal.length === 0, `page errors: ${fatal.join(' | ')}`);
   log('clean', 'no duplicates, no lingering conflicts, no page errors');
 
-  console.log('\n✅ C3 two-browser smoke passed: delete sync + deleted_race conflict + resolution + convergence.');
+  // === Act 2 (review): delete ↔ restore race — the OTHER delivery order ======
+  // A captures, B edits the record (newer version), A deletes (older base) →
+  // B receives the raced delete → delete_restore_race on B → user picks
+  // «Удалить» → both sides converge (record gone everywhere).
+  log('act2', 'second scenario: delete vs newer local version');
+
+  await pageA.click('#navCapture');
+  await pageA.waitForSelector('#captureText:visible', { timeout: 15000 });
+  await pageA.fill('#captureText', 'Гонка версий');
+  await pageA.click('#btnSave');
+  await waitFor(async () => {
+    const s = await pageA.evaluate(() => window.atlasSync.getStatus());
+    return s.pending === 0 && !s.lastError;
+  }, { label: 'A pushed the second capture' });
+
+  await waitFor(async () => {
+    return await pageB.evaluate(() => window.state?.inbox?.length === 2);
+  }, { timeout: 45000, label: 'B received the second capture' });
+
+  // B edits the record → updatedAt moves ahead (v2)
+  await pageB.evaluate(async () => {
+    const { updateInbox } = await import('/js/core/commands.js');
+    const item = window.state.inbox.find(entry => entry.rawText === 'Гонка версий');
+    updateInbox(item.id, { status: 'reviewed' });
+    window.atlasSync.requestSync();
+  });
+  await waitFor(async () => {
+    const s = await pageB.evaluate(() => window.atlasSync.getStatus());
+    return s.pending === 0 && !s.lastError;
+  }, { label: 'B pushed the edit (v2)' });
+
+  // A deletes based on its OLDER version (v1)
+  await pageA.click('#navInbox');
+  await waitFor(async () => {
+    return await pageA.evaluate(() => document.querySelectorAll('.inbox-delete-btn').length === 2);
+  }, { label: 'A shows both rows' });
+  await pageA.evaluate(() => {
+    // delete the row whose text is «Гонка версий» — the delete buttons are in
+    // row order; the newest record is first in the list.
+    document.querySelectorAll('.inbox-row').forEach(row => {
+      if (row.querySelector('.inbox-row-text')?.textContent === 'Гонка версий') {
+        row.querySelector('.inbox-delete-btn').click();
+      }
+    });
+  });
+  await waitFor(async () => {
+    const s = await pageA.evaluate(() => window.atlasSync.getStatus());
+    return s.pending === 0 && !s.lastError;
+  }, { label: 'A pushed the delete (baseVersion v1)' });
+
+  // B receives the raced delete → delete_restore_race (record is v2 locally)
+  await pageB.evaluate(() => window.atlasSync.syncNow());
+  try {
+    await waitFor(async () => {
+      return await pageB.evaluate(() => window.atlasSync.getStatus().conflicts === 1);
+    }, { timeout: 45000, label: 'B quarantined the raced delete' });
+  } catch (error) {
+    const diag = await pageB.evaluate(() => ({
+      status: window.atlasSync.getStatus(),
+      conflicts: window.atlasSync.getConflicts().map(c => ({ id: c.operation?.id, type: c.operation?.type, entity: c.operation?.entityId, baseVersion: c.operation?.baseVersion, status: c.conflictStatus, resolution: c.resolution, seq: c.serverSequence })),
+      inbox: window.state.inbox.map(i => ({ id: i.id, status: i.status, updatedAt: i.updatedAt })),
+    }));
+    console.error('B diagnostics:', JSON.stringify(diag, null, 2));
+    throw error;
+  }
+  log('race', 'B detected delete_restore_race (delete based on older version)');
+
+  // B resolves with «Удалить» → convergence (both sides deleted)
+  await pageB.evaluate(() => {
+    const button = [...document.querySelectorAll('.atlas-sync-conflict-actions .atlas-sync-btn')]
+      .find(el => el.textContent === 'Удалить');
+    if (button) button.click();
+  });
+  await waitFor(async () => {
+    return await pageB.evaluate(() => window.atlasSync.getStatus().conflicts === 0);
+  }, { label: 'B resolved the delete race' });
+  await waitFor(async () => {
+    return await pageB.evaluate(() => window.state?.inbox?.length === 1);
+  }, { label: 'B removed the raced record' });
+
+  // A receives B's earlier edit → deleted_race (A deleted locally) → keep_deleted
+  await pageA.evaluate(() => window.atlasSync.syncNow());
+  await waitFor(async () => {
+    return await pageA.evaluate(() => window.atlasSync.getStatus().conflicts === 1);
+  }, { timeout: 45000, label: 'A quarantined the edit for its deleted record' });
+  await pageA.click('#btnInfo');
+  await pageA.evaluate(() => {
+    const button = [...document.querySelectorAll('.atlas-sync-conflict-actions .atlas-sync-btn')]
+      .find(el => el.textContent === 'Оставить удалённой');
+    if (button) button.click();
+  });
+  await waitFor(async () => {
+    return await pageA.evaluate(() => window.atlasSync.getStatus().conflicts === 0);
+  }, { label: 'A resolved its deleted_race' });
+
+  const finalA = await pageA.evaluate(() => ({
+    inbox: window.state.inbox.length,
+    conflicts: window.atlasSync.getStatus().conflicts,
+    pending: window.atlasSync.getStatus().pending,
+  }));
+  const finalB = await pageB.evaluate(() => ({
+    inbox: window.state.inbox.length,
+    conflicts: window.atlasSync.getStatus().conflicts,
+  }));
+  assert(finalA.inbox === 1 && finalA.conflicts === 0 && finalA.pending === 0, `A final mismatch: ${JSON.stringify(finalA)}`);
+  assert(finalB.inbox === 1 && finalB.conflicts === 0, `B final mismatch: ${JSON.stringify(finalB)}`);
+  const fatal2 = pageErrors.filter(message => !message.includes('favicon'));
+  assert(fatal2.length === 0, `page errors (act 2): ${fatal2.join(' | ')}`);
+  log('act2-done', 'delete_restore_race resolved; both devices converged without duplicates');
+
+  console.log('\n✅ C3 two-browser smoke passed: delete sync + deleted_race + delete_restore_race + convergence.');
 } catch (error) {
   failure = error;
   console.error('\n❌ C3 two-browser smoke failed:', error.message);

@@ -47,6 +47,8 @@ function resetState(){
   state.tasks = [];
   state.inbox = [];
   state.operationLog = [];
+  state.taskProjections = [];
+  state.inboxTombstones = [];
   state.activeDomain = 'd1';
   state.settings = { layoutMode: 'auto' };
   state.maxEdges = 300;
@@ -351,3 +353,4 @@ const transport = createLocalRelay({
 }
 
 console.log('\n✅ All Stage C0 sync tests passed.');
+

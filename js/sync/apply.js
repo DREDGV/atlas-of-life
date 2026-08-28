@@ -133,12 +133,20 @@ export function applyIncomingOperation(operation){
       if (result.conflict) return { applied: false, conflict: true, conflictStatus: 'deleted_race' };
       break;
     }
-    case 'inbox.delete':
-      applyRemoteInboxDelete(operation.payload, {});
+    case 'inbox.delete': {
+      const result = applyRemoteInboxDelete(operation.payload, { baseVersion: operation.baseVersion });
+      if (result?.conflict) {
+        return { applied: false, conflict: true, conflictStatus: result.conflictStatus || 'linked_result_delete', reason: result.reason };
+      }
       break;
-    case 'inbox.restore':
-      applyRemoteInboxRestore(operation.payload, {});
+    }
+    case 'inbox.restore': {
+      const result = applyRemoteInboxRestore(operation.payload, { baseVersion: operation.baseVersion });
+      if (result?.conflict) {
+        return { applied: false, conflict: true, conflictStatus: result.conflictStatus || 'delete_restore_race', reason: result.reason };
+      }
       break;
+    }
     case 'task.result.upsert':
       applyRemoteTaskResultUpsert(operation.payload, {});
       break;

@@ -44,6 +44,7 @@ function resetState(){
   state.inbox = [];
   state.operationLog = [];
   state.taskProjections = [];
+  state.inboxTombstones = [];
   state.activeDomain = 'd1';
   state.settings = { layoutMode: 'auto' };
   state.maxEdges = 300;
@@ -130,13 +131,15 @@ await pair(storeB, 'device-c4-b', 'ПК');
   switchClient(storeA, 'device-c4-a');
   const engineA = createSyncEngine({ transport: makeTransport(storeA), storage: storeA });
 
-  // A builds a meaningful history: capture, route, delete, restore, second capture.
+  // A builds a meaningful history: capture + route, then a second capture with
+  // delete → undo (delete/restore lifecycle on a NON-routed record; routed
+  // records cannot be deleted while linked — invariant).
   const created = captureInbox('Первая запись', { deviceId: 'device-c4-a' });
   updateInbox(created[0].id, { itemType: 'task' }, { deviceId: 'device-c4-a' });
   const routed = routeInboxToTask(created[0].id, { deviceId: 'device-c4-a', projectId: 'p1', priority: 3 }); // → processed + resultRef
-  const removal = deleteInbox(created[0].id, { deviceId: 'device-c4-a' });
-  undoDeleteInbox(removal, { deviceId: 'device-c4-a' });
   const second = captureInbox('Вторая запись', { deviceId: 'device-c4-a' });
+  const removal = deleteInbox(second[0].id, { deviceId: 'device-c4-a' });
+  undoDeleteInbox(removal, { deviceId: 'device-c4-a' });
   await engineA.sync();
 
   // A brand-new client C: empty store, pairs, syncs once — must reconstruct
@@ -212,3 +215,4 @@ await pair(storeB, 'device-c4-b', 'ПК');
 await new Promise(resolve => server.close(resolve));
 if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
 console.log('\n✅ All Stage C4 sync tests passed.');
+

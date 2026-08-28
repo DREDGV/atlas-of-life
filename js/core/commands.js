@@ -18,6 +18,7 @@ const COMMAND_ARRAY_KEYS = [
   'inbox',
   'operationLog',
   'taskProjections',
+  'inboxTombstones',
 ];
 
 function finish(options){
@@ -257,8 +258,25 @@ export function captureInbox(text, options = {}){
 }
 
 function deleteInboxMutation(id, options){
+  // Review: a routed Inbox record owns the resultRef ↔ sourceInboxId link.
+  // Deleting it locally would break the bidirectional invariant — the user
+  // must revert the route first (or delete the result Task separately).
+  const existing = state.inbox.find(item => item.id === id);
+  if (existing?.resultRef) {
+    throw new Error('Routed inbox records cannot be deleted; use "Вернуть в разбор" first');
+  }
   const removal = removeInboxItem(id);
   if (!removal) return null;
+  if (!Array.isArray(state.inboxTombstones)) state.inboxTombstones = [];
+  const tombstoneIndex = state.inboxTombstones.findIndex(t => t.id === id);
+  const tombstone = {
+    id,
+    baseVersion: removal.item.updatedAt || null,
+    deletedAt: options.now ?? Date.now(),
+    removal,
+  };
+  if (tombstoneIndex >= 0) state.inboxTombstones[tombstoneIndex] = tombstone;
+  else state.inboxTombstones.push(tombstone);
   const operation = appendOperation({
     type: 'inbox.delete',
     entityType: 'inbox',
@@ -277,10 +295,14 @@ export function deleteInbox(id, options = {}){
 
 function undoDeleteInboxMutation(removal, options){
   if (!restoreInboxItem(removal)) return false;
+  if (Array.isArray(state.inboxTombstones)) {
+    state.inboxTombstones = state.inboxTombstones.filter(t => t.id !== removal.item.id);
+  }
   const operation = appendOperation({
     type: 'inbox.restore',
     entityType: 'inbox',
     entityId: removal.item.id,
+    baseVersion: removal.item.updatedAt || null,
     payload: removal,
   }, { timestamp: options.now, deviceId: options.deviceId });
   finish(options);
@@ -630,40 +652,104 @@ export function applyRemoteTaskResultRemove(payload, options = {}){
 // harmless no-ops, which makes replay and re-delivery safe.
 // ---------------------------------------------------------------------------
 
-function applyRemoteInboxDeleteMutation(payload){
+function upsertTombstone(id, baseVersion, removal, now){
+  if (!Array.isArray(state.inboxTombstones)) state.inboxTombstones = [];
+  const tombstone = { id, baseVersion: baseVersion || null, deletedAt: now ?? Date.now(), removal: removal || null };
+  const index = state.inboxTombstones.findIndex(t => t.id === id);
+  if (index >= 0) state.inboxTombstones[index] = tombstone;
+  else state.inboxTombstones.push(tombstone);
+  return tombstone;
+}
+
+function removeTombstone(id){
+  if (!Array.isArray(state.inboxTombstones)) return;
+  state.inboxTombstones = state.inboxTombstones.filter(t => t.id !== id);
+}
+
+// Returns { applied: true, removed } | { applied: true, removed: null } |
+// { conflict: true, conflictStatus, reason }.
+function applyRemoteInboxDeleteMutation(payload, options){
   const id = payload?.item?.id || payload?.id;
   if (!id) throw new Error('remote inbox.delete: item id missing');
+  const baseVersion = options?.baseVersion ?? payload?.baseVersion ?? null;
   if (!Array.isArray(state.inbox)) state.inbox = [];
   const index = state.inbox.findIndex(item => item.id === id);
-  if (index < 0) return null; // already gone — idempotent
+  if (index < 0) {
+    // Record absent here. If a tombstone exists with a DIFFERENT baseVersion,
+    // the record was restored after the delete — a real race, not a duplicate.
+    const tombstone = state.inboxTombstones?.find(t => t.id === id);
+    if (tombstone && baseVersion != null && tombstone.baseVersion !== baseVersion) {
+      return {
+        conflict: true,
+        conflictStatus: 'delete_restore_race',
+        reason: 'запись была восстановлена после удаления на другом устройстве',
+      };
+    }
+    return { applied: true, removed: null }; // already gone — idempotent
+  }
+  const item = state.inbox[index];
+  // Review: never silently break the resultRef ↔ sourceInboxId link. A routed
+  // record must keep its result reference; the delete is classified instead.
+  if (item.resultRef) {
+    return {
+      conflict: true,
+      conflictStatus: 'linked_result_delete',
+      reason: 'запись связана с результатом (Task); удаление требует "Вернуть в разбор"',
+    };
+  }
+  // The other device deleted based on an older version than this local record:
+  // applying the delete would silently lose the newer local edit.
+  if (baseVersion != null && item.updatedAt != null && baseVersion !== item.updatedAt) {
+    return {
+      conflict: true,
+      conflictStatus: 'delete_restore_race',
+      reason: 'запись изменена после удаления на другом устройстве',
+    };
+  }
   const [removed] = state.inbox.splice(index, 1);
-  return removed;
+  upsertTombstone(id, item.updatedAt || baseVersion, { item: removed, index });
+  return { applied: true, removed };
 }
 
 export function applyRemoteInboxDelete(payload, options = {}){
   return runAtomicCommand(() => {
-    const removed = applyRemoteInboxDeleteMutation(payload);
+    const result = applyRemoteInboxDeleteMutation(payload, options);
     finish(options);
-    return removed;
+    return result;
   });
 }
 
-function applyRemoteInboxRestoreMutation(payload){
+// Returns { applied: true, restored } | { applied: true, restored: null } |
+// { conflict: true, conflictStatus, reason }.
+function applyRemoteInboxRestoreMutation(payload, options){
   const removal = payload?.removal || payload;
   const item = removal?.item;
   if (!item || !item.id) throw new Error('remote inbox.restore: item id missing');
+  const baseVersion = options?.baseVersion ?? payload?.baseVersion ?? null;
   if (!Array.isArray(state.inbox)) state.inbox = [];
-  if (state.inbox.some(entry => entry.id === item.id)) return null; // already present — idempotent
+  if (state.inbox.some(entry => entry.id === item.id)) {
+    removeTombstone(item.id); // already present — the restore goal is met
+    return { applied: true, restored: null };
+  }
+  const tombstone = state.inboxTombstones?.find(t => t.id === item.id);
+  if (tombstone && baseVersion != null && tombstone.baseVersion !== baseVersion) {
+    return {
+      conflict: true,
+      conflictStatus: 'delete_restore_race',
+      reason: 'удаление и восстановление не сходятся по версии',
+    };
+  }
   const index = Math.max(0, Math.min(Number(removal.index) || state.inbox.length, state.inbox.length));
   state.inbox.splice(index, 0, cloneCommandValue(item));
-  return item;
+  removeTombstone(item.id);
+  return { applied: true, restored: item };
 }
 
 export function applyRemoteInboxRestore(payload, options = {}){
   return runAtomicCommand(() => {
-    const restored = applyRemoteInboxRestoreMutation(payload);
+    const result = applyRemoteInboxRestoreMutation(payload, options);
     finish(options);
-    return restored;
+    return result;
   });
 }
 
@@ -686,13 +772,18 @@ function makeInboxId(){
 }
 
 // Rebuild a full inbox item from a remote snapshot (update/route payloads
-// carry the complete item at the time of the operation).
+// carry the complete item at the time of the operation). rawText is the
+// immutable original — it must be present in the snapshot; a restore may
+// NEVER fabricate it from the editable `text` (review: invariant guard).
 function restoreInboxFromSnapshot(after){
   if (!after || !after.id || typeof after.text !== 'string') return null;
+  if (typeof after.rawText !== 'string') {
+    throw new Error('conflict restore: rawText missing — refusing to fabricate the original');
+  }
   return {
     id: String(after.id),
     text: String(after.text),
-    rawText: typeof after.rawText === 'string' ? after.rawText : String(after.text),
+    rawText: String(after.rawText),
     inputType: after.inputType || 'text',
     source: after.source || 'desktop-capture',
     status: after.status || 'new',
@@ -709,7 +800,7 @@ function restoreInboxFromSnapshot(after){
 
 // Force-apply the quarantined operation's final state to the local Inbox
 // record (used by accept_remote / keep_both / restore_apply resolutions).
-function applyRemoteStateForConflict(op){
+function applyRemoteStateForConflict(op, options = {}){
   switch (op.type) {
     case 'inbox.update': {
       const after = op.payload?.after;
@@ -731,6 +822,16 @@ function applyRemoteStateForConflict(op){
     case 'inbox.route_to_task': {
       const after = op.payload?.inboxAfter;
       if (!after?.id) throw new Error('conflict route op missing inboxAfter.id');
+      // Review: force-applying a route must not create a broken resultRef.
+      // When this client HAS a task model (Studio), the referenced Task must
+      // exist and point back at this Inbox record. On Capture there is no
+      // task model — the resultRef is a projection reference (documented).
+      if (Array.isArray(state.tasks) && state.tasks.length > 0 && after.resultRef?.type === 'task') {
+        const linked = state.tasks.find(task => task.id === after.resultRef.id);
+        if (!linked || linked.sourceInboxId !== after.id) {
+          throw new Error('conflict route: referenced Task is missing or not linked to this Inbox record');
+        }
+      }
       let item = state.inbox.find(entry => entry.id === after.id);
       if (!item) {
         const restored = restoreInboxFromSnapshot(after);
@@ -751,6 +852,30 @@ function applyRemoteStateForConflict(op){
       delete item.resultRef;
       item.status = after.status || 'reviewed';
       item.updatedAt = after.updatedAt ?? Date.now();
+      return item;
+    }
+    case 'inbox.delete': {
+      // delete_restore_race, user chose "Удалить" (accept_delete).
+      const id = op.payload?.item?.id || op.entityId;
+      if (!id) throw new Error('conflict delete op missing id');
+      const item = state.inbox.find(entry => entry.id === id);
+      if (item && !item.resultRef) {
+        const index = state.inbox.findIndex(entry => entry.id === id);
+        const [removed] = state.inbox.splice(index, 1);
+        upsertTombstone(id, item.updatedAt || op.baseVersion, { item: removed, index }, options.now);
+      }
+      return item || null;
+    }
+    case 'inbox.restore': {
+      // delete_restore_race, user chose "Восстановить" (restore_apply).
+      const removal = op.payload?.removal || op.payload;
+      const item = removal?.item;
+      if (!item?.id) throw new Error('conflict restore op missing item id');
+      if (!state.inbox.some(entry => entry.id === item.id)) {
+        const index = Math.max(0, Math.min(Number(removal.index) || state.inbox.length, state.inbox.length));
+        state.inbox.splice(index, 0, cloneCommandValue(item));
+      }
+      removeTombstone(item.id);
       return item;
     }
     default:
@@ -780,8 +905,21 @@ function resolveConflictMutation(conflict, action, options){
     }
   }
 
+  // delete/restore races resolve through their own operations:
+  if (action === 'accept_delete' && op.type === 'inbox.delete') {
+    applyRemoteStateForConflict(op, options);
+    return { id, action };
+  }
+  if (action === 'restore_apply' && op.type === 'inbox.restore') {
+    // delete_restore_race on a restore: the record must come back. Other
+    // devices already hold it (they initiated the restore), so NO new
+    // inbox.restore op is enqueued — the idempotent goal is met locally.
+    applyRemoteStateForConflict(op, options);
+    return { id, action };
+  }
+
   if (action === 'accept_remote' || action === 'keep_both' || action === 'restore_apply') {
-    const applied = applyRemoteStateForConflict(op);
+    const applied = applyRemoteStateForConflict(op, options);
     // restore_apply must propagate: other devices removed the record because of
     // this device's earlier delete — the restoration intent goes back too.
     if (action === 'restore_apply' && applied) {
@@ -1185,3 +1323,4 @@ function promoteTaskToProjectMutation(taskId, options){
 export function promoteTaskToProject(taskId, options = {}){
   return runAtomicCommand(() => promoteTaskToProjectMutation(taskId, options));
 }
+

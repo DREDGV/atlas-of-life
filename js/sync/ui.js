@@ -306,6 +306,20 @@ export function createSyncPanel({ runtime, mount }){
       addAction('Восстановить и применить', 'restore_apply', true);
       return actions;
     }
+    if (conflictStatus === 'delete_restore_race' && opType === 'inbox.delete') {
+      addAction('Оставить запись', 'keep_local');
+      addAction('Удалить', 'accept_delete', true);
+      return actions;
+    }
+    if (conflictStatus === 'delete_restore_race' && opType === 'inbox.restore') {
+      addAction('Оставить удалённой', 'keep_deleted');
+      addAction('Восстановить', 'restore_apply', true);
+      return actions;
+    }
+    if (conflictStatus === 'linked_result_delete') {
+      addAction('Пропустить', 'dismiss');
+      return actions;
+    }
     if (conflictStatus === 'base_version' && opType === 'inbox.update') {
       addAction('Оставить локальную', 'keep_local');
       addAction('Принять удалённую', 'accept_remote');

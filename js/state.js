@@ -14,6 +14,10 @@ export const state = {
   // Sync v1 C2: read-only projections of routed Tasks for remote devices.
   // The desktop is the single writer; other devices only render these.
   taskProjections:[],
+  // Sync v1 C3: persisted tombstones of deleted Inbox records — distinguish
+  // "never existed here" from "deleted here" so delete/restore races are
+  // classified instead of resolved by delivery order.
+  inboxTombstones:[],
   maxEdges:300
 };
 

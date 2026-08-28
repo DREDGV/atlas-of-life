@@ -69,6 +69,20 @@ function normalizeTaskProjections(entries){
     }));
 }
 
+// Sync v1 C3: persisted Inbox tombstones (id, baseVersion at delete time,
+// deletedAt, removal snapshot). Missing/legacy data degrades to an empty list.
+function normalizeInboxTombstones(entries){
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter(entry => entry && typeof entry === 'object' && entry.id)
+    .map(entry => ({
+      id: String(entry.id),
+      baseVersion: Number(entry.baseVersion) || null,
+      deletedAt: Number(entry.deletedAt) || 0,
+      removal: entry.removal || null,
+    }));
+}
+
 const MIGRATIONS = [
   // 0 -> 1
   (data) => {
@@ -143,6 +157,7 @@ export function loadState(){
     state.inbox = normalizeInboxEntries(data.inbox);
     state.operationLog = normalizeOperationLog(data.operationLog);
     state.taskProjections = normalizeTaskProjections(data.taskProjections);
+    state.inboxTombstones = normalizeInboxTombstones(data.inboxTombstones);
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -188,6 +203,7 @@ export function saveState(){
       inbox: normalizeInboxEntries(state.inbox),
       operationLog: normalizeOperationLog(state.operationLog),
       taskProjections: normalizeTaskProjections(state.taskProjections),
+      inboxTombstones: normalizeInboxTombstones(state.inboxTombstones),
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,
@@ -230,6 +246,7 @@ export function exportJson(){
     inbox: normalizeInboxEntries(state.inbox),
     operationLog: normalizeOperationLog(state.operationLog),
     taskProjections: normalizeTaskProjections(state.taskProjections),
+      inboxTombstones: normalizeInboxTombstones(state.inboxTombstones),
     maxEdges: state.maxEdges,
     showLinks: !!state.showLinks,
     showAging: !!state.showAging,
@@ -269,6 +286,7 @@ export function importJson(file){
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
         state.taskProjections = normalizeTaskProjections(data.taskProjections);
+    state.inboxTombstones = normalizeInboxTombstones(data.inboxTombstones);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         if(typeof data.showLinks==='boolean') state.showLinks = data.showLinks; else state.showLinks = true;
         if(typeof data.showAging==='boolean') state.showAging = data.showAging; else state.showAging = true;
@@ -307,6 +325,7 @@ export function importJsonV26(file){
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
         state.taskProjections = normalizeTaskProjections(data.taskProjections);
+    state.inboxTombstones = normalizeInboxTombstones(data.inboxTombstones);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         state.showLinks = typeof data.showLinks==='boolean' ? data.showLinks : true;
         state.showAging = typeof data.showAging==='boolean' ? data.showAging : true;
@@ -327,3 +346,4 @@ export function importJsonV26(file){
     reader.readAsText(file);
   });
 }
+

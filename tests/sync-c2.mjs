@@ -49,6 +49,7 @@ function resetState(){
   state.inbox = [];
   state.operationLog = [];
   state.taskProjections = [];
+  state.inboxTombstones = [];
   state.activeDomain = 'd1';
   state.settings = { layoutMode: 'auto' };
   state.maxEdges = 300;
@@ -313,4 +314,5 @@ function outboxOpsOfType(type){
 }
 
 console.log('\n✅ All Stage C2 sync tests passed.');
+
 

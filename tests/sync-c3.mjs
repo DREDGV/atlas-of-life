@@ -50,6 +50,7 @@ function resetState(){
   state.inbox = [];
   state.operationLog = [];
   state.taskProjections = [];
+  state.inboxTombstones = [];
   state.activeDomain = 'd1';
   state.settings = { layoutMode: 'auto' };
   state.maxEdges = 300;
@@ -353,4 +354,147 @@ function outboxOpsOfType(type){
   console.log('✓ Test 7: live HTTP delete/restore round trip');
 }
 
+// --- Test 8 (review): invariant protections -----------------------------------
+{
+  // 8a: a conflict restore must never fabricate rawText from editable text.
+  const store = makeStore();
+  switchClient(store, 'device-c3-inv');
+  applyIncomingOperation({ id: 'op-inv-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-inv', payload: { id: 'inbox-inv', rawText: 'Оригинал', text: 'Оригинал', status: 'new', createdAt: 100 } });
+  deleteInbox('inbox-inv', { deviceId: 'device-c3-inv', now: 200 });
+  const conflictNoRaw = {
+    operation: {
+      id: 'op-inv-upd', deviceId: 'remote', timestamp: 3, type: 'inbox.update', entityType: 'inbox', entityId: 'inbox-inv',
+      baseVersion: 100,
+      payload: { after: { id: 'inbox-inv', text: 'Изменённый текст', status: 'processed', updatedAt: 300 } }, // NO rawText
+    },
+    serverSequence: 5,
+    status: 'conflict',
+    conflictStatus: 'deleted_race',
+    resolution: 'pending',
+  };
+  let threw = null;
+  try {
+    resolveConflict(conflictNoRaw, 'restore_apply', { deviceId: 'device-c3-inv' });
+  } catch (error) { threw = error; }
+  assert(threw !== null, 'Test 8a: restore without rawText must throw (no fabrication)');
+  assert(state.inbox.length === 0, 'Test 8b: nothing was restored');
+  console.log('✓ Test 8a/8b: rawText is never fabricated on conflict restore');
+
+  // 8c: deleting a routed Inbox locally is blocked (resultRef link first).
+  switchClient(makeStore(), 'device-c3-inv2');
+  const created = captureInbox('Задача с результатом', { deviceId: 'device-c3-inv2' });
+  updateInbox(created[0].id, { itemType: 'task' }, { deviceId: 'device-c3-inv2' });
+  routeInboxToTask(created[0].id, { deviceId: 'device-c3-inv2', domainId: 'd1' });
+  let deleteThrew = null;
+  try {
+    deleteInbox(created[0].id, { deviceId: 'device-c3-inv2' });
+  } catch (error) { deleteThrew = error; }
+  assert(deleteThrew !== null, 'Test 8c: routed Inbox cannot be deleted locally (revert first)');
+  assert(state.inbox.some(item => item.id === created[0].id), 'Test 8d: the routed record survived');
+  console.log('✓ Test 8c/8d: routed Inbox deletion is blocked locally');
+
+  // 8e: remote delete of a routed Inbox is a classified conflict, not a silent remove.
+  const result = applyIncomingOperation({
+    id: 'op-inv-del', deviceId: 'remote', timestamp: 4, type: 'inbox.delete', entityType: 'inbox', entityId: created[0].id,
+    baseVersion: state.inbox.find(item => item.id === created[0].id).updatedAt,
+    payload: { item: state.inbox.find(item => item.id === created[0].id), index: 0 },
+  });
+  assert(result.conflict === true && result.conflictStatus === 'linked_result_delete', 'Test 8e: remote delete of routed Inbox classified as linked_result_delete');
+  assert(state.inbox.some(item => item.id === created[0].id), 'Test 8f: the routed record was not removed');
+  console.log('✓ Test 8e/8f: remote delete of a routed Inbox is refused with a classification');
+
+  // 8g: force-apply of a route must verify the linked Task exists and points back.
+  switchClient(makeStore(), 'device-c3-inv3');
+  const created3 = captureInbox('Роут без задачи', { deviceId: 'device-c3-inv3' });
+  const conflictRoute = {
+    operation: {
+      id: 'op-inv-route', deviceId: 'remote', timestamp: 2, type: 'inbox.route_to_task', entityType: 'task', entityId: 'task-missing',
+      payload: { inboxAfter: { id: created3[0].id, text: 'Роут без задачи', rawText: 'Роут без задачи', status: 'processed', resultRef: { type: 'task', id: 'task-missing' }, updatedAt: 300 } },
+    },
+    serverSequence: 6,
+    status: 'conflict',
+    conflictStatus: 'deleted_race',
+    resolution: 'pending',
+  };
+  state.tasks.push({ id: 'task-other', title: 'Другая', sourceInboxId: 'inbox-zzz' }); // a task model exists, but NOT the referenced one
+  let routeThrew = null;
+  try {
+    resolveConflict(conflictRoute, 'restore_apply', { deviceId: 'device-c3-inv3' });
+  } catch (error) { routeThrew = error; }
+  assert(routeThrew !== null, 'Test 8g: route force-apply refuses a missing/unlinked Task when the task model exists');
+  console.log('✓ Test 8g: route force-apply verifies the linked Task');
+}
+
+// --- Test 9 (review): delete ↔ restore race with tombstones -------------------
+{
+  // 9a/9b: local delete creates a tombstone; undo removes it.
+  const store = makeStore();
+  switchClient(store, 'device-c3-race');
+  const created = captureInbox('Гонка удаления', { deviceId: 'device-c3-race', now: 100 });
+  const id = created[0].id;
+  const removal = deleteInbox(id, { deviceId: 'device-c3-race', now: 200 });
+  assert(Array.isArray(state.inboxTombstones) && state.inboxTombstones.length === 1, 'Test 9a: local delete created a tombstone');
+  assert(state.inboxTombstones[0].id === id && state.inboxTombstones[0].baseVersion === 100, 'Test 9b: tombstone carries id + baseVersion');
+  undoDeleteInbox(removal, { deviceId: 'device-c3-race', now: 300 });
+  assert(state.inboxTombstones.length === 0, 'Test 9c: undo removed the tombstone');
+  console.log('✓ Test 9a–9c: tombstone lifecycle on local delete/undo');
+
+  // 9d: remote delete with a mismatched baseVersion → delete_restore_race,
+  //     the record survives (no server-order last-write-wins).
+  const store2 = makeStore();
+  switchClient(store2, 'device-c3-race2');
+  applyIncomingOperation({ id: 'op-race-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-race1', payload: { id: 'inbox-race1', rawText: 'Версия 2', status: 'new', createdAt: 100 } });
+  state.inbox[0].updatedAt = 500; // this device moved the record forward
+  const raceDelete = applyIncomingOperation({
+    id: 'op-race-del', deviceId: 'remote', timestamp: 2, type: 'inbox.delete', entityType: 'inbox', entityId: 'inbox-race1',
+    baseVersion: 100, // the other device deleted based on an OLDER version
+    payload: { item: { id: 'inbox-race1', updatedAt: 100 }, index: 0 },
+  });
+  assert(raceDelete.conflict === true && raceDelete.conflictStatus === 'delete_restore_race', 'Test 9d: mismatched delete is a classified race');
+  assert(state.inbox.some(item => item.id === 'inbox-race1'), 'Test 9e: record survives the raced delete');
+  console.log('✓ Test 9d/9e: delete vs newer local version → delete_restore_race');
+
+  // 9f: resolving that race — keep_local leaves the record; accept_delete removes it.
+  const conflictDelete = {
+    operation: {
+      id: 'op-race-del', deviceId: 'remote', timestamp: 2, type: 'inbox.delete', entityType: 'inbox', entityId: 'inbox-race1',
+      baseVersion: 100, payload: { item: { id: 'inbox-race1', updatedAt: 100 }, index: 0 },
+    },
+    serverSequence: 3, status: 'conflict', conflictStatus: 'delete_restore_race', resolution: 'pending',
+  };
+  resolveConflict(conflictDelete, 'keep_local', { deviceId: 'device-c3-race2' });
+  assert(state.inbox.some(item => item.id === 'inbox-race1'), 'Test 9f: keep_local keeps the record');
+  resolveConflict(conflictDelete, 'accept_delete', { deviceId: 'device-c3-race2' });
+  assert(!state.inbox.some(item => item.id === 'inbox-race1'), 'Test 9g: accept_delete removes the record');
+  assert(state.inboxTombstones.some(t => t.id === 'inbox-race1'), 'Test 9h: accept_delete records the tombstone');
+  console.log('✓ Test 9f–9h: delete-race resolution (keep_local / accept_delete)');
+
+  // 9i: remote restore with a tombstone but a mismatched version → race.
+  const store3 = makeStore();
+  switchClient(store3, 'device-c3-race3');
+  applyIncomingOperation({ id: 'op-race3-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-race2', payload: { id: 'inbox-race2', rawText: 'Запись', status: 'new', createdAt: 100 } });
+  deleteInbox('inbox-race2', { deviceId: 'device-c3-race3', now: 200 }); // tombstone baseVersion 100
+  const raceRestore = applyIncomingOperation({
+    id: 'op-race3-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: 'inbox-race2',
+    baseVersion: 999, // the other side restored a much newer version
+    payload: { item: { id: 'inbox-race2', rawText: 'Запись', updatedAt: 999 }, index: 0 },
+  });
+  assert(raceRestore.conflict === true && raceRestore.conflictStatus === 'delete_restore_race', 'Test 9i: mismatched restore is a classified race');
+  assert(!state.inbox.some(item => item.id === 'inbox-race2'), 'Test 9j: record stays deleted until resolved');
+
+  // 9k: restore_apply on that race restores the record and clears the tombstone.
+  const conflictRestore = {
+    operation: {
+      id: 'op-race3-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: 'inbox-race2',
+      baseVersion: 999, payload: { item: { id: 'inbox-race2', rawText: 'Запись', updatedAt: 999 }, index: 0 },
+    },
+    serverSequence: 4, status: 'conflict', conflictStatus: 'delete_restore_race', resolution: 'pending',
+  };
+  resolveConflict(conflictRestore, 'restore_apply', { deviceId: 'device-c3-race3' });
+  assert(state.inbox.some(item => item.id === 'inbox-race2'), 'Test 9k: restore_apply restored the record');
+  assert(!state.inboxTombstones.some(t => t.id === 'inbox-race2'), 'Test 9l: tombstone cleared after restore');
+  console.log('✓ Test 9i–9l: restore-race resolution (keep_deleted / restore_apply)');
+}
+
 console.log('\n✅ All Stage C3 sync tests passed.');
+
