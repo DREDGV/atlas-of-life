@@ -321,4 +321,3 @@ assert(indexHtml.includes('id="infoMicrophone"'), 'Test 18: info panel should sh
 console.log('✓ Test 18: lifecycle, permission and accessibility wiring');
 
 console.log('\n✅ All PWA tests passed.');
-
