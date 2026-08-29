@@ -130,6 +130,13 @@ function normalizeOperation(operation){
   if (!ENTITY_TYPES.has(operation.entityType) || !entityId) return null;
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
   if (baseVersion !== null && !Number.isFinite(baseVersion)) return null;
+  // Review: inbox.delete / inbox.restore are version-sensitive — a missing or
+  // non-finite baseVersion must never be stored (the client would otherwise
+  // apply them without race detection).
+  if ((operation.type === 'inbox.delete' || operation.type === 'inbox.restore') &&
+      (baseVersion === null || !Number.isFinite(baseVersion))) {
+    return null;
+  }
   if (!Number.isFinite(sequence) || sequence <= 0) return null;
   if (!operation.payload || typeof operation.payload !== 'object') return null;
   let payload;

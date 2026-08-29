@@ -555,10 +555,26 @@ export function applyRemoteInboxUpdate(id, after, options = {}){
   });
 }
 
+// Normal remote route policy (non-conflict path), driven by the explicit
+// client capability (js/sync/capabilities.js):
+//   - Studio (hasTaskModel=true): the result reference is validated WHEN the
+//     referenced Task is resolvable locally — if a Task with that id exists,
+//     its sourceInboxId must point back at this Inbox record; a mismatch is
+//     refused (the engine quarantines it). An ABSENT Task is still accepted as
+//     a projection reference: Tasks are not synced, so a remote route may
+//     legitimately arrive before/without its Task.
+//   - Capture (hasTaskModel=false): only a C2 projection reference is ever
+//     accepted — no Task lookups happen here.
 function applyRemoteInboxRouteMutation(payload, options){
   const after = payload?.inboxAfter || {};
   const item = state.inbox.find(entry => entry.id === after.id);
   if (!item) return null;
+  if (after.resultRef?.type === 'task' && hasTaskModel()) {
+    const linked = state.tasks.find(task => task.id === after.resultRef.id);
+    if (linked && linked.sourceInboxId !== item.id) {
+      throw new Error('remote route: linked Task mismatch (sourceInboxId)');
+    }
+  }
   item.status = after.status || 'processed';
   item.resultRef = after.resultRef || null;
   item.updatedAt = after.updatedAt ?? options.now ?? Date.now();
@@ -680,6 +696,11 @@ function applyRemoteInboxDeleteMutation(payload, options){
   const id = payload?.item?.id || payload?.id;
   if (!id) throw new Error('remote inbox.delete: item id missing');
   const baseVersion = options?.baseVersion ?? payload?.baseVersion ?? null;
+  // Review: a version-less delete cannot participate in race detection — refuse
+  // BEFORE any state/storage mutation (the engine quarantines it).
+  if (baseVersion === null || !Number.isFinite(Number(baseVersion))) {
+    throw new Error('remote inbox.delete: baseVersion required');
+  }
   if (!Array.isArray(state.inbox)) state.inbox = [];
   const index = state.inbox.findIndex(item => item.id === id);
   if (index < 0) {
@@ -746,6 +767,11 @@ function applyRemoteInboxRestoreMutation(payload, options){
     throw new Error('remote inbox.restore: item.rawText (string) missing — refusing to fabricate the original');
   }
   const baseVersion = options?.baseVersion ?? payload?.baseVersion ?? null;
+  // Review: a version-less restore cannot participate in race detection —
+  // refuse BEFORE any state/storage mutation (the engine quarantines it).
+  if (baseVersion === null || !Number.isFinite(Number(baseVersion))) {
+    throw new Error('remote inbox.restore: baseVersion required');
+  }
   if (!Array.isArray(state.inbox)) state.inbox = [];
   if (state.inbox.some(entry => entry.id === item.id)) {
     removeTombstone(item.id); // already present — the restore goal is met

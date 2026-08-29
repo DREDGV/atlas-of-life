@@ -189,6 +189,11 @@ export function loadState(){
       data.tasks = state.tasks;
       data.inbox = state.inbox;
       data.operationLog = state.operationLog;
+      // Review: the immediate migration save must persist the full new shape —
+      // otherwise the persisted blob stays on the old schema until the first
+      // user edit (and a crash would re-run the migration).
+      data.taskProjections = state.taskProjections;
+      data.inboxTombstones = state.inboxTombstones;
       adapter.save(JSON.stringify(data));
     }
     return true;

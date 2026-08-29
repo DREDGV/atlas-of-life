@@ -86,14 +86,14 @@ function outboxOpsOfType(type){
   // Remote apply is idempotent both ways
   const store2 = makeStore();
   switchClient(store2, 'device-c3-b');
-  applyIncomingOperation({ id: 'op-del', deviceId: 'remote', timestamp: 1, type: 'inbox.delete', entityType: 'inbox', entityId: id, payload: { item: created[0], index: 0 } });
+  applyIncomingOperation({ id: 'op-del', deviceId: 'remote', timestamp: 1, type: 'inbox.delete', entityType: 'inbox', entityId: id, baseVersion: created[0].updatedAt, payload: { item: created[0], index: 0 } });
   assert(state.inbox.length === 0, 'Test 1e: remote delete removes the record');
-  applyIncomingOperation({ id: 'op-del2', deviceId: 'remote', timestamp: 2, type: 'inbox.delete', entityType: 'inbox', entityId: id, payload: { item: created[0], index: 0 } });
+  applyIncomingOperation({ id: 'op-del2', deviceId: 'remote', timestamp: 2, type: 'inbox.delete', entityType: 'inbox', entityId: id, baseVersion: created[0].updatedAt, payload: { item: created[0], index: 0 } });
   assert(state.inbox.length === 0, 'Test 1f: remote delete is idempotent');
 
-  applyIncomingOperation({ id: 'op-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: id, payload: { item: created[0], index: 0 } });
+  applyIncomingOperation({ id: 'op-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: id, baseVersion: created[0].updatedAt, payload: { item: created[0], index: 0 } });
   assert(state.inbox.length === 1 && state.inbox[0].rawText === 'Удалю это', 'Test 1g: remote restore brings the record back');
-  applyIncomingOperation({ id: 'op-rest2', deviceId: 'remote', timestamp: 4, type: 'inbox.restore', entityType: 'inbox', entityId: id, payload: { item: created[0], index: 0 } });
+  applyIncomingOperation({ id: 'op-rest2', deviceId: 'remote', timestamp: 4, type: 'inbox.restore', entityType: 'inbox', entityId: id, baseVersion: created[0].updatedAt, payload: { item: created[0], index: 0 } });
   assert(state.inbox.length === 1, 'Test 1h: remote restore is idempotent (no duplicate)');
   assert(listOutbox().length === 0, 'Test 1i: remote apply produces no outbound ops (no echo)');
   console.log('✓ Test 1: delete/restore syncable + idempotent remote apply');
@@ -496,12 +496,22 @@ function outboxOpsOfType(type){
   console.log('✓ Test 9i–9l: restore-race resolution (keep_deleted / restore_apply)');
 }
 
-// --- Test 10 (review): malformed remote inbox.restore → throw + rollback ------
+// --- Test 10 (review): malformed remote inbox.restore → throw + full rollback --
 {
   const store = makeStore();
   switchClient(store, 'device-c3-mal');
   applyIncomingOperation({ id: 'op-mal-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-mal', payload: { id: 'inbox-mal', rawText: 'Целая запись', text: 'Целая запись', status: 'new', createdAt: 100 } });
-  const before = JSON.stringify(state.inbox);
+  deleteInbox('inbox-mal', { deviceId: 'device-c3-mal', now: 150 }); // tombstone exists too
+  undoDeleteInbox(state.inboxTombstones.find(t => t.id === 'inbox-mal').removal, { deviceId: 'device-c3-mal', now: 160 }); // and is cleared again
+  applyIncomingOperation({ id: 'op-mal-upd', deviceId: 'remote', timestamp: 3, type: 'inbox.update', entityType: 'inbox', entityId: 'inbox-mal', baseVersion: 100, payload: { after: { id: 'inbox-mal', status: 'reviewed', updatedAt: 170 } } }); // journal noise
+
+  const snapshotAll = () => JSON.stringify({
+    inbox: state.inbox,
+    tombstones: state.inboxTombstones,
+    operationLog: state.operationLog,
+    persisted: store.getItem('atlas_v2_data'),
+  });
+  const before = snapshotAll();
 
   const cases = [
     { name: 'missing id', item: { text: 'x', rawText: 'y' } },
@@ -514,15 +524,15 @@ function outboxOpsOfType(type){
     try {
       applyIncomingOperation({
         id: `op-mal-${c.name.replace(/\s/g, '-')}`, deviceId: 'remote', timestamp: 2,
-        type: 'inbox.restore', entityType: 'inbox', entityId: c.item.id || 'none',
+        type: 'inbox.restore', entityType: 'inbox', entityId: c.item.id || 'none', baseVersion: 100,
         payload: { item: c.item, index: 0 },
       });
     } catch (error) { threw = error; }
     assert(threw !== null, `Test 10a: malformed restore (${c.name}) throws`);
-    assert(JSON.stringify(state.inbox) === before, `Test 10b: atomic rollback (${c.name}) — state unchanged`);
+    assert(snapshotAll() === before, `Test 10b: full rollback (${c.name}) — inbox, tombstones, operationLog and persisted storage unchanged`);
   }
   assert(state.inbox.length === 1, 'Test 10c: nothing was half-applied');
-  console.log('✓ Test 10: malformed remote restore throws before any mutation (atomic)');
+  console.log('✓ Test 10: malformed remote restore — atomic rollback across all state and persisted storage');
 }
 
 // --- Test 11 (review): route validation driven by explicit capability ----------
@@ -679,6 +689,135 @@ function outboxOpsOfType(type){
     if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
     console.log('✓ Test 12d–12k: third-device tombstone race + restore_apply convergence');
   }
+}
+
+// --- Test 13 (review): version-less delete/restore are refused (Core + HTTP) ---
+{
+  // Core: live item — a delete without baseVersion must NOT mutate anything.
+  const store = makeStore();
+  switchClient(store, 'device-c3-nov');
+  applyIncomingOperation({ id: 'op-nov-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-nov', payload: { id: 'inbox-nov', rawText: 'Живая', text: 'Живая', status: 'new', createdAt: 100 } });
+  const before = JSON.stringify({ inbox: state.inbox, tombstones: state.inboxTombstones });
+  let threw = null;
+  try {
+    applyIncomingOperation({ id: 'op-nov-del', deviceId: 'remote', timestamp: 2, type: 'inbox.delete', entityType: 'inbox', entityId: 'inbox-nov', payload: { item: state.inbox[0], index: 0 } }); // NO baseVersion
+  } catch (error) { threw = error; }
+  assert(threw !== null, 'Test 13a: version-less inbox.delete is refused');
+  assert(JSON.stringify({ inbox: state.inbox, tombstones: state.inboxTombstones }) === before, 'Test 13b: item survives, no tombstone created');
+
+  // Core: tombstone — a version-less restore must not resurrect anything.
+  deleteInbox('inbox-nov', { deviceId: 'device-c3-nov', now: 200 }); // tombstone (v100)
+  assert(state.inboxTombstones.length === 1, 'Test 13c: tombstone in place');
+  threw = null;
+  try {
+    applyIncomingOperation({ id: 'op-nov-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: 'inbox-nov', payload: { item: { id: 'inbox-nov', text: 'Живая', rawText: 'Живая', updatedAt: 100 }, index: 0 } }); // NO baseVersion
+  } catch (error) { threw = error; }
+  assert(threw !== null, 'Test 13d: version-less inbox.restore is refused');
+  assert(state.inbox.length === 0 && state.inboxTombstones.length === 1, 'Test 13e: record stays deleted, tombstone untouched');
+  console.log('✓ Test 13a–13e: version-less delete/restore refused before any mutation');
+
+  // HTTP: the server rejects version-less delete/restore per-op.
+  {
+    const ADMIN_TOKEN = 'test-admin-token-0123456789abcdef';
+    const DB_PATH = new URL('./fixtures/.sync-c3-nov.sqlite', import.meta.url).pathname
+      .replace(/^\/([A-Za-z]:)/, '$1');
+    if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
+    const server = createSyncServer({ token: ADMIN_TOKEN, dbPath: DB_PATH });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const endpoint = `http://127.0.0.1:${server.address().port}`;
+    const token = await claimPairingCode(endpoint, {
+      code: (await fetch(`${endpoint}/v1/pair/codes`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}`, 'Content-Type': 'application/json' }, body: '{}',
+      }).then(r => r.json())).code,
+      deviceId: 'dev-nov', deviceName: 'Nov',
+    });
+    for (const type of ['inbox.delete', 'inbox.restore']) {
+      const op = {
+        schema: 1, id: `op-nov-${type}-123456`, deviceId: 'dev-nov', sequence: 1, timestamp: Date.now(),
+        type, entityType: 'inbox', entityId: 'inbox-nov',
+        payload: type === 'inbox.delete'
+          ? { item: { id: 'inbox-nov', updatedAt: 100 }, index: 0 }
+          : { item: { id: 'inbox-nov', text: 'Живая', rawText: 'Живая', updatedAt: 100 }, index: 0 },
+      };
+      const push = await fetch(`${endpoint}/v1/ops/push`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ protocol: 'atlas-sync-v1', deviceId: 'dev-nov', operations: [op] }),
+      });
+      const body = await push.json();
+      assert(body.ackedIds.length === 0 && body.conflicts.some(c => c.reason === 'invalid_operation'),
+        `Test 13f: server rejects version-less ${type} (got ${JSON.stringify(body)})`);
+    }
+    await new Promise(resolve => server.close(resolve));
+    if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
+    console.log('✓ Test 13f: server rejects version-less delete/restore');
+  }
+}
+
+// --- Test 14 (review): immediate migration persists the full new shape ---------
+{
+  const store = makeStore();
+  store.setItem('atlas_v2_data', JSON.stringify({
+    schema: 4,
+    domains: [{ id: 'd1', title: 'Дача' }],
+    projects: [], tasks: [], inbox: [], operationLog: [],
+    settings: { layoutMode: 'auto' },
+  }));
+  switchClient(store, 'device-c3-mig2'); // loadState runs the 4→5 migration + immediate save
+  const persisted = JSON.parse(store.getItem('atlas_v2_data'));
+  assert(persisted.schema === 5, 'Test 14a: persisted schema bumped to 5');
+  assert(Array.isArray(persisted.inboxTombstones) && persisted.inboxTombstones.length === 0, 'Test 14b: persisted inboxTombstones present as []');
+  assert(Array.isArray(persisted.taskProjections) && persisted.taskProjections.length === 0, 'Test 14c: persisted taskProjections present as []');
+  assert(state.inboxTombstones.length === 0, 'Test 14d: in-memory tombstones initialized');
+  console.log('✓ Test 14: schema 4→5 migration persists the full new shape immediately');
+}
+
+// --- Test 15 (review): normal remote route policy (capability-driven) ----------
+{
+  const { syncCapabilities } = await import('../js/sync/capabilities.js');
+  const routeOp = (resultRefId, sourceInboxId) => ({
+    id: `op-nr-${Math.random().toString(36).slice(2, 10)}`, deviceId: 'remote', timestamp: 2,
+    type: 'inbox.route_to_task', entityType: 'task', entityId: resultRefId,
+    payload: { inboxAfter: { id: sourceInboxId, text: 'Роут', rawText: 'Роут', status: 'processed', resultRef: { type: 'task', id: resultRefId }, updatedAt: 300 } },
+  });
+
+  // Studio (hasTaskModel=true):
+  const store = makeStore();
+  switchClient(store, 'device-c3-nr');
+  applyIncomingOperation({ id: 'op-nr-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-nr', payload: { id: 'inbox-nr', rawText: 'Роут', text: 'Роут', status: 'new', createdAt: 100 } });
+  syncCapabilities.hasTaskModel = true;
+
+  // 15a: resolvable Task with correct link → applies
+  state.tasks = [{ id: 'task-nr', title: 'Связанная', sourceInboxId: 'inbox-nr' }];
+  let r = applyIncomingOperation(routeOp('task-nr', 'inbox-nr'));
+  assert(r.applied === true && state.inbox[0].resultRef?.id === 'task-nr', 'Test 15a: Studio applies a correctly linked remote route');
+
+  // 15b: resolvable Task with WRONG sourceInboxId → refused (quarantined), state unchanged
+  const before = JSON.stringify(state.inbox[0].resultRef);
+  r = applyIncomingOperation(routeOp('task-nr', 'inbox-nr'));
+  assert(r.applied === true && JSON.stringify(state.inbox[0].resultRef) === before, 'Test 15b: duplicate route is idempotent (no change)');
+  state.tasks[0].sourceInboxId = 'inbox-other';
+  let threw = null;
+  try {
+    applyIncomingOperation({ ...routeOp('task-nr', 'inbox-nr'), id: 'op-nr-wrong-12345' });
+  } catch (error) { threw = error; }
+  assert(threw !== null && JSON.stringify(state.inbox[0].resultRef) === before, 'Test 15c: Studio refuses a route whose Task points elsewhere');
+
+  // 15d: absent Task → accepted as projection reference (Tasks are not synced)
+  state.tasks = [];
+  r = applyIncomingOperation({ ...routeOp('task-absent-12345', 'inbox-nr'), id: 'op-nr-absent-123456' });
+  assert(r.applied === true && state.inbox[0].resultRef?.id === 'task-absent-12345', 'Test 15d: Studio accepts an absent Task as projection reference');
+
+  // Capture (hasTaskModel=false): always a projection reference, no Task lookups
+  switchClient(makeStore(), 'device-c3-nr2');
+  applyIncomingOperation({ id: 'op-nr2-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-nr2', payload: { id: 'inbox-nr2', rawText: 'Проекция', text: 'Проекция', status: 'new', createdAt: 100 } });
+  state.tasks = [{ id: 'task-proj', title: 'Другая', sourceInboxId: 'inbox-zzz' }];
+  syncCapabilities.hasTaskModel = false;
+  r = applyIncomingOperation({ ...routeOp('task-proj', 'inbox-nr2'), id: 'op-nr2-route-12345' });
+  assert(r.applied === true && state.inbox[0].resultRef?.id === 'task-proj', 'Test 15e: Capture accepts only the C2 projection reference');
+
+  syncCapabilities.hasTaskModel = true; // restore default for later tests
+  console.log('✓ Test 15: normal remote route policy (Studio validate-when-resolvable, Capture projection-only)');
 }
 
 console.log('\n✅ All Stage C3 sync tests passed.');
