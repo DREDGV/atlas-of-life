@@ -696,10 +696,11 @@ function applyRemoteInboxDeleteMutation(payload, options){
   const id = payload?.item?.id || payload?.id;
   if (!id) throw new Error('remote inbox.delete: item id missing');
   const baseVersion = options?.baseVersion ?? payload?.baseVersion ?? null;
-  // Review: a version-less delete cannot participate in race detection — refuse
-  // BEFORE any state/storage mutation (the engine quarantines it).
-  if (baseVersion === null || !Number.isFinite(Number(baseVersion))) {
-    throw new Error('remote inbox.delete: baseVersion required');
+  // Review: a version-less or malformed delete cannot participate in race
+  // detection — refuse BEFORE any state/storage mutation (the engine
+  // quarantines it). baseVersion is strictly a finite number.
+  if (baseVersion === null || typeof baseVersion !== 'number' || !Number.isFinite(baseVersion)) {
+    throw new Error('remote inbox.delete: baseVersion (finite number) required');
   }
   if (!Array.isArray(state.inbox)) state.inbox = [];
   const index = state.inbox.findIndex(item => item.id === id);
@@ -767,10 +768,11 @@ function applyRemoteInboxRestoreMutation(payload, options){
     throw new Error('remote inbox.restore: item.rawText (string) missing — refusing to fabricate the original');
   }
   const baseVersion = options?.baseVersion ?? payload?.baseVersion ?? null;
-  // Review: a version-less restore cannot participate in race detection —
-  // refuse BEFORE any state/storage mutation (the engine quarantines it).
-  if (baseVersion === null || !Number.isFinite(Number(baseVersion))) {
-    throw new Error('remote inbox.restore: baseVersion required');
+  // Review: a version-less or malformed restore cannot participate in race
+  // detection — refuse BEFORE any state/storage mutation (the engine
+  // quarantines it). baseVersion is strictly a finite number.
+  if (baseVersion === null || typeof baseVersion !== 'number' || !Number.isFinite(baseVersion)) {
+    throw new Error('remote inbox.restore: baseVersion (finite number) required');
   }
   if (!Array.isArray(state.inbox)) state.inbox = [];
   if (state.inbox.some(entry => entry.id === item.id)) {
@@ -957,30 +959,34 @@ function resolveConflictMutation(conflict, action, options){
     applyRemoteStateForConflict(op, options);
     return { id, action };
   }
-  if (action === 'restore_apply' && op.type === 'inbox.restore') {
-    // delete_restore_race on a restore: the record must come back. Other
-    // devices already hold it (they initiated the restore), so NO new
-    // inbox.restore op is enqueued — the idempotent goal is met locally.
-    applyRemoteStateForConflict(op, options);
-    return { id, action };
-  }
 
   if (action === 'accept_remote' || action === 'keep_both' || action === 'restore_apply') {
+    // restore_apply: capture the local tombstone baseVersion BEFORE applying —
+    // applyRemoteStateForConflict removes the tombstone for a restore, and the
+    // compensating inbox.restore below must still carry it (the version the
+    // delete was based on) so devices with the same tombstone apply it without
+    // a new delete_restore_race. This is NOT local-only: for every conflict
+    // type (update/route/revert AND raced restore) a compensating inbox.restore
+    // is enqueued, tagged with resolvesOperationId so a third device can close
+    // its matching quarantine entry once the record is back.
+    const tombstoneBase = action === 'restore_apply'
+      ? (state.inboxTombstones?.find(t => t.id === id)?.baseVersion ?? null)
+      : null;
     const applied = applyRemoteStateForConflict(op, options);
-    // restore_apply must propagate: other devices removed the record because of
-    // this device's earlier delete — the restoration intent goes back too.
-    // The emitted inbox.restore carries the TOMBSTONE baseVersion (the version
-    // the delete was based on) so other devices with the same tombstone apply
-    // the restore without a delete_restore_race.
     if (action === 'restore_apply' && applied) {
-      const tombstone = state.inboxTombstones?.find(t => t.id === applied.id);
-      const restoreBase = tombstone?.baseVersion ?? applied.updatedAt ?? null;
+      const restoreBase = tombstoneBase ?? applied.updatedAt ?? null;
       const restoreOp = appendOperation({
         type: 'inbox.restore',
         entityType: 'inbox',
         entityId: applied.id,
         baseVersion: restoreBase,
-        payload: { item: cloneCommandValue(applied), index: 0 },
+        payload: {
+          item: cloneCommandValue(applied),
+          index: 0,
+          // The original quarantined operation this resolution answers —
+          // receivers close the matching quarantine entry after applying.
+          resolvesOperationId: op.id,
+        },
       }, { timestamp: options.now ?? Date.now(), deviceId: options.deviceId });
       enqueueOutbound(restoreOp);
     }

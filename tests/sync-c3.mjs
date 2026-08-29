@@ -698,23 +698,36 @@ function outboxOpsOfType(type){
   switchClient(store, 'device-c3-nov');
   applyIncomingOperation({ id: 'op-nov-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-nov', payload: { id: 'inbox-nov', rawText: 'Живая', text: 'Живая', status: 'new', createdAt: 100 } });
   const before = JSON.stringify({ inbox: state.inbox, tombstones: state.inboxTombstones });
-  let threw = null;
-  try {
-    applyIncomingOperation({ id: 'op-nov-del', deviceId: 'remote', timestamp: 2, type: 'inbox.delete', entityType: 'inbox', entityId: 'inbox-nov', payload: { item: state.inbox[0], index: 0 } }); // NO baseVersion
-  } catch (error) { threw = error; }
-  assert(threw !== null, 'Test 13a: version-less inbox.delete is refused');
-  assert(JSON.stringify({ inbox: state.inbox, tombstones: state.inboxTombstones }) === before, 'Test 13b: item survives, no tombstone created');
+  const badVersions = [undefined, '100', true, '   ', 'abc'];
+  for (const bad of badVersions) {
+    let threw = null;
+    try {
+      applyIncomingOperation({
+        id: `op-nov-del-${String(bad ?? 'missing').replace(/[^a-z0-9]/gi, 'x')}`, deviceId: 'remote', timestamp: 2,
+        type: 'inbox.delete', entityType: 'inbox', entityId: 'inbox-nov', baseVersion: bad,
+        payload: { item: state.inbox[0], index: 0 },
+      });
+    } catch (error) { threw = error; }
+    assert(threw !== null, `Test 13a: inbox.delete with baseVersion=${JSON.stringify(bad)} is refused`);
+    assert(JSON.stringify({ inbox: state.inbox, tombstones: state.inboxTombstones }) === before, `Test 13b: item survives, no tombstone (${JSON.stringify(bad)})`);
+  }
 
-  // Core: tombstone — a version-less restore must not resurrect anything.
+  // Core: tombstone — a version-less/malformed restore must not resurrect anything.
   deleteInbox('inbox-nov', { deviceId: 'device-c3-nov', now: 200 }); // tombstone (v100)
   assert(state.inboxTombstones.length === 1, 'Test 13c: tombstone in place');
-  threw = null;
-  try {
-    applyIncomingOperation({ id: 'op-nov-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: 'inbox-nov', payload: { item: { id: 'inbox-nov', text: 'Живая', rawText: 'Живая', updatedAt: 100 }, index: 0 } }); // NO baseVersion
-  } catch (error) { threw = error; }
-  assert(threw !== null, 'Test 13d: version-less inbox.restore is refused');
-  assert(state.inbox.length === 0 && state.inboxTombstones.length === 1, 'Test 13e: record stays deleted, tombstone untouched');
-  console.log('✓ Test 13a–13e: version-less delete/restore refused before any mutation');
+  for (const bad of badVersions) {
+    let threw = null;
+    try {
+      applyIncomingOperation({
+        id: `op-nov-rest-${String(bad ?? 'missing').replace(/[^a-z0-9]/gi, 'x')}`, deviceId: 'remote', timestamp: 3,
+        type: 'inbox.restore', entityType: 'inbox', entityId: 'inbox-nov', baseVersion: bad,
+        payload: { item: { id: 'inbox-nov', text: 'Живая', rawText: 'Живая', updatedAt: 100 }, index: 0 },
+      });
+    } catch (error) { threw = error; }
+    assert(threw !== null, `Test 13d: inbox.restore with baseVersion=${JSON.stringify(bad)} is refused`);
+    assert(state.inbox.length === 0 && state.inboxTombstones.length === 1, `Test 13e: record stays deleted, tombstone untouched (${JSON.stringify(bad)})`);
+  }
+  console.log('✓ Test 13a–13e: version-less/malformed delete/restore refused before any mutation');
 
   // HTTP: the server rejects version-less delete/restore per-op.
   {
@@ -731,26 +744,30 @@ function outboxOpsOfType(type){
       }).then(r => r.json())).code,
       deviceId: 'dev-nov', deviceName: 'Nov',
     });
+    const badVersions = [undefined, '100', true, '   '];
     for (const type of ['inbox.delete', 'inbox.restore']) {
-      const op = {
-        schema: 1, id: `op-nov-${type}-123456`, deviceId: 'dev-nov', sequence: 1, timestamp: Date.now(),
-        type, entityType: 'inbox', entityId: 'inbox-nov',
-        payload: type === 'inbox.delete'
-          ? { item: { id: 'inbox-nov', updatedAt: 100 }, index: 0 }
-          : { item: { id: 'inbox-nov', text: 'Живая', rawText: 'Живая', updatedAt: 100 }, index: 0 },
-      };
-      const push = await fetch(`${endpoint}/v1/ops/push`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ protocol: 'atlas-sync-v1', deviceId: 'dev-nov', operations: [op] }),
-      });
-      const body = await push.json();
-      assert(body.ackedIds.length === 0 && body.conflicts.some(c => c.reason === 'invalid_operation'),
-        `Test 13f: server rejects version-less ${type} (got ${JSON.stringify(body)})`);
+      for (const bad of badVersions) {
+        const op = {
+          schema: 1, id: `op-nov-${type}-${String(bad ?? 'missing').replace(/[^a-z0-9]/gi, 'x')}`, deviceId: 'dev-nov', sequence: 1, timestamp: Date.now(),
+          type, entityType: 'inbox', entityId: 'inbox-nov',
+          baseVersion: bad,
+          payload: type === 'inbox.delete'
+            ? { item: { id: 'inbox-nov', updatedAt: 100 }, index: 0 }
+            : { item: { id: 'inbox-nov', text: 'Живая', rawText: 'Живая', updatedAt: 100 }, index: 0 },
+        };
+        const push = await fetch(`${endpoint}/v1/ops/push`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ protocol: 'atlas-sync-v1', deviceId: 'dev-nov', operations: [op] }),
+        });
+        const body = await push.json();
+        assert(body.ackedIds.length === 0 && body.conflicts.some(c => c.reason === 'invalid_operation'),
+          `Test 13f: server rejects ${type} with baseVersion=${JSON.stringify(bad)} (got ${JSON.stringify(body)})`);
+      }
     }
     await new Promise(resolve => server.close(resolve));
     if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
-    console.log('✓ Test 13f: server rejects version-less delete/restore');
+    console.log('✓ Test 13f: server rejects version-less/malformed delete/restore');
   }
 }
 
@@ -818,6 +835,97 @@ function outboxOpsOfType(type){
 
   syncCapabilities.hasTaskModel = true; // restore default for later tests
   console.log('✓ Test 15: normal remote route policy (Studio validate-when-resolvable, Capture projection-only)');
+}
+
+// --- Test 16 (review): three-device compensating restore closes the conflict --
+{
+  const ADMIN_TOKEN = 'test-admin-token-0123456789abcdef';
+  const DB_PATH = new URL('./fixtures/.sync-c3-3dev.sqlite', import.meta.url).pathname
+    .replace(/^\/([A-Za-z]:)/, '$1');
+  if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
+  const server = createSyncServer({ token: ADMIN_TOKEN, dbPath: DB_PATH });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const endpoint = `http://127.0.0.1:${server.address().port}`;
+  const pairD = async (st, deviceId, name) => {
+    const codes = await fetch(`${endpoint}/v1/pair/codes`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    }).then(r => r.json());
+    const claimed = await claimPairingCode(endpoint, { code: codes.code, deviceId, deviceName: name });
+    st.setItem('atlas-sync-token', claimed.token);
+    return claimed.token;
+  };
+  const tr = st => createHttpTransport({ endpoint, getToken: () => st.getItem('atlas-sync-token') });
+
+  const storeA = makeStore(); const storeB = makeStore(); const storeC = makeStore();
+  await pairD(storeA, 'dev-3a', 'A'); await pairD(storeB, 'dev-3b', 'B'); await pairD(storeC, 'dev-3c', 'C');
+
+  // A: capture + delete → server holds capture, delete (baseVersion v1)
+  switchClient(storeA, 'dev-3a');
+  const engineA = createSyncEngine({ transport: tr(storeA), storage: storeA });
+  const cap = captureInbox('Третье устройство', { deviceId: 'dev-3a', now: 100 });
+  await engineA.sync();
+  deleteInbox(cap[0].id, { deviceId: 'dev-3a', now: 200 });
+  await engineA.sync();
+
+  // B and C replay the delete → both hold a tombstone (v1)
+  switchClient(storeB, 'dev-3b');
+  const engineB = createSyncEngine({ transport: tr(storeB), storage: storeB });
+  await engineB.sync();
+  assert(state.inboxTombstones.some(t => t.id === cap[0].id && t.baseVersion === 100), 'Test 16a: B holds the tombstone (v1)');
+
+  switchClient(storeC, 'dev-3c');
+  const engineC = createSyncEngine({ transport: tr(storeC), storage: storeC });
+  await engineC.sync();
+  assert(state.inboxTombstones.some(t => t.id === cap[0].id && t.baseVersion === 100), 'Test 16b: C holds the tombstone (v1)');
+
+  // A: a raced restore (newer version v2, baseVersion 999) is pushed — from a
+  // device OTHER than B and C, so both of them receive it as a conflict.
+  const RACED_OP_ID = 'op-3dev-raced-123456';
+  switchClient(storeA, 'dev-3a');
+  await tr(storeA).pushOperations([{
+    schema: 1, id: RACED_OP_ID, deviceId: 'dev-3a', sequence: 1, timestamp: 900,
+    type: 'inbox.restore', entityType: 'inbox', entityId: cap[0].id, baseVersion: 999,
+    payload: { item: { ...cap[0], updatedAt: 999, status: 'reviewed' }, index: 0 },
+  }]);
+
+  // C: receives the raced restore → delete_restore_race (quarantined, pending)
+  switchClient(storeC, 'dev-3c');
+  await engineC.sync();
+  assert(engineC.getStatus().conflicts === 1, 'Test 16c: C quarantined the raced restore');
+  const cConflict = engineC.getConflicts().find(c => c.operation?.id === RACED_OP_ID);
+  assert(cConflict && cConflict.conflictStatus === 'delete_restore_race' && cConflict.resolution === 'pending', 'Test 16d: C conflict is pending delete_restore_race');
+
+  // B: receives the same raced restore (conflict) and resolves with restore_apply
+  switchClient(storeB, 'dev-3b');
+  await engineB.sync();
+  assert(engineB.getStatus().conflicts === 1, 'Test 16e: B quarantined the same raced restore');
+  const bConflict = engineB.getConflicts().find(c => c.operation?.id === RACED_OP_ID);
+  engineB.resolveConflict(bConflict, 'restore_apply');
+  assert(state.inbox.some(item => item.id === cap[0].id), 'Test 16f: B restored the record locally');
+
+  // B's compensating inbox.restore: tombstone baseVersion + resolvesOperationId
+  const comp = listOutbox().find(e => e.operation.type === 'inbox.restore' && e.operation.payload?.resolvesOperationId === RACED_OP_ID);
+  assert(comp, 'Test 16g: B emitted a compensating inbox.restore');
+  assert(comp.operation.baseVersion === 100, `Test 16h: compensating restore carries the tombstone baseVersion (got ${comp.operation.baseVersion})`);
+  await engineB.sync();
+
+  // C: receives the compensating restore → record back, tombstone cleared,
+  // and the quarantined raced restore becomes RESOLVED automatically.
+  switchClient(storeC, 'dev-3c');
+  await engineC.sync();
+  assert(state.inbox.some(item => item.id === cap[0].id), 'Test 16i: C restored the record via the compensating restore');
+  assert(state.inboxTombstones.length === 0, 'Test 16j: C tombstone cleared');
+  assert(engineC.getStatus().conflicts === 0, 'Test 16k: C has no unresolved conflicts');
+  const cResolved = engineC.getConflicts().find(c => c.operation?.id === RACED_OP_ID);
+  assert(cResolved && cResolved.resolution === 'resolved' && cResolved.resolutionAction === 'restore_apply', 'Test 16l: C conflict auto-resolved by the compensating restore');
+  await engineC.sync();
+  assert(engineC.getStatus().conflicts === 0 && engineC.getStatus().pending === 0, 'Test 16m: C converged cleanly');
+
+  await new Promise(resolve => server.close(resolve));
+  if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
+  console.log('✓ Test 16: three-device compensating restore closes the quarantine entry');
 }
 
 console.log('\n✅ All Stage C3 sync tests passed.');

@@ -8,6 +8,7 @@
 // Invariants preserved: rawText immutable, routed lock, resultRef as a
 // reference only (Task itself is not synced in C0), destination validation.
 import { state } from '../state.js';
+import { resolveConflictEntry } from './quarantine.js';
 import {
   applyRemoteInboxCapture,
   applyRemoteInboxDelete,
@@ -144,6 +145,12 @@ export function applyIncomingOperation(operation){
       const result = applyRemoteInboxRestore(operation.payload, { baseVersion: operation.baseVersion });
       if (result?.conflict) {
         return { applied: false, conflict: true, conflictStatus: result.conflictStatus || 'delete_restore_race', reason: result.reason };
+      }
+      // A compensating inbox.restore (emitted by restore_apply resolution)
+      // carries resolvesOperationId: after the record is back, the matching
+      // quarantined operation on this device is resolved too.
+      if (operation.payload?.resolvesOperationId) {
+        resolveConflictEntry(operation.payload.resolvesOperationId, 'restore_apply');
       }
       break;
     }

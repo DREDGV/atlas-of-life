@@ -122,19 +122,20 @@ function normalizeOperation(operation){
   const deviceId = boundedString(operation.deviceId, 160);
   const entityId = boundedString(operation.entityId, 160);
   const timestamp = Number(operation.timestamp);
-  const baseVersion = operation.baseVersion == null ? null : Number(operation.baseVersion);
+  const baseVersion = operation.baseVersion == null ? null : operation.baseVersion;
   const sequence = Number(operation.sequence);
   if (!id || !/^op-[\w.-]{8,}$/.test(id)) return null;
   if (!deviceId) return null;
   if (!OPERATION_TYPES.has(operation.type)) return null;
   if (!ENTITY_TYPES.has(operation.entityType) || !entityId) return null;
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
-  if (baseVersion !== null && !Number.isFinite(baseVersion)) return null;
-  // Review: inbox.delete / inbox.restore are version-sensitive — a missing or
-  // non-finite baseVersion must never be stored (the client would otherwise
-  // apply them without race detection).
-  if ((operation.type === 'inbox.delete' || operation.type === 'inbox.restore') &&
-      (baseVersion === null || !Number.isFinite(baseVersion))) {
+  // Review: baseVersion is strictly a finite number or absent — strings,
+  // booleans, whitespace must never slip through as "versions".
+  if (baseVersion !== null && (typeof baseVersion !== 'number' || !Number.isFinite(baseVersion))) return null;
+  // Review: inbox.delete / inbox.restore are version-sensitive — a missing
+  // baseVersion must never be stored (the client would otherwise apply them
+  // without race detection).
+  if ((operation.type === 'inbox.delete' || operation.type === 'inbox.restore') && baseVersion === null) {
     return null;
   }
   if (!Number.isFinite(sequence) || sequence <= 0) return null;
