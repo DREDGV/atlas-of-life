@@ -4,7 +4,7 @@ import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
@@ -123,6 +123,12 @@ const MIGRATIONS = [
   (data) => ({
     ...data,
     operationLog: normalizeOperationLog(data?.operationLog),
+  }),
+  // 4 -> 5: Sync v1 C3 — persisted Inbox tombstones (delete/restore race
+  // detection). Missing/legacy data degrades to an empty list.
+  (data) => ({
+    ...data,
+    inboxTombstones: normalizeInboxTombstones(data?.inboxTombstones),
   }),
 ];
 

@@ -16,6 +16,12 @@ import {
 } from './voice.js';
 import { createSyncRuntime, requestSyncNow } from '../sync/runtime.js';
 import { createSyncPanel } from '../sync/ui.js';
+import { syncCapabilities } from '../sync/capabilities.js';
+
+// Capture is a projection-only client: it never owns a Task model, so a
+// routed resultRef arriving here is accepted only as a C2 projection
+// reference. Declared explicitly — never inferred from state shape.
+syncCapabilities.hasTaskModel = false;
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;

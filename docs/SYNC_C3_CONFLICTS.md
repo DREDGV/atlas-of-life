@@ -3,8 +3,13 @@
 Обновлено: 2026-08-29. Версия: `0.11.0-alpha.4`.
 
 **Статус: Draft PR #21 (ветка `feat/sync-c3-conflicts-alpha4`), в
-`revival-preparation` НЕ замержен.** Содержит также fixes по code review
-(terminal `rejected`, delete/restore race, invariant guards).
+`revival-preparation` НЕ замержен.**
+
+**Важно: review-фиксы (terminal `rejected`, delete/restore race с tombstones,
+capability-флаг route-валидации, invariant guards) вошли НЕ в этот PR, а в
+C4-ветку (`feat/sync-c4-closure-alpha5`, PR #22), stacked поверх #21.**
+Документ ниже описывает целевую модель конфликтов в финальном виде; в #21
+части из описанного может ещё не быть.
 
 C3 превращает «detect + refuse» из C0 в пригодные для человека конфликты и
 recovery, не строя универсальный merge engine и CRDT (мастер-план §10.7).

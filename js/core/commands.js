@@ -2,6 +2,7 @@ import { state, normalizeTags } from '../state.js';
 import { saveState } from '../storage.js';
 import { appendOperation } from './operations.js';
 import { enqueueSyncOperation } from '../sync/outbox.js';
+import { syncCapabilities } from '../sync/capabilities.js';
 import {
   addInboxLines,
   convertInboxItemToTask,
@@ -9,6 +10,13 @@ import {
   restoreInboxItem,
   updateInboxItem,
 } from '../features/inbox/model.js';
+
+// Explicit per-app capability (js/sync/capabilities.js): Studio validates
+// routed result references against its Task model; Capture is projection-only.
+// Never inferred from state.tasks.length.
+function hasTaskModel(){
+  return syncCapabilities.hasTaskModel === true;
+}
 
 const TASK_STATUSES = new Set(['backlog', 'today', 'doing', 'done']);
 const COMMAND_ARRAY_KEYS = [
@@ -724,7 +732,19 @@ export function applyRemoteInboxDelete(payload, options = {}){
 function applyRemoteInboxRestoreMutation(payload, options){
   const removal = payload?.removal || payload;
   const item = removal?.item;
-  if (!item || !item.id) throw new Error('remote inbox.restore: item id missing');
+  // Review: the restored snapshot must be a complete Inbox record. id, text
+  // and rawText are required STRINGS — an incomplete record must throw BEFORE
+  // any state/storage mutation (rawText is the immutable original, never
+  // synthesized). runAtomicCommand rolls back on the throw.
+  if (!item || typeof item.id !== 'string' || !item.id) {
+    throw new Error('remote inbox.restore: item.id (string) missing');
+  }
+  if (typeof item.text !== 'string' || !item.text) {
+    throw new Error('remote inbox.restore: item.text (string) missing');
+  }
+  if (typeof item.rawText !== 'string' || !item.rawText) {
+    throw new Error('remote inbox.restore: item.rawText (string) missing — refusing to fabricate the original');
+  }
   const baseVersion = options?.baseVersion ?? payload?.baseVersion ?? null;
   if (!Array.isArray(state.inbox)) state.inbox = [];
   if (state.inbox.some(entry => entry.id === item.id)) {
@@ -823,10 +843,11 @@ function applyRemoteStateForConflict(op, options = {}){
       const after = op.payload?.inboxAfter;
       if (!after?.id) throw new Error('conflict route op missing inboxAfter.id');
       // Review: force-applying a route must not create a broken resultRef.
-      // When this client HAS a task model (Studio), the referenced Task must
-      // exist and point back at this Inbox record. On Capture there is no
-      // task model — the resultRef is a projection reference (documented).
-      if (Array.isArray(state.tasks) && state.tasks.length > 0 && after.resultRef?.type === 'task') {
+      // Validation is driven by an EXPLICIT client capability, never inferred
+      // from state.tasks.length (an empty task array does not mean Capture).
+      // Studio always validates resultRef.id → Task.sourceInboxId; Capture
+      // (hasTaskModel=false) accepts only a C2 projection reference.
+      if (after.resultRef?.type === 'task' && hasTaskModel()) {
         const linked = state.tasks.find(task => task.id === after.resultRef.id);
         if (!linked || linked.sourceInboxId !== after.id) {
           throw new Error('conflict route: referenced Task is missing or not linked to this Inbox record');
@@ -922,11 +943,17 @@ function resolveConflictMutation(conflict, action, options){
     const applied = applyRemoteStateForConflict(op, options);
     // restore_apply must propagate: other devices removed the record because of
     // this device's earlier delete — the restoration intent goes back too.
+    // The emitted inbox.restore carries the TOMBSTONE baseVersion (the version
+    // the delete was based on) so other devices with the same tombstone apply
+    // the restore without a delete_restore_race.
     if (action === 'restore_apply' && applied) {
+      const tombstone = state.inboxTombstones?.find(t => t.id === applied.id);
+      const restoreBase = tombstone?.baseVersion ?? applied.updatedAt ?? null;
       const restoreOp = appendOperation({
         type: 'inbox.restore',
         entityType: 'inbox',
         entityId: applied.id,
+        baseVersion: restoreBase,
         payload: { item: cloneCommandValue(applied), index: 0 },
       }, { timestamp: options.now ?? Date.now(), deviceId: options.deviceId });
       enqueueOutbound(restoreOp);

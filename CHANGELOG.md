@@ -42,6 +42,11 @@
 
 ### Stage C3 — Conflicts & Recovery
 
+> **Примечание:** review-фиксы по этой части (terminal `rejected` для
+> server-отклонённых операций, delete/restore race с tombstones,
+> capability-флаг route-валидации, invariant guards, schema 4→5) вошли в
+> `0.11.0-alpha.5` (C4-ветка, PR #22) и в этом релизе отсутствуют.
+
 #### Добавлено
 - **Человеческие конфликты вместо «detect + refuse»**: quarantine обогащён (`conflictStatus`: base_version / deleted_race / unsupported / invalid; `resolution`: pending / resolved; `resolutionAction`; `resolvedAt`); `conflicts` в статусе = число неразрешённых; resolution durable (переживает reload)
 - **Действия разрешения в панели Sync** (без технических терминов): base_version — «Оставить локальную» / «Принять удалённую» / «Сохранить обе» (копия локальной версии создаётся и доставляется через inbox.capture, оригинал принимает remote); deleted_race — «Оставить удалённой» / «Восстановить и применить» (запись восстанавливается с remote-состоянием и **восстановление доставляется остальным** через inbox.restore — иначе устройства разошлись бы); invalid/unsupported — «Пропустить»

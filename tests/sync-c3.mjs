@@ -477,7 +477,7 @@ function outboxOpsOfType(type){
   const raceRestore = applyIncomingOperation({
     id: 'op-race3-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: 'inbox-race2',
     baseVersion: 999, // the other side restored a much newer version
-    payload: { item: { id: 'inbox-race2', rawText: 'Запись', updatedAt: 999 }, index: 0 },
+    payload: { item: { id: 'inbox-race2', text: 'Запись', rawText: 'Запись', updatedAt: 999 }, index: 0 },
   });
   assert(raceRestore.conflict === true && raceRestore.conflictStatus === 'delete_restore_race', 'Test 9i: mismatched restore is a classified race');
   assert(!state.inbox.some(item => item.id === 'inbox-race2'), 'Test 9j: record stays deleted until resolved');
@@ -486,7 +486,7 @@ function outboxOpsOfType(type){
   const conflictRestore = {
     operation: {
       id: 'op-race3-rest', deviceId: 'remote', timestamp: 3, type: 'inbox.restore', entityType: 'inbox', entityId: 'inbox-race2',
-      baseVersion: 999, payload: { item: { id: 'inbox-race2', rawText: 'Запись', updatedAt: 999 }, index: 0 },
+      baseVersion: 999, payload: { item: { id: 'inbox-race2', text: 'Запись', rawText: 'Запись', updatedAt: 999 }, index: 0 },
     },
     serverSequence: 4, status: 'conflict', conflictStatus: 'delete_restore_race', resolution: 'pending',
   };
@@ -496,5 +496,189 @@ function outboxOpsOfType(type){
   console.log('✓ Test 9i–9l: restore-race resolution (keep_deleted / restore_apply)');
 }
 
-console.log('\n✅ All Stage C3 sync tests passed.');
+// --- Test 10 (review): malformed remote inbox.restore → throw + rollback ------
+{
+  const store = makeStore();
+  switchClient(store, 'device-c3-mal');
+  applyIncomingOperation({ id: 'op-mal-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-mal', payload: { id: 'inbox-mal', rawText: 'Целая запись', text: 'Целая запись', status: 'new', createdAt: 100 } });
+  const before = JSON.stringify(state.inbox);
 
+  const cases = [
+    { name: 'missing id', item: { text: 'x', rawText: 'y' } },
+    { name: 'missing text', item: { id: 'inbox-mal2', rawText: 'y' } },
+    { name: 'missing rawText', item: { id: 'inbox-mal2', text: 'x' } },
+    { name: 'non-string rawText', item: { id: 'inbox-mal2', text: 'x', rawText: 42 } },
+  ];
+  for (const c of cases) {
+    let threw = null;
+    try {
+      applyIncomingOperation({
+        id: `op-mal-${c.name.replace(/\s/g, '-')}`, deviceId: 'remote', timestamp: 2,
+        type: 'inbox.restore', entityType: 'inbox', entityId: c.item.id || 'none',
+        payload: { item: c.item, index: 0 },
+      });
+    } catch (error) { threw = error; }
+    assert(threw !== null, `Test 10a: malformed restore (${c.name}) throws`);
+    assert(JSON.stringify(state.inbox) === before, `Test 10b: atomic rollback (${c.name}) — state unchanged`);
+  }
+  assert(state.inbox.length === 1, 'Test 10c: nothing was half-applied');
+  console.log('✓ Test 10: malformed remote restore throws before any mutation (atomic)');
+}
+
+// --- Test 11 (review): route validation driven by explicit capability ----------
+{
+  const store = makeStore();
+  switchClient(store, 'device-c3-cap');
+  applyIncomingOperation({ id: 'op-cap-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-cap', payload: { id: 'inbox-cap', rawText: 'Роут', text: 'Роут', status: 'new', createdAt: 100 } });
+
+  const makeRouteConflict = (resultRefId, sourceInboxId) => ({
+    operation: {
+      id: 'op-cap-route', deviceId: 'remote', timestamp: 2, type: 'inbox.route_to_task', entityType: 'task', entityId: resultRefId,
+      payload: { inboxAfter: { id: sourceInboxId, text: 'Роут', rawText: 'Роут', status: 'processed', resultRef: { type: 'task', id: resultRefId }, updatedAt: 300 } },
+    },
+    serverSequence: 2, status: 'conflict', conflictStatus: 'deleted_race', resolution: 'pending',
+  });
+
+  const { syncCapabilities } = await import('../js/sync/capabilities.js');
+  syncCapabilities.hasTaskModel = true; // Studio-like
+
+  // a) empty Studio (no tasks at all) must still validate → throw
+  state.tasks = [];
+  let threw = null;
+  try { resolveConflict(makeRouteConflict('task-missing-empty', 'inbox-cap'), 'restore_apply', { deviceId: 'device-c3-cap' }); } catch (error) { threw = error; }
+  assert(threw !== null, 'Test 11a: empty Studio (tasks=[]) still validates the routed Task');
+
+  // b) missing Task with a non-empty model → throw
+  state.tasks = [{ id: 'task-other', title: 'Другая', sourceInboxId: 'inbox-zzz' }];
+  threw = null;
+  try { resolveConflict(makeRouteConflict('task-missing', 'inbox-cap'), 'restore_apply', { deviceId: 'device-c3-cap' }); } catch (error) { threw = error; }
+  assert(threw !== null, 'Test 11b: missing Task → throw');
+
+  // c) wrong sourceInboxId → throw
+  state.tasks = [{ id: 'task-l', title: 'Связанная', sourceInboxId: 'inbox-other' }];
+  threw = null;
+  try { resolveConflict(makeRouteConflict('task-l', 'inbox-cap'), 'restore_apply', { deviceId: 'device-c3-cap' }); } catch (error) { threw = error; }
+  assert(threw !== null, 'Test 11c: wrong sourceInboxId → throw');
+
+  // d) correct link → applies
+  state.tasks = [{ id: 'task-l', title: 'Связанная', sourceInboxId: 'inbox-cap' }];
+  const ok = resolveConflict(makeRouteConflict('task-l', 'inbox-cap'), 'restore_apply', { deviceId: 'device-c3-cap' });
+  assert(ok && state.inbox[0].resultRef?.id === 'task-l', 'Test 11d: correctly linked route applies');
+
+  // e) Capture projection-only mode: no validation, projection reference accepted
+  switchClient(makeStore(), 'device-c3-cap2');
+  applyIncomingOperation({ id: 'op-cap2-cap', deviceId: 'remote', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-cap2', payload: { id: 'inbox-cap2', rawText: 'Проекция', text: 'Проекция', status: 'new', createdAt: 100 } });
+  syncCapabilities.hasTaskModel = false; // Capture-like
+  const cap = resolveConflict(makeRouteConflict('task-proj', 'inbox-cap2'), 'restore_apply', { deviceId: 'device-c3-cap2' });
+  assert(cap && state.inbox[0].resultRef?.id === 'task-proj', 'Test 11e: Capture accepts the C2 projection reference');
+  assert(state.tasks.length === 0, 'Test 11f: Capture still holds no Task model');
+
+  syncCapabilities.hasTaskModel = true; // restore default for later tests
+  console.log('✓ Test 11: route validation uses explicit capability (Studio validates, Capture projection-only)');
+}
+
+// --- Test 12 (review): schema migration, restore envelope, third-device race --
+{
+  // 12a: schema 4 data (no tombstones) migrates to inboxTombstones = []
+  const store = makeStore();
+  store.setItem('atlas_v2_data', JSON.stringify({
+    schema: 4,
+    domains: [{ id: 'd1', title: 'Дача' }],
+    projects: [], tasks: [], inbox: [], operationLog: [],
+    settings: { layoutMode: 'auto' },
+  }));
+  switchClient(store, 'device-c3-mig');
+  assert(Array.isArray(state.inboxTombstones) && state.inboxTombstones.length === 0, 'Test 12a: schema 4 data migrates inboxTombstones to []');
+  console.log('✓ Test 12a: schema migration (4 → 5, inboxTombstones)');
+
+  // 12b: restore_apply emits inbox.restore carrying the tombstone baseVersion
+  const store2 = makeStore();
+  switchClient(store2, 'device-c3-env');
+  const created = captureInbox('Запись для restore', { deviceId: 'device-c3-env', now: 100 });
+  const id = created[0].id;
+  deleteInbox(id, { deviceId: 'device-c3-env', now: 200 }); // tombstone baseVersion 100
+  const conflict = {
+    operation: {
+      id: 'op-env-upd', deviceId: 'remote', timestamp: 3, type: 'inbox.update', entityType: 'inbox', entityId: id,
+      baseVersion: 100,
+      payload: { after: { id, text: 'Запись для restore', rawText: 'Запись для restore', status: 'processed', updatedAt: 300, createdAt: 100 } },
+    },
+    serverSequence: 4, status: 'conflict', conflictStatus: 'deleted_race', resolution: 'pending',
+  };
+  resolveConflict(conflict, 'restore_apply', { deviceId: 'device-c3-env' });
+  const restoreOps = outboxOpsOfType('inbox.restore');
+  assert(restoreOps.length === 1, 'Test 12b: restore_apply emitted an inbox.restore');
+  assert(restoreOps[0].operation.baseVersion === 100, `Test 12c: restore envelope carries the tombstone baseVersion (got ${restoreOps[0].operation.baseVersion})`);
+  console.log('✓ Test 12b/12c: emitted restore envelope carries tombstone baseVersion');
+
+  // 12d: third-device tombstone race over live HTTP
+  {
+    const ADMIN_TOKEN = 'test-admin-token-0123456789abcdef';
+    const DB_PATH = new URL('./fixtures/.sync-c3-test3.sqlite', import.meta.url).pathname
+      .replace(/^\/([A-Za-z]:)/, '$1');
+    if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
+    const server = createSyncServer({ token: ADMIN_TOKEN, dbPath: DB_PATH });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const endpoint = `http://127.0.0.1:${server.address().port}`;
+    const pair3 = async (st, deviceId, name) => {
+      const codes = await fetch(`${endpoint}/v1/pair/codes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      }).then(r => r.json());
+      const claimed = await claimPairingCode(endpoint, { code: codes.code, deviceId, deviceName: name });
+      st.setItem('atlas-sync-token', claimed.token);
+      return claimed.token;
+    };
+    const tr = st => createHttpTransport({ endpoint, getToken: () => st.getItem('atlas-sync-token') });
+
+    const storeA = makeStore(); const storeB = makeStore(); const storeC = makeStore();
+    await pair3(storeA, 'dev-3-a', 'A'); await pair3(storeB, 'dev-3-b', 'B'); await pair3(storeC, 'dev-3-c', 'C');
+
+    // A: capture + delete based on v1 → server holds capture, delete
+    switchClient(storeA, 'dev-3-a');
+    const ea = createSyncEngine({ transport: tr(storeA), storage: storeA });
+    const cap = captureInbox('Третье устройство', { deviceId: 'dev-3-a', now: 100 });
+    await ea.sync();
+    deleteInbox(cap[0].id, { deviceId: 'dev-3-a', now: 200 });
+    await ea.sync();
+
+    // C (third device): replays capture + delete → tombstone v1
+    switchClient(storeC, 'dev-3-c');
+    const ec = createSyncEngine({ transport: tr(storeC), storage: storeC });
+    await ec.sync();
+    assert(state.inbox.length === 0, 'Test 12d: C applied the delete');
+    assert(state.inboxTombstones.some(t => t.id === cap[0].id && t.baseVersion === 100), 'Test 12e: C holds the tombstone (v1)');
+
+    // B: restores a NEWER version (v2) — the restore op carries baseVersion 999.
+    // The transport derives the batch deviceId from the CURRENT localStorage,
+    // so B must be the active client while pushing.
+    switchClient(storeB, 'dev-3-b');
+    const transportB = tr(storeB);
+    await transportB.pushOperations([{
+      schema: 1, id: 'op-3b-rest-12345', deviceId: 'dev-3-b', sequence: 1, timestamp: 900,
+      type: 'inbox.restore', entityType: 'inbox', entityId: cap[0].id, baseVersion: 999,
+      payload: { item: { ...cap[0], updatedAt: 999, status: 'reviewed' }, index: 0 },
+    }]);
+
+    // C: the raced restore → delete_restore_race, record stays deleted
+    switchClient(storeC, 'dev-3-c');
+    await ec.sync();
+    assert(ec.getStatus().conflicts === 1, 'Test 12f: C quarantined the raced restore (tombstone v1 vs restore v2)');
+    assert(state.inbox.length === 0, 'Test 12g: C stays deleted until resolved');
+    const conflict = ec.getConflicts().find(c => c.conflictStatus === 'delete_restore_race');
+    assert(conflict && conflict.operation.type === 'inbox.restore', 'Test 12h: the race is on inbox.restore');
+
+    ec.resolveConflict(conflict, 'restore_apply');
+    assert(state.inbox.some(item => item.id === cap[0].id), 'Test 12i: C restored the record after resolution');
+    assert(state.inboxTombstones.length === 0, 'Test 12j: C tombstone cleared');
+    await ec.sync();
+    assert(ec.getStatus().conflicts === 0 && ec.getStatus().pending === 0, 'Test 12k: C converged cleanly');
+
+    await new Promise(resolve => server.close(resolve));
+    if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
+    console.log('✓ Test 12d–12k: third-device tombstone race + restore_apply convergence');
+  }
+}
+
+console.log('\n✅ All Stage C3 sync tests passed.');
