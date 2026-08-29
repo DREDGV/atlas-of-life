@@ -1382,4 +1382,3 @@ function promoteTaskToProjectMutation(taskId, options){
 export function promoteTaskToProject(taskId, options = {}){
   return runAtomicCommand(() => promoteTaskToProjectMutation(taskId, options));
 }
-

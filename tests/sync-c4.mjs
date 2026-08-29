@@ -215,4 +215,3 @@ await pair(storeB, 'device-c4-b', 'ПК');
 await new Promise(resolve => server.close(resolve));
 if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
 console.log('\n✅ All Stage C4 sync tests passed.');
-

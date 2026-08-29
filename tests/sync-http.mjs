@@ -268,4 +268,3 @@ assert(tokenA && tokenB, 'setup: both clients paired');
 await new Promise(resolve => server.close(resolve));
 if (existsSync(DB_PATH)) rmSync(DB_PATH, { force: true });
 console.log('\n✅ All Stage C1 HTTP end-to-end tests passed.');
-

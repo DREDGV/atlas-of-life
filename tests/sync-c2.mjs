@@ -314,5 +314,3 @@ function outboxOpsOfType(type){
 }
 
 console.log('\n✅ All Stage C2 sync tests passed.');
-
-
