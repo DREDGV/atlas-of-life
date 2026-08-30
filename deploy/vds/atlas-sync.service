@@ -24,6 +24,7 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
 ReadWritePaths=/var/lib/atlas-sync
+ReadOnlyPaths=/var/lib/atlas-sync/backups
 
 [Install]
 WantedBy=multi-user.target
