@@ -1,6 +1,6 @@
 # Атлас Жизни — дорожная карта возрождения
 
-Обновлено: 20 августа 2026 года.
+Обновлено: 30 августа 2026 года.
 
 ## Видение продукта
 
@@ -72,14 +72,17 @@ AI / Auto Processing
 
 AI не является условием Definition of Done для 0.10.x.
 
-### 0.11.x — Sync v1 🔴 АКТИВНО
+### 0.11.x — Sync v1 🟠 КОД ГОТОВ, FIELD VALIDATION PENDING
 
 Первый сквозной контур: Phone Capture → Inbox → Processing → Desktop → результат → Phone. Синхронизируются операции, а не перезапись общего JSON. `operationId`, `deviceId`, `sequence`, idempotency, retry, ack, server cursor, deduplication.
 
 - **C0 Sync Foundation / первый Inbox vertical slice** — ✅ ЗАВЕРШЕНО (`0.11.0-alpha.1`): архитектура (`docs/SYNC_V1_FOUNDATION.md`), device identity, durable outbox, idempotency/dedupe, transport abstraction + dev/local relay, Core sync-apply, cursor/pull, retry; синхронизируется жизненный цикл Inbox/Processing (creation, state, itemType, text/rawText, hints, discarded/processed, resultRef как ссылка). Полный Task sync — далее.
-- **C1 Real Remote Sync** — ✅ ЗАВЕРШЕНО (`0.11.0-alpha.2`, Draft PR #17): настоящий remote transport — минимальный Atlas Sync service (Node HTTP + SQLite, ноль зависимостей, `server/`), реализующий C0-контракт (`/v1/ops/push`, `/v1/ops/pull`); минимальная изоляция данных через парную привязку (одноразовый код → bearer-токен устройства, SHA-256, отзыв) и admin bootstrap-токен только на сервере; клиент (`js/sync/http-transport.js` + `runtime.js`); Sync включён в рабочее приложение (Studio-чип + модал, info-панель Capture, статусы ожидание/ошибка/привязка); offline-first: ошибка pull не блокирует push, outbox durable, retry; деплой-пакет для VDS (`deploy/vds/`, HTTPS через certbot на `*.sslip.io`). VDS-деплой и физический прогон телефона отложены решением пользователя. Детали — `docs/SYNC_C1_REMOTE.md`.
-- **C2 Task Result Bridge** — ▶ ТЕКУЩИЙ ЭТАП (`0.11.0-alpha.3`): результат обработки понятен на телефоне без Full Task Sync — read-only проекция routed Task (`state.taskProjections`) через операции `task.result.upsert`/`remove`; карточка результата в Capture («✓ Разобрана → Задача · title · Дача · Сад · Высокий · 24 августа»), определённое поведение при переименовании/изменении/удалении/отмене; десктоп — единственный писатель. Детали — `docs/SYNC_C2_RESULT_BRIDGE.md`.
-- **C3/C4** — конфликты & recovery (human resolution), device management, initial bootstrap, product closure — далее.
+- **C1 Real Remote Sync** — ✅ ЗАВЕРШЕНО (`0.11.0-alpha.2`, PR #17 merged): настоящий remote transport — минимальный Atlas Sync service (Node HTTP + SQLite, ноль зависимостей, `server/`), реализующий C0-контракт (`/v1/ops/push`, `/v1/ops/pull`); минимальная изоляция данных через парную привязку (одноразовый код → bearer-токен устройства, SHA-256, отзыв) и admin bootstrap-токен только на сервере; клиент (`js/sync/http-transport.js` + `runtime.js`); Sync включён в рабочее приложение (Studio-чип + модал, info-панель Capture, статусы ожидание/ошибка/привязка); offline-first: ошибка pull не блокирует push, outbox durable, retry. Детали — `docs/SYNC_C1_REMOTE.md`.
+- **C2 Task Result Bridge** — ✅ ЗАВЕРШЕНО (`0.11.0-alpha.3`, PR #20): результат обработки понятен на телефоне без Full Task Sync — read-only проекция routed Task (`state.taskProjections`) через операции `task.result.upsert`/`remove`; карточка результата в Capture («✓ Разобрана → Задача · title · Дача · Сад · Высокий · 24 августа»), определённое поведение при переименовании/изменении/удалении/отмене; десктоп — единственный писатель. Детали — `docs/SYNC_C2_RESULT_BRIDGE.md`.
+- **C3 Conflicts & Recovery** — ✅ CODE COMPLETE (`0.11.0-alpha.4` в составе `0.11.0-alpha.5` RC): человеческие конфликты вместо «detect+refuse»; terminal rejection; versioned tombstones; строгая provenance/link integrity; детерминированные delete/restore races; трёхклиентная сходимость compensating restore. Исторический Draft PR #21 не является самостоятельным merge-кандидатом: remediation находится в объединённом RC. Детали — `docs/SYNC_C3_CONFLICTS.md`.
+- **C4 Product Closure** — ✅ CODE COMPLETE / FIELD PENDING (`0.11.0-alpha.5`, ветка `feat/sync-v1-alpha5-release`): device management, bootstrap нового устройства, secret-free diagnostics, безопасный unlink, recovery-safe VDS tooling (обязательный Certbot e-mail, ежедневный проверяемый SQLite backup, 30-дневное хранение, restore runbook). Исторические stacked C3/C4 ветки остаются review evidence, а не отдельными merge-кандидатами. Детали — `docs/SYNC_C4_CLOSURE.md`.
+- **Локальные code-gates закрыты 30 августа:** `sync-v1/server/http/c2/c3/c4` tests; C3 и C4 multi-browser smokes; deployment bundle allowlist и shell syntax; версия остаётся `0.11.0-alpha.5`.
+- **Closure-gates (НЕ закрыты):** реальный VDS HTTPS `/health`; первый backup + `PRAGMA integrity_check`; проверяемый restore drill; физический phone Capture ↔ desktop Processing ↔ phone result, offline/reconnect, revoke/re-pair и diagnostics export. Пока они не пройдены, Sync v1 не называется production-ready и Stage C не переводится в DONE.
 
 ### 0.12.x — Today 2.0 (desktop + mobile)
 

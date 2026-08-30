@@ -4,7 +4,7 @@ import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
@@ -69,6 +69,20 @@ function normalizeTaskProjections(entries){
     }));
 }
 
+// Sync v1 C3: persisted Inbox tombstones (id, baseVersion at delete time,
+// deletedAt, removal snapshot). Missing/legacy data degrades to an empty list.
+function normalizeInboxTombstones(entries){
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter(entry => entry && typeof entry === 'object' && entry.id)
+    .map(entry => ({
+      id: String(entry.id),
+      baseVersion: Number(entry.baseVersion) || null,
+      deletedAt: Number(entry.deletedAt) || 0,
+      removal: entry.removal || null,
+    }));
+}
+
 const MIGRATIONS = [
   // 0 -> 1
   (data) => {
@@ -110,6 +124,12 @@ const MIGRATIONS = [
     ...data,
     operationLog: normalizeOperationLog(data?.operationLog),
   }),
+  // 4 -> 5: Sync v1 C3 — persisted Inbox tombstones (delete/restore race
+  // detection). Missing/legacy data degrades to an empty list.
+  (data) => ({
+    ...data,
+    inboxTombstones: normalizeInboxTombstones(data?.inboxTombstones),
+  }),
 ];
 
 function normalizeEntities(entities, options = {}){
@@ -143,6 +163,7 @@ export function loadState(){
     state.inbox = normalizeInboxEntries(data.inbox);
     state.operationLog = normalizeOperationLog(data.operationLog);
     state.taskProjections = normalizeTaskProjections(data.taskProjections);
+    state.inboxTombstones = normalizeInboxTombstones(data.inboxTombstones);
     if(typeof data.maxEdges === 'number') state.maxEdges = data.maxEdges;
     if(typeof data.showLinks === 'boolean') state.showLinks = data.showLinks;
     if(typeof data.showAging === 'boolean') state.showAging = data.showAging;
@@ -168,6 +189,11 @@ export function loadState(){
       data.tasks = state.tasks;
       data.inbox = state.inbox;
       data.operationLog = state.operationLog;
+      // Review: the immediate migration save must persist the full new shape —
+      // otherwise the persisted blob stays on the old schema until the first
+      // user edit (and a crash would re-run the migration).
+      data.taskProjections = state.taskProjections;
+      data.inboxTombstones = state.inboxTombstones;
       adapter.save(JSON.stringify(data));
     }
     return true;
@@ -188,6 +214,7 @@ export function saveState(){
       inbox: normalizeInboxEntries(state.inbox),
       operationLog: normalizeOperationLog(state.operationLog),
       taskProjections: normalizeTaskProjections(state.taskProjections),
+      inboxTombstones: normalizeInboxTombstones(state.inboxTombstones),
       maxEdges: state.maxEdges,
       showLinks: !!state.showLinks,
       showAging: !!state.showAging,
@@ -230,6 +257,7 @@ export function exportJson(){
     inbox: normalizeInboxEntries(state.inbox),
     operationLog: normalizeOperationLog(state.operationLog),
     taskProjections: normalizeTaskProjections(state.taskProjections),
+      inboxTombstones: normalizeInboxTombstones(state.inboxTombstones),
     maxEdges: state.maxEdges,
     showLinks: !!state.showLinks,
     showAging: !!state.showAging,
@@ -269,6 +297,7 @@ export function importJson(file){
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
         state.taskProjections = normalizeTaskProjections(data.taskProjections);
+    state.inboxTombstones = normalizeInboxTombstones(data.inboxTombstones);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         if(typeof data.showLinks==='boolean') state.showLinks = data.showLinks; else state.showLinks = true;
         if(typeof data.showAging==='boolean') state.showAging = data.showAging; else state.showAging = true;
@@ -307,6 +336,7 @@ export function importJsonV26(file){
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
         state.taskProjections = normalizeTaskProjections(data.taskProjections);
+    state.inboxTombstones = normalizeInboxTombstones(data.inboxTombstones);
         state.maxEdges = typeof data.maxEdges==='number' ? data.maxEdges : 300;
         state.showLinks = typeof data.showLinks==='boolean' ? data.showLinks : true;
         state.showAging = typeof data.showAging==='boolean' ? data.showAging : true;

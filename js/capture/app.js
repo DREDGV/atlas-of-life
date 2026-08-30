@@ -16,6 +16,12 @@ import {
 } from './voice.js';
 import { createSyncRuntime, requestSyncNow } from '../sync/runtime.js';
 import { createSyncPanel } from '../sync/ui.js';
+import { syncCapabilities } from '../sync/capabilities.js';
+
+// Capture is a projection-only client: it never owns a Task model, so a
+// routed resultRef arriving here is accepted only as a C2 projection
+// reference. Declared explicitly — never inferred from state shape.
+syncCapabilities.hasTaskModel = false;
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
@@ -87,6 +93,7 @@ function showToastWithUndo(message) {
       updateCounter();
       renderInboxList();
       renderRecentItems();
+      requestSyncNow(); // C3/W2: the restoration reaches other devices immediately
       toast.hidden = true;
     }
   });
@@ -367,6 +374,7 @@ function renderInboxList() {
         updateCounter();
         renderInboxList();
         renderRecentItems();
+        requestSyncNow(); // C3/W2: the deletion reaches other devices immediately
         showToastWithUndo('Запись удалена');
       }
     });
@@ -875,6 +883,8 @@ function initSync() {
       safeSetText(statusEl, 'Синхронизация: ошибка');
     } else if (status.pending > 0) {
       safeSetText(statusEl, `Ожидают отправки: ${status.pending}`);
+    } else if (status.rejected > 0) {
+      safeSetText(statusEl, `Отклонено сервером: ${status.rejected}`);
     } else if (status.failed > 0) {
       safeSetText(statusEl, `Ошибки отправки: ${status.failed}`);
     } else {

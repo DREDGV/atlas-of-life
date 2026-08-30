@@ -9,7 +9,10 @@
 //     sequence, timestamp, type, entityType, entityId, baseVersion, payload);
 //   - `syncStatus`/`attempts`/`lastError` are LOCAL delivery metadata:
 //     'pending' → 'sent' (awaiting ack) → removed on ack;
-//     'retryable' (transient failure), 'failed' (permanent).
+//     'retryable' (transient failure), 'failed' (gave up after MAX_ATTEMPTS),
+//     'rejected' (TERMINAL: the server refused this operation per-op — e.g.
+//     invalid_operation / operation_id_conflict). Rejected entries are never
+//     retried automatically (see engine promoteFailed: transient only).
 //
 // Durability guarantees:
 //   - entries are never silently dropped to respect a size cap (unacked queue is
