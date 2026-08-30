@@ -81,6 +81,20 @@ install -d -m 0750 -o root -g atlas-sync /etc/atlas-sync
 install -d -m 0755 /usr/local/libexec/atlas-sync
 install -d -m 0755 /usr/local/share/doc/atlas-sync
 
+# Older releases used the service manager's default umask and could leave the
+# live SQLite database, WAL and shared-memory files world-readable. Normalize
+# existing files before restart; UMask=0027 in atlas-sync.service keeps future
+# files at owner/group-only permissions.
+for database_file in \
+  /var/lib/atlas-sync/atlas-sync.sqlite \
+  /var/lib/atlas-sync/atlas-sync.sqlite-wal \
+  /var/lib/atlas-sync/atlas-sync.sqlite-shm; do
+  if [[ -e ${database_file} ]]; then
+    chown atlas-sync:atlas-sync "${database_file}"
+    chmod 0640 "${database_file}"
+  fi
+done
+
 if [[ ! -x /opt/atlas-sync/runtime/bin/node ]]; then
   runtime_tmp=$(mktemp -d /opt/atlas-sync/runtime.XXXXXX)
   trap 'rm -rf -- "${runtime_tmp:-}"' EXIT

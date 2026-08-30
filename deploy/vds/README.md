@@ -19,6 +19,10 @@ processes or Apache sites.
 - Apache site: `/etc/apache2/sites-available/atlas-sync.conf`;
 - daily backup timer: `atlas-sync-backup.timer`.
 
+The live database, WAL and shared-memory files are owned by
+`atlas-sync:atlas-sync` with mode `0640`; the service uses `UMask=0027` so a
+restart cannot recreate them as world-readable files.
+
 `ATLAS_HOSTNAME` holds the final public hostname. An `sslip.io` hostname can be
 used for the first deployment when its address resolves to the VDS. HTTPS must
 be enabled before configuring a physical phone: the Capture PWA requires a

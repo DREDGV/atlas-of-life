@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=atlas-sync
 Group=atlas-sync
+UMask=0027
 WorkingDirectory=/opt/atlas-sync/current
 EnvironmentFile=/etc/atlas-sync/atlas-sync.env
 ExecStart=/opt/atlas-sync/runtime/bin/node --no-warnings server/start.js
