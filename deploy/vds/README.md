@@ -65,7 +65,9 @@ later deployments. It is used only to create the first pairing code or
 recover access. Never paste it into issues, chats, client settings or
 service logs. The installer refuses to continue without
 `ATLAS_CERTBOT_EMAIL`, obtains or reuses the HTTPS certificate, enables the
-daily backup timer and creates one verified first backup.
+daily backup timer and creates one verified first backup. Existing
+installations are explicitly restarted so the running Node process loads the
+new release and the hardened database-file permissions take effect.
 
 After Certbot obtains or reuses the certificate, the installer enables the
 managed `atlas-sync-ssl` vhost and disables the legacy

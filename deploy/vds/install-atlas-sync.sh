@@ -157,7 +157,11 @@ a2ensite atlas-sync >/dev/null
 apache2ctl configtest
 
 systemctl daemon-reload
-systemctl enable --now atlas-sync.service
+systemctl enable atlas-sync.service >/dev/null
+# `enable --now` does not restart an already active service. A real restart is
+# required on upgrades so the process loads the new release and the hardened
+# UMask applies to newly opened SQLite WAL/SHM files.
+systemctl restart atlas-sync.service
 systemctl enable --now atlas-sync-backup.timer
 systemctl reload apache2
 

@@ -75,7 +75,8 @@ Snapshot-сервис не строился — replay пока практиче
   VDS-файлов; нет вложенного runtime/archive, `.env`, SQLite, WAL или SHM.
 - `node tests/vds-deploy.mjs` — HTTP/HTTPS vhost сохраняют static Studio/Capture,
   проксируют только `/v1/*` и `/health`, installer отключает старый Certbot
-  catch-all vhost после безопасного получения или переиспользования сертификата.
+  catch-all vhost после безопасного получения или переиспользования сертификата
+  и явно перезапускает уже активный Sync service при upgrade.
 - Git Bash `bash -n` — installer и backup script синтаксически корректны.
 
 ## VDS recovery readiness

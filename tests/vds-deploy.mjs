@@ -32,6 +32,8 @@ assert(installer.includes('atlas-sync-apache-ssl.conf'), 'installer requires and
 assert(installer.includes('a2dissite atlas-sync-le-ssl'), 'installer disables legacy Certbot vhost');
 assert(installer.includes('a2ensite atlas-sync-ssl'), 'installer enables managed HTTPS vhost');
 assert(installer.includes('--cert-name "${ATLAS_HOSTNAME}"'), 'installer pins the certificate name used by the HTTPS template');
+assert(installer.includes('systemctl restart atlas-sync.service'), 'installer restarts an already active service on upgrade');
+assert(!installer.includes('systemctl enable --now atlas-sync.service'), 'installer does not mistake enable --now for an upgrade restart');
 assert(bundleBuilder.includes("'atlas-sync-apache-ssl.conf'"), 'bundle includes HTTPS template');
 
 console.log('✓ VDS deployment keeps Studio/Capture routes on HTTP and HTTPS.');
