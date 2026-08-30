@@ -18,6 +18,7 @@ const DEPLOY_FILES = [
   'install-atlas-sync.sh',
   'atlas-sync.service',
   'atlas-sync-apache.conf',
+  'atlas-sync-apache-ssl.conf',
   'backup-atlas-sync.sh',
   'atlas-sync-backup.service',
   'atlas-sync-backup.timer',

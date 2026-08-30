@@ -17,6 +17,7 @@ processes or Apache sites.
 - process identity: `atlas-sync`;
 - loopback API port: `127.0.0.1:8787`;
 - Apache site: `/etc/apache2/sites-available/atlas-sync.conf`;
+- managed HTTPS site: `/etc/apache2/sites-available/atlas-sync-ssl.conf`;
 - daily backup timer: `atlas-sync-backup.timer`.
 
 The live database, WAL and shared-memory files are owned by
@@ -65,6 +66,11 @@ recover access. Never paste it into issues, chats, client settings or
 service logs. The installer refuses to continue without
 `ATLAS_CERTBOT_EMAIL`, obtains or reuses the HTTPS certificate, enables the
 daily backup timer and creates one verified first backup.
+
+After Certbot obtains or reuses the certificate, the installer enables the
+managed `atlas-sync-ssl` vhost and disables the legacy
+`atlas-sync-le-ssl` vhost when present. This keeps Studio, Capture and the API
+on the same routing contract during upgrades from older API-only deployments.
 
 ## HTTPS
 

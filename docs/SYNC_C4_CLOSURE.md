@@ -71,8 +71,11 @@ Snapshot-сервис не строился — replay пока практиче
   модели разрешаются, клиенты сходятся без дублей, pending и page errors.
 - `node tools/smoke-c4.mjs` — три независимых клиента: bootstrap из нуля,
   device management/rename, без pending, дублей и page errors.
-- `node tools/build-sync-deploy.mjs` + archive inspection — allowlist из восьми
+- `node tools/build-sync-deploy.mjs` + archive inspection — allowlist из девяти
   VDS-файлов; нет вложенного runtime/archive, `.env`, SQLite, WAL или SHM.
+- `node tests/vds-deploy.mjs` — HTTP/HTTPS vhost сохраняют static Studio/Capture,
+  проксируют только `/v1/*` и `/health`, installer отключает старый Certbot
+  catch-all vhost после безопасного получения или переиспользования сертификата.
 - Git Bash `bash -n` — installer и backup script синтаксически корректны.
 
 ## VDS recovery readiness

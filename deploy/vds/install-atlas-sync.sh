@@ -43,6 +43,7 @@ for required in \
   "${UPLOAD_DIR}/server/sync-server.js" \
   "${UPLOAD_DIR}/deploy/vds/atlas-sync.service" \
   "${UPLOAD_DIR}/deploy/vds/atlas-sync-apache.conf" \
+  "${UPLOAD_DIR}/deploy/vds/atlas-sync-apache-ssl.conf" \
   "${UPLOAD_DIR}/deploy/vds/backup-atlas-sync.sh" \
   "${UPLOAD_DIR}/deploy/vds/atlas-sync-backup.service" \
   "${UPLOAD_DIR}/deploy/vds/atlas-sync-backup.timer" \
@@ -175,11 +176,28 @@ done
 systemctl start atlas-sync-backup.service
 
 certbot --apache \
+  --cert-name "${ATLAS_HOSTNAME}" \
   --domain "${ATLAS_HOSTNAME}" \
   --non-interactive \
   --agree-tos \
   --email "${ATLAS_CERTBOT_EMAIL}" \
   --redirect
+
+# Certbot can preserve an older generated HTTPS vhost when a certificate
+# already exists. Render Atlas's HTTPS routing explicitly, then disable the
+# legacy generated site so Studio and Capture cannot remain hidden behind an
+# old catch-all API proxy.
+sed "s/__ATLAS_HOSTNAME__/${ATLAS_HOSTNAME}/g" \
+  "${UPLOAD_DIR}/deploy/vds/atlas-sync-apache-ssl.conf" \
+  > /etc/apache2/sites-available/atlas-sync-ssl.conf
+
+if [[ -L /etc/apache2/sites-enabled/atlas-sync-le-ssl.conf ]]; then
+  a2dissite atlas-sync-le-ssl >/dev/null
+fi
+a2enmod ssl >/dev/null
+a2ensite atlas-sync-ssl >/dev/null
+apache2ctl configtest
+systemctl reload apache2
 
 curl --fail --silent --show-error "https://${ATLAS_HOSTNAME}/health" >/dev/null
 systemctl is-enabled --quiet certbot.timer
