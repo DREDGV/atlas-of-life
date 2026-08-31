@@ -167,41 +167,94 @@ function normalizeOperation(operation){
 // SQLite store
 // ---------------------------------------------------------------------------
 
+const CURRENT_OPERATION_COLUMNS = ['sequence', 'operation_id', 'device_id', 'operation_json', 'received_at'];
+const LEGACY_INBOX_OPERATION_COLUMNS = ['operation_id', 'device_id', 'item_id', 'item_json', 'received_at'];
+const LEGACY_OPERATION_ARCHIVE = 'sync_operations_legacy_inbox_v0';
+
+function tableExists(db, tableName){
+  return Boolean(db.prepare(
+    'SELECT name FROM sqlite_master WHERE type = ? AND name = ?'
+  ).get('table', tableName));
+}
+
+function migrateLegacyStore(db){
+  if (!tableExists(db, 'sync_operations')) return;
+  const columnNames = db.prepare('PRAGMA table_info(sync_operations)').all()
+    .map(row => String(row.name));
+  const columns = new Set(columnNames);
+  if (CURRENT_OPERATION_COLUMNS.every(name => columns.has(name))) return;
+
+  const legacyInboxSchema = columnNames.length === LEGACY_INBOX_OPERATION_COLUMNS.length &&
+    LEGACY_INBOX_OPERATION_COLUMNS.every(name => columns.has(name));
+  if (!legacyInboxSchema) {
+    throw new Error(`Unsupported sync_operations schema: ${columnNames.join(', ') || '(no columns)'}`);
+  }
+
+  const operationCount = Number(db.prepare(
+    'SELECT COUNT(*) AS count FROM sync_operations'
+  ).get().count);
+  const inboxCount = tableExists(db, 'inbox_records')
+    ? Number(db.prepare('SELECT COUNT(*) AS count FROM inbox_records').get().count)
+    : 0;
+  if (operationCount > 0 || inboxCount > 0) {
+    throw new Error(
+      `Legacy Inbox database contains ${inboxCount} records and ${operationCount} operations; ` +
+      'refusing automatic migration. Export or migrate legacy data before starting Sync v1.'
+    );
+  }
+  if (tableExists(db, LEGACY_OPERATION_ARCHIVE)) {
+    throw new Error(`Legacy operation archive already exists: ${LEGACY_OPERATION_ARCHIVE}`);
+  }
+
+  // Preserve the old table even though it is empty. The new table is created
+  // by the normal schema initializer below, while rollback evidence remains
+  // available until an operator deliberately removes it.
+  db.exec(`ALTER TABLE sync_operations RENAME TO ${LEGACY_OPERATION_ARCHIVE}`);
+}
+
 function createStore(dbPath, pairing){
   const db = new DatabaseSync(dbPath);
   const codeTtlMs = pairing.codeTtlMs;
   const attemptLimit = pairing.attemptLimit;
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA synchronous = FULL;
-    PRAGMA foreign_keys = ON;
+  try {
+    db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = FULL;
+      PRAGMA foreign_keys = ON;
+    `);
+    migrateLegacyStore(db);
+    db.exec(`
 
-    CREATE TABLE IF NOT EXISTS sync_operations (
-      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-      operation_id TEXT NOT NULL UNIQUE,
-      device_id TEXT NOT NULL,
-      operation_json TEXT NOT NULL,
-      received_at INTEGER NOT NULL
-    );
+      CREATE TABLE IF NOT EXISTS sync_operations (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_id TEXT NOT NULL UNIQUE,
+        device_id TEXT NOT NULL,
+        operation_json TEXT NOT NULL,
+        received_at INTEGER NOT NULL
+      );
 
-    CREATE TABLE IF NOT EXISTS sync_devices (
-      device_id TEXT PRIMARY KEY,
-      device_name TEXT NOT NULL,
-      token_hash TEXT NOT NULL UNIQUE,
-      created_at INTEGER NOT NULL,
-      last_seen_at INTEGER NOT NULL,
-      revoked_at INTEGER
-    );
+      CREATE TABLE IF NOT EXISTS sync_devices (
+        device_id TEXT PRIMARY KEY,
+        device_name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      );
 
-    CREATE TABLE IF NOT EXISTS pairing_codes (
-      code_hash TEXT PRIMARY KEY,
-      created_by TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL,
-      used_at INTEGER,
-      claimed_device_id TEXT
-    );
-  `);
+      CREATE TABLE IF NOT EXISTS pairing_codes (
+        code_hash TEXT PRIMARY KEY,
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER,
+        claimed_device_id TEXT
+      );
+    `);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 
   const findOperation = db.prepare(
     'SELECT device_id, operation_json FROM sync_operations WHERE operation_id = ?'
@@ -580,4 +633,3 @@ export function createSyncServer(options = {}){
   });
   return server;
 }
-

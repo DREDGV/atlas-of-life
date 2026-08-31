@@ -5,6 +5,8 @@
 // CORS allowlist, rate limiting.
 import { createSyncServer } from '../server/sync-server.js';
 import { SYNC_PROTOCOL } from '../server/sync-server.js';
+import { DatabaseSync } from 'node:sqlite';
+import { existsSync, rmSync } from 'node:fs';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -65,6 +67,103 @@ async function pairDevice(deviceId, deviceName = 'Test device'){
   });
   assert(claimed.status === 200 && typeof claimed.json.token === 'string' && claimed.json.token.length >= 32, 'pair: claim returns a device token');
   return claimed.json.token;
+}
+
+function removeSqliteFiles(dbPath){
+  for (const suffix of ['', '-wal', '-shm']) {
+    const path = `${dbPath}${suffix}`;
+    if (existsSync(path)) rmSync(path, { force: true });
+  }
+}
+
+function seedLegacyInboxDb(dbPath, { withRecord = false } = {}){
+  removeSqliteFiles(dbPath);
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE inbox_records (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL UNIQUE,
+      item_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      device_id TEXT
+    );
+    CREATE TABLE sync_operations (
+      operation_id TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      item_json TEXT NOT NULL,
+      received_at INTEGER NOT NULL
+    );
+    CREATE TABLE sync_devices (
+      device_id TEXT PRIMARY KEY,
+      device_name TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
+    CREATE TABLE pairing_codes (
+      code_hash TEXT PRIMARY KEY,
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      claimed_device_id TEXT
+    );
+  `);
+  if (withRecord) {
+    db.prepare(`
+      INSERT INTO inbox_records(item_id, item_json, created_at, device_id)
+      VALUES (?, ?, ?, ?)
+    `).run('legacy-item-1', JSON.stringify({ id: 'legacy-item-1', rawText: 'preserve me' }), Date.now(), 'legacy-device');
+  }
+  db.close();
+}
+
+// --- Test 0: empty legacy Inbox database upgrades safely ------------------
+{
+  const legacyDbPath = new URL('./fixtures/.sync-server-legacy-empty.sqlite', import.meta.url).pathname
+    .replace(/^\/([A-Za-z]:)/, '$1');
+  seedLegacyInboxDb(legacyDbPath);
+
+  await startServer({ dbPath: legacyDbPath });
+  const health = await api('/health');
+  assert(health.status === 200 && health.json.records === 0, 'Test 0a: empty legacy DB starts');
+  await stopServer();
+
+  const migratedDb = new DatabaseSync(legacyDbPath, { readOnly: true });
+  const columns = migratedDb.prepare('PRAGMA table_info(sync_operations)').all().map(row => row.name);
+  const legacyTable = migratedDb.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_operations_legacy_inbox_v0'"
+  ).get();
+  migratedDb.close();
+  assert(columns.includes('sequence') && columns.includes('operation_json'), 'Test 0b: current operation schema created');
+  assert(legacyTable?.name === 'sync_operations_legacy_inbox_v0', 'Test 0c: legacy table preserved');
+  removeSqliteFiles(legacyDbPath);
+  console.log('✓ Test 0: empty legacy Inbox database upgrades safely');
+}
+
+// --- Test 0d: non-empty legacy data is never silently discarded -----------
+{
+  const legacyDbPath = new URL('./fixtures/.sync-server-legacy-nonempty.sqlite', import.meta.url).pathname
+    .replace(/^\/([A-Za-z]:)/, '$1');
+  seedLegacyInboxDb(legacyDbPath, { withRecord: true });
+  let refusal = null;
+  try {
+    createSyncServer({ token: ADMIN_TOKEN, dbPath: legacyDbPath });
+  } catch (error) {
+    refusal = error;
+  }
+  assert(refusal?.message.includes('refusing automatic migration'), 'Test 0d: non-empty legacy DB is refused');
+
+  const preservedDb = new DatabaseSync(legacyDbPath, { readOnly: true });
+  const recordCount = Number(preservedDb.prepare('SELECT COUNT(*) AS count FROM inbox_records').get().count);
+  const columns = preservedDb.prepare('PRAGMA table_info(sync_operations)').all().map(row => row.name);
+  preservedDb.close();
+  assert(recordCount === 1, 'Test 0e: legacy record remains intact');
+  assert(columns.includes('item_json') && !columns.includes('operation_json'), 'Test 0f: refused schema remains untouched');
+  removeSqliteFiles(legacyDbPath);
+  console.log('✓ Test 0d: non-empty legacy database is preserved and refused');
 }
 
 // --- Test 1: health + auth boundary --------------------------------------

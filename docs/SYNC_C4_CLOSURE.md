@@ -1,6 +1,6 @@
 # Sync v1 — Product Closure (Stage C4)
 
-Обновлено: 2026-08-30. Версия: `0.11.0-alpha.5`.
+Обновлено: 2026-09-01. Версия: `0.11.0-alpha.5`.
 
 **Статус: C0–C4 code complete / field validation pending. Принятая C3/C4
 линия публикуется одной non-stacked release-candidate веткой
@@ -77,6 +77,9 @@ Snapshot-сервис не строился — replay пока практиче
   проксируют только `/v1/*` и `/health`, installer отключает старый Certbot
   catch-all vhost после безопасного получения или переиспользования сертификата
   и явно перезапускает уже активный Sync service при upgrade.
+- `node tests/sync-server.mjs` — точная пустая legacy-схема первого Inbox VDS
+  (`item_json`) мигрирует в Sync v1 с сохранением старой таблицы; непустая
+  legacy-база блокируется до явного экспорта/переноса данных.
 - Git Bash `bash -n` — installer и backup script синтаксически корректны.
 
 ## VDS recovery readiness

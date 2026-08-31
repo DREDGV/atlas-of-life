@@ -24,6 +24,13 @@ The live database, WAL and shared-memory files are owned by
 `atlas-sync:atlas-sync` with mode `0640`; the service uses `UMask=0027` so a
 restart cannot recreate them as world-readable files.
 
+An empty database from the older Inbox API is upgraded in place: its
+incompatible `sync_operations` table is preserved as
+`sync_operations_legacy_inbox_v0` and Sync v1 creates its current operation
+stream table. If the legacy `inbox_records` or `sync_operations` table contains
+data, startup refuses the automatic migration so an operator must export or
+migrate those records explicitly instead of silently losing them.
+
 `ATLAS_HOSTNAME` holds the final public hostname. An `sslip.io` hostname can be
 used for the first deployment when its address resolves to the VDS. HTTPS must
 be enabled before configuring a physical phone: the Capture PWA requires a
