@@ -41,6 +41,15 @@ fi
 for required in \
   "${UPLOAD_DIR}/server/start.js" \
   "${UPLOAD_DIR}/server/sync-server.js" \
+  "${UPLOAD_DIR}/index.html" \
+  "${UPLOAD_DIR}/styles.css" \
+  "${UPLOAD_DIR}/addons/addons.css" \
+  "${UPLOAD_DIR}/addons/_experiments.js" \
+  "${UPLOAD_DIR}/addons/experiments/exp-2025-09-07-pulse-active-domain.js" \
+  "${UPLOAD_DIR}/addons/ics-export.js" \
+  "${UPLOAD_DIR}/addons/autocomplete.js" \
+  "${UPLOAD_DIR}/addons/today-plus.js" \
+  "${UPLOAD_DIR}/addons/inspector-plus.js" \
   "${UPLOAD_DIR}/deploy/vds/atlas-sync.service" \
   "${UPLOAD_DIR}/deploy/vds/atlas-sync-apache.conf" \
   "${UPLOAD_DIR}/deploy/vds/atlas-sync-apache-ssl.conf" \
@@ -55,7 +64,7 @@ for required in \
   fi
 done
 
-for command_name in apache2ctl certbot curl openssl sqlite3 systemctl tar; do
+for command_name in apache2ctl awk certbot curl openssl sqlite3 systemctl tar; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "Missing required command: ${command_name}" >&2
     exit 1
@@ -112,25 +121,80 @@ runuser -u atlas-sync -- /opt/atlas-sync/runtime/bin/node --version >/dev/null
 install -d -m 0755 "${RELEASE_DIR}/server" "${RELEASE_DIR}/deploy/vds"
 install -m 0644 "${UPLOAD_DIR}/server/start.js" "${RELEASE_DIR}/server/start.js"
 install -m 0644 "${UPLOAD_DIR}/server/sync-server.js" "${RELEASE_DIR}/server/sync-server.js"
-install -d -m 0755 "${RELEASE_DIR}/js" "${RELEASE_DIR}/styles" "${RELEASE_DIR}/capture"
+install -d -m 0755 \
+  "${RELEASE_DIR}/js" \
+  "${RELEASE_DIR}/styles" \
+  "${RELEASE_DIR}/addons" \
+  "${RELEASE_DIR}/capture"
 cp -a "${UPLOAD_DIR}/js/." "${RELEASE_DIR}/js/"
 cp -a "${UPLOAD_DIR}/styles/." "${RELEASE_DIR}/styles/"
+cp -a "${UPLOAD_DIR}/addons/." "${RELEASE_DIR}/addons/"
 cp -a "${UPLOAD_DIR}/capture/." "${RELEASE_DIR}/capture/"
 install -m 0644 "${UPLOAD_DIR}/index.html" "${RELEASE_DIR}/index.html"
+install -m 0644 "${UPLOAD_DIR}/styles.css" "${RELEASE_DIR}/styles.css"
 chown -R root:root "${RELEASE_DIR}"
 
-if [[ ! -f /etc/atlas-sync/atlas-sync.env ]]; then
+ENV_FILE=/etc/atlas-sync/atlas-sync.env
+public_origin="https://${ATLAS_HOSTNAME}"
+
+update_env_value() {
+  local key=$1
+  local value=$2
+  local env_tmp
+  env_tmp=$(mktemp "${ENV_FILE}.tmp.XXXXXX")
+  if ! awk -v key="${key}" -v value="${value}" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 {
+      if (!updated) print key "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END { if (!updated) print key "=" value }
+  ' "${ENV_FILE}" > "${env_tmp}"; then
+    rm -f -- "${env_tmp}"
+    return 1
+  fi
+  chown root:atlas-sync "${env_tmp}"
+  chmod 0640 "${env_tmp}"
+  mv -f -- "${env_tmp}" "${ENV_FILE}"
+}
+
+if [[ ! -f ${ENV_FILE} ]]; then
   sync_token=$(openssl rand -hex 32)
-  cat > /etc/atlas-sync/atlas-sync.env <<EOF
+  cat > "${ENV_FILE}" <<EOF
 ATLAS_SYNC_HOST=127.0.0.1
 ATLAS_SYNC_PORT=8787
 ATLAS_SYNC_DB_PATH=/var/lib/atlas-sync/atlas-sync.sqlite
-ATLAS_SYNC_ALLOWED_ORIGINS=https://${ATLAS_HOSTNAME}
+ATLAS_SYNC_ALLOWED_ORIGINS=${public_origin}
 ATLAS_SYNC_TOKEN=${sync_token}
 EOF
-  chown root:atlas-sync /etc/atlas-sync/atlas-sync.env
-  chmod 0640 /etc/atlas-sync/atlas-sync.env
+  unset sync_token
+else
+  # Preserve the admin token and any additional settings while reconciling
+  # non-secret runtime values required by this deployment. In particular,
+  # older installs only allowed localhost/Capacitor origins.
+  existing_token=$(awk -F= '$1 == "ATLAS_SYNC_TOKEN" { sub(/^[^=]*=/, ""); print; exit }' "${ENV_FILE}")
+  if [[ ${#existing_token} -lt 24 ]]; then
+    echo "Existing ATLAS_SYNC_TOKEN is missing or invalid; refusing to overwrite it." >&2
+    exit 1
+  fi
+  unset existing_token
+  install -m 0640 -o root -g atlas-sync "${ENV_FILE}" "${ENV_FILE}.pre-${RELEASE_ID}"
+
+  existing_origins=$(awk -F= '$1 == "ATLAS_SYNC_ALLOWED_ORIGINS" { sub(/^[^=]*=/, ""); print; exit }' "${ENV_FILE}")
+  case ",${existing_origins}," in
+    *,"${public_origin}",*) allowed_origins=${existing_origins} ;;
+    *) allowed_origins="${existing_origins:+${existing_origins},}${public_origin}" ;;
+  esac
+  update_env_value ATLAS_SYNC_HOST 127.0.0.1
+  update_env_value ATLAS_SYNC_PORT 8787
+  update_env_value ATLAS_SYNC_DB_PATH /var/lib/atlas-sync/atlas-sync.sqlite
+  update_env_value ATLAS_SYNC_ALLOWED_ORIGINS "${allowed_origins}"
+  unset existing_origins allowed_origins
 fi
+chown root:atlas-sync "${ENV_FILE}"
+chmod 0640 "${ENV_FILE}"
 
 for link_path in /opt/atlas-sync/current /opt/atlas-sync/app; do
   if [[ -e ${link_path} && ! -L ${link_path} ]]; then

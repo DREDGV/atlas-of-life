@@ -76,6 +76,13 @@ daily backup timer and creates one verified first backup. Existing
 installations are explicitly restarted so the running Node process loads the
 new release and the hardened database-file permissions take effect.
 
+On upgrades, the installer also reconciles the non-secret runtime values in
+the existing env without replacing `ATLAS_SYNC_TOKEN`: the public
+`https://<ATLAS_HOSTNAME>` Origin is appended to any existing
+localhost/Capacitor origins, and the previous env is retained as a private
+`atlas-sync.env.pre-<release>` copy. The upload bundle includes the complete
+active Studio asset graph (`styles.css` and `addons/`) as well as Capture.
+
 After Certbot obtains or reuses the certificate, the installer enables the
 managed `atlas-sync-ssl` vhost and disables the legacy
 `atlas-sync-le-ssl` vhost when present. This keeps Studio, Capture and the API

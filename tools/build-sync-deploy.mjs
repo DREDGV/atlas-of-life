@@ -46,6 +46,8 @@ copy(join(ROOT, 'server'), join(STAGE, 'server'));
 // Atlas app (Studio + Capture PWA)
 copy(join(ROOT, 'js'), join(STAGE, 'js'));
 copy(join(ROOT, 'styles'), join(STAGE, 'styles'));
+copy(join(ROOT, 'styles.css'), join(STAGE, 'styles.css'));
+copy(join(ROOT, 'addons'), join(STAGE, 'addons'));
 copy(join(ROOT, 'capture'), join(STAGE, 'capture'));
 copy(join(ROOT, 'index.html'), join(STAGE, 'index.html'));
 // Deployment scaffolding is allowlisted: old archives and local runtime files

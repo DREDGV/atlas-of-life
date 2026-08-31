@@ -37,6 +37,12 @@ assert(installer.includes('systemctl restart atlas-sync.service'), 'installer re
 assert(!installer.includes('systemctl enable --now atlas-sync.service'), 'installer does not mistake enable --now for an upgrade restart');
 assert(restoreRunbook.includes('for attempt in {1..15}'), 'restore runbook waits for service readiness');
 assert(restoreRunbook.includes('sleep 1'), 'restore readiness retry has a bounded delay');
+assert(bundleBuilder.includes("copy(join(ROOT, 'styles.css'), join(STAGE, 'styles.css'))"), 'bundle includes Studio root stylesheet');
+assert(bundleBuilder.includes("copy(join(ROOT, 'addons'), join(STAGE, 'addons'))"), 'bundle includes active Studio addons');
+assert(installer.includes('install -m 0644 "${UPLOAD_DIR}/styles.css"'), 'installer publishes Studio root stylesheet');
+assert(installer.includes('cp -a "${UPLOAD_DIR}/addons/."'), 'installer publishes Studio addons');
+assert(installer.includes('public_origin="https://${ATLAS_HOSTNAME}"'), 'installer derives the public production Origin');
+assert(installer.includes('update_env_value ATLAS_SYNC_ALLOWED_ORIGINS'), 'installer reconciles the Origin in an existing env');
 assert(bundleBuilder.includes("'atlas-sync-apache-ssl.conf'"), 'bundle includes HTTPS template');
 
 console.log('✓ VDS deployment keeps Studio/Capture routes on HTTP and HTTPS.');
