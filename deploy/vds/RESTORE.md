@@ -50,6 +50,19 @@ systemctl start atlas-sync-backup.timer
 ## 4. Verify the restored service and database
 
 ```bash
+# A Type=simple service becomes "active" before Node necessarily binds its
+# socket. Wait for the actual readiness endpoint instead of racing startup.
+for attempt in {1..15}; do
+  if curl --fail --silent http://127.0.0.1:8787/health >/dev/null; then
+    break
+  fi
+  if test "$attempt" -eq 15; then
+    systemctl --no-pager --full status atlas-sync.service
+    exit 1
+  fi
+  sleep 1
+done
+
 curl --fail --silent --show-error http://127.0.0.1:8787/health
 test "$(sqlite3 /var/lib/atlas-sync/atlas-sync.sqlite 'PRAGMA integrity_check;')" = ok
 systemctl --no-pager --full status atlas-sync.service

@@ -23,6 +23,7 @@ function assertAtlasRouting(config, label) {
 const httpConfig = read('deploy/vds/atlas-sync-apache.conf');
 const httpsConfig = read('deploy/vds/atlas-sync-apache-ssl.conf');
 const installer = read('deploy/vds/install-atlas-sync.sh');
+const restoreRunbook = read('deploy/vds/RESTORE.md');
 const bundleBuilder = read('tools/build-sync-deploy.mjs');
 
 assertAtlasRouting(httpConfig, 'HTTP vhost');
@@ -34,6 +35,8 @@ assert(installer.includes('a2ensite atlas-sync-ssl'), 'installer enables managed
 assert(installer.includes('--cert-name "${ATLAS_HOSTNAME}"'), 'installer pins the certificate name used by the HTTPS template');
 assert(installer.includes('systemctl restart atlas-sync.service'), 'installer restarts an already active service on upgrade');
 assert(!installer.includes('systemctl enable --now atlas-sync.service'), 'installer does not mistake enable --now for an upgrade restart');
+assert(restoreRunbook.includes('for attempt in {1..15}'), 'restore runbook waits for service readiness');
+assert(restoreRunbook.includes('sleep 1'), 'restore readiness retry has a bounded delay');
 assert(bundleBuilder.includes("'atlas-sync-apache-ssl.conf'"), 'bundle includes HTTPS template');
 
 console.log('✓ VDS deployment keeps Studio/Capture routes on HTTP and HTTPS.');

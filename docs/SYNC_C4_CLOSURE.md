@@ -76,7 +76,8 @@ Snapshot-сервис не строился — replay пока практиче
 - `node tests/vds-deploy.mjs` — HTTP/HTTPS vhost сохраняют static Studio/Capture,
   проксируют только `/v1/*` и `/health`, installer отключает старый Certbot
   catch-all vhost после безопасного получения или переиспользования сертификата
-  и явно перезапускает уже активный Sync service при upgrade.
+  и явно перезапускает уже активный Sync service при upgrade; restore runbook
+  ждёт фактической готовности `/health`, а не только systemd `active`.
 - `node tests/sync-server.mjs` — точная пустая legacy-схема первого Inbox VDS
   (`item_json`) мигрирует в Sync v1 с сохранением старой таблицы; непустая
   legacy-база блокируется до явного экспорта/переноса данных.
@@ -92,15 +93,31 @@ Snapshot-сервис не строился — replay пока практиче
   rollback-каталог, устанавливает проверенную копию с `atlas-sync:atlas-sync`
   и `0640`, затем проверяет local/public `/health` и integrity.
 
-Это readiness evidence, а не доказательство реального VDS: systemd, Certbot,
-первый backup и restore ещё должны быть выполнены на целевом сервере.
+## VDS field evidence — 31 августа 2026 UTC
 
-## Открытые closure-gates
+- release `/opt/atlas-sync/releases/20260831T182600Z`, версия
+  `0.11.0-alpha.5`; systemd service active/enabled, Node слушает только
+  `127.0.0.1:8787`;
+- managed HTTPS vhost активен, legacy Certbot vhost отключён; Studio `/`,
+  Capture `/capture/`, local/public `/health` возвращают `200`; сертификат
+  проходит TLS verification, Certbot timer enabled и renew dry-run успешен;
+- первый автоматический backup
+  `/var/lib/atlas-sync/backups/atlas-sync-20260831T182603Z.sqlite`: owner
+  `atlas-sync:atlas-sync`, mode `0600`, 61 440 bytes, integrity `ok`, backup
+  service `Result=success`;
+- restore drill установил проверенный backup, сохранил исходные DB/WAL/SHM в
+  `/var/lib/atlas-sync/pre-restore-20260831T183938Z`, восстановил service/timer,
+  SQLite integrity и local/public `/health`;
+- field drill выявил readiness race: `systemctl start` вернул управление за
+  секунду до bind `:8787`. Данные и сервис не пострадали; runbook получил
+  bounded `/health` retry и regression assertion.
 
-1. VDS: HTTPS `/health`, loopback-only `:8787`, certbot timer.
-2. Первый backup: файл создан, owner/mode корректны, integrity = `ok`.
-3. Restore drill в согласованное окно с успешным local/public health-check.
-4. Физический телефон ↔ ПК: pair, capture, desktop processing/route, phone
+## Closure-gates
+
+1. ✅ VDS: HTTPS `/health`, loopback-only `:8787`, Certbot timer + renew dry-run.
+2. ✅ Первый backup: файл создан, owner/mode корректны, integrity = `ok`.
+3. ✅ Restore drill: rollback сохранён, local/public health-check успешны.
+4. ⏳ Физический телефон ↔ ПК: pair, capture, desktop processing/route, phone
    result projection, offline/reconnect, revoke/re-pair, secret-free diagnostics.
 
 ## Что Stage C оставляет дальше (после closure-gates)
