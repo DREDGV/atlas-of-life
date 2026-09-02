@@ -117,10 +117,12 @@ Snapshot-сервис не строился — replay пока практиче
 1. ✅ VDS: HTTPS `/health`, loopback-only `:8787`, Certbot timer + renew dry-run.
 2. ✅ Первый backup: файл создан, owner/mode корректны, integrity = `ok`.
 3. ✅ Restore drill: rollback сохранён, local/public health-check успешны.
-4. ⏳ Физический телефон ↔ ПК: pair, capture, desktop processing/route, phone
-   result projection, offline/reconnect, revoke/re-pair, secret-free diagnostics.
+4. ✅ Основной физический телефон ↔ ПК: pair, capture, desktop processing/route,
+   phone result projection, offline/reconnect и per-record pending → ack marker.
+5. ⏸ Admin recovery: revoke/re-pair и ручная проверка physical diagnostics
+   export отложены по решению пользователя; автоматические C4-тесты зелёные.
 
-Частичный field evidence 3 сентября: телефон и ПК привязаны; Capture с телефона
+Field evidence 3 сентября: телефон и ПК привязаны; Capture с телефона
 появляется в Studio, а routed Task result возвращается на телефон за 5–10 секунд.
 Offline Capture сохраняет запись локально и показывает общий статус ожидания
 сети. Наблюдение пользователя выявило недостающую per-record видимость pending:
@@ -129,9 +131,11 @@ correction добавляет локальные маркеры `Ждёт отп
 был сделан офлайн до активации нового PWA shell и одновременно выявил, что
 маркер был добавлен только в полный Inbox. Follow-up correction revision 2
 покрывает и `Последние записи`, и `Входящие`; локальный offline visual smoke
-подтвердил оба маркера без console errors. Live-активация после выхода онлайн,
-автодоставка после reconnect, revoke/re-pair и diagnostics export ещё должны
-быть подтверждены.
+подтвердил оба маркера без console errors. После live deployment revision 2
+Android PWA показал маркер в обоих списках, автоматически доставил запись после
+reconnect и снял маркер после ack. Revoke/re-pair и ручной просмотр physical
+diagnostics export сознательно перенесены; это не мешает интеграции alpha.5, но
+оставляет статус ниже production-ready.
 
 Отдельный product finding, не подменяемый Sync closure: processed Thought/Note
 сейчас не создают самостоятельную persisted-сущность или Map-проекцию и остаются
