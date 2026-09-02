@@ -84,6 +84,22 @@ AI не является условием Definition of Done для 0.10.x.
 - **Локальные code-gates закрыты 30 августа:** `sync-v1/server/http/c2/c3/c4` tests; C3 и C4 multi-browser smokes; deployment bundle allowlist и shell syntax; версия остаётся `0.11.0-alpha.5`.
 - **Closure-gates:** ✅ реальный VDS HTTPS `/health`, loopback-only `:8787`, Certbot renew dry-run; ✅ первый private backup + `PRAGMA integrity_check`; ✅ restore drill с сохранённым rollback и успешными local/public health-check; ⏳ остаётся физический phone Capture ↔ desktop Processing ↔ phone result, offline/reconnect, revoke/re-pair и diagnostics export. До phone-gate Sync v1 не называется production-ready и Stage C не переводится в DONE.
 
+#### Field finding: Thought/Note после Processing не имеют продолжения
+
+- **Наблюдение 3 сентября 2026:** «Сохранить как мысль/заметку» сейчас только
+  выставляет исходной Inbox-записи `itemType` и `status: processed`. Отдельная
+  persisted-сущность, `resultRef`, destination и Map-проекция не создаются;
+  текущая Map строится из Tasks/Projects/Domains. Поэтому запись исчезает из
+  очереди «К разбору», но фактически остаётся в «Разобранных» без следующего
+  места назначения.
+- Это **product-flow dead-end**, а не дефект Sync transport. Не закрывать его
+  быстрым отображением processed Inbox на Map: сначала нужен отдельный domain
+  decision — являются ли Thought/Note самостоятельными сущностями или единым
+  Knowledge/Context-объектом, куда они маршрутизируются, как связаны с
+  Domain/Project, как работают resultRef/revert/history и что синхронизируется.
+- Решение включить в выбор следующего продуктового этапа перед Today 2.0 или
+  новым Map actionability pass; реализацию не начинать без утверждённой модели.
+
 ### 0.12.x — Today 2.0 (desktop + mobile)
 
 Сейчас / Focus-3 / план дня / ёмкость / переносы / выполнено; задачи после Processing Center.

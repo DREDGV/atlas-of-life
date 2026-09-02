@@ -17,6 +17,7 @@ import {
 import { createSyncRuntime, requestSyncNow } from '../sync/runtime.js';
 import { createSyncPanel } from '../sync/ui.js';
 import { syncCapabilities } from '../sync/capabilities.js';
+import { getEntityDeliveryState } from '../sync/outbox.js';
 
 // Capture is a projection-only client: it never owns a Task model, so a
 // routed resultRef arriving here is accepted only as a C2 projection
@@ -257,6 +258,20 @@ function buildInboxStatusBadge(item) {
   return badge;
 }
 
+function buildInboxDeliveryBadge(itemId) {
+  const deliveryState = getEntityDeliveryState('inbox', itemId);
+  if (!deliveryState) return null;
+  const badge = document.createElement('span');
+  badge.className = 'inbox-row-delivery';
+  badge.dataset.state = deliveryState;
+  badge.textContent = {
+    pending: '⏳ Ждёт отправки',
+    failed: '⚠ Ошибка отправки',
+    rejected: '⚠ Не принято сервером',
+  }[deliveryState];
+  return badge;
+}
+
 // C2: the routed result card. Renders the read-only Task projection when
 // present, otherwise the honest fallback (no broken reference).
 function buildTaskResultCard(item) {
@@ -353,6 +368,8 @@ function renderInboxList() {
     }
 
     meta.append(time, typeIcon, source, hint);
+    const deliveryBadge = buildInboxDeliveryBadge(item.id);
+    if (deliveryBadge) meta.appendChild(deliveryBadge);
     body.append(textEl, meta);
     body.appendChild(buildInboxStatusBadge(item));
     if (item.resultRef?.type === 'task') {
@@ -858,8 +875,11 @@ function initSync() {
     if (status.pulled > 0) {
       updateCounter();
       renderRecentItems();
-      if (currentView === 'inbox') renderInboxList();
     }
+    // Delivery metadata changes on push/ack even when nothing was pulled.
+    // Re-render the visible Inbox so per-record pending/error markers clear
+    // immediately after acknowledgment.
+    if (currentView === 'inbox') renderInboxList();
   });
 
   // The header status line reflects the delivery state while sync is

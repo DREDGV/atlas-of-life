@@ -69,6 +69,25 @@ export function getPendingOps(){
   );
 }
 
+// Ephemeral UI projection: delivery state for one persisted entity. This is
+// derived from the durable outbox and never written onto the Inbox item.
+// Multiple operations can target the same entity; surface the most actionable
+// state while any operation remains unacknowledged.
+export function getEntityDeliveryState(entityType, entityId){
+  const statuses = new Set(
+    listOutbox()
+      .filter(entry =>
+        entry.operation?.entityType === entityType &&
+        entry.operation?.entityId === entityId
+      )
+      .map(entry => entry.syncStatus)
+  );
+  if (statuses.has('rejected')) return 'rejected';
+  if (statuses.has('failed')) return 'failed';
+  if (['pending', 'retryable', 'sent'].some(status => statuses.has(status))) return 'pending';
+  return null;
+}
+
 export function updateOutboxEntry(id, patch){
   const data = read();
   const entry = data.entries.find(item => item.operation?.id === id);

@@ -496,6 +496,24 @@ body {
   font-size: 11px;
 }
 
+.inbox-row-delivery {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.inbox-row-delivery[data-state="pending"] {
+  color: var(--warn, #f2c94c);
+  background: color-mix(in srgb, var(--warn, #f2c94c) 14%, transparent);
+}
+
+.inbox-row-delivery[data-state="failed"],
+.inbox-row-delivery[data-state="rejected"] {
+  color: var(--danger, #ff6b6b);
+  background: color-mix(in srgb, var(--danger, #ff6b6b) 14%, transparent);
+}
+
 .inbox-row-actions {
   flex-shrink: 0;
 }

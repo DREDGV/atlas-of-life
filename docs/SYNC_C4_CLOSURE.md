@@ -1,6 +1,6 @@
 # Sync v1 — Product Closure (Stage C4)
 
-Обновлено: 2026-09-01. Версия: `0.11.0-alpha.5`.
+Обновлено: 2026-09-03. Версия: `0.11.0-alpha.5`.
 
 **Статус: C0–C4 code complete / field validation pending. Принятая C3/C4
 линия публикуется одной non-stacked release-candidate веткой
@@ -119,6 +119,18 @@ Snapshot-сервис не строился — replay пока практиче
 3. ✅ Restore drill: rollback сохранён, local/public health-check успешны.
 4. ⏳ Физический телефон ↔ ПК: pair, capture, desktop processing/route, phone
    result projection, offline/reconnect, revoke/re-pair, secret-free diagnostics.
+
+Частичный field evidence 3 сентября: телефон и ПК привязаны; Capture с телефона
+появляется в Studio, а routed Task result возвращается на телефон за 5–10 секунд.
+Offline Capture сохраняет запись локально и показывает общий статус ожидания
+сети. Наблюдение пользователя выявило недостающую per-record видимость pending:
+correction добавляет локальные маркеры `Ждёт отправки` / `Ошибка отправки` /
+`Не принято сервером`, производные только от durable outbox. Автодоставка после
+reconnect, revoke/re-pair и diagnostics export ещё должны быть подтверждены.
+
+Отдельный product finding, не подменяемый Sync closure: processed Thought/Note
+сейчас не создают самостоятельную persisted-сущность или Map-проекцию и остаются
+только финализированными Inbox-записями. Domain decision зафиксирован в roadmap.
 
 ## Что Stage C оставляет дальше (после closure-gates)
 

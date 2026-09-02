@@ -1,4 +1,7 @@
 const CACHE_NAME = 'atlas-capture-0.11.0-alpha.5';
+// Correction revision: changes the worker bytes without inventing alpha.6,
+// so installed alpha.5 PWAs discover the per-record delivery-marker update.
+const CACHE_REVISION = 'sync-record-delivery-markers-1';
 
 const PRECACHE_ASSETS = [
   './',
@@ -48,6 +51,7 @@ function getPrecacheUrls() {
 }
 
 self.addEventListener('install', (event) => {
+  void CACHE_REVISION;
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(PRECACHE_ASSETS))

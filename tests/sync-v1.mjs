@@ -16,6 +16,7 @@ import {
   enqueueSyncOperation,
   listOutbox,
   getPendingOps,
+  getEntityDeliveryState,
   markAcked,
   updateOutboxEntry,
 } from '../js/sync/outbox.js';
@@ -92,8 +93,17 @@ const transport = createLocalRelay({
   assert(pending[0].operation.id === 'op-o1' && pending[0].operation.sequence === 1, 'Test 2b: entry has operation + sequence');
   assert(pending[0].syncStatus === 'pending' && !('syncStatus' in pending[0].operation), 'Test 2c: delivery state lives on the entry, not the envelope');
   assert(listOutbox().length === 1, 'Test 2d: persists (listOutbox reads durable store)');
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'pending', 'Test 2e: entity exposes its pending delivery state');
+  updateOutboxEntry('op-o1', { syncStatus: 'sent' });
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'pending', 'Test 2f: sent but unacked remains visibly pending');
+  updateOutboxEntry('op-o1', { syncStatus: 'failed' });
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'failed', 'Test 2g: entity exposes failed delivery');
+  updateOutboxEntry('op-o1', { syncStatus: 'rejected' });
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'rejected', 'Test 2h: terminal rejection has highest priority');
+  assert(getEntityDeliveryState('inbox', 'other') === null, 'Test 2i: unrelated entity has no marker');
   markAcked('op-o1');
-  assert(getPendingOps().length === 0 && listOutbox().length === 0, 'Test 2e: ack removes entry');
+  assert(getPendingOps().length === 0 && listOutbox().length === 0, 'Test 2j: ack removes entry');
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === null, 'Test 2k: ack removes the per-record marker');
   console.log('✓ Test 2: outbox create/persist/ack + envelope split');
 }
 
