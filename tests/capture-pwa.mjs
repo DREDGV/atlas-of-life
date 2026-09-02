@@ -305,7 +305,7 @@ console.log('✓ Test 16: complete Mobile Capture import graph is isolated and p
 const { APP_VERSION } = await import('../js/version.js');
 assert(APP_VERSION === '0.11.0-alpha.5', 'Test 17: version should be 0.11.0-alpha.5');
 assert(swContent.includes("const CACHE_NAME = 'atlas-capture-0.11.0-alpha.5'"), 'Test 17: SW cache should be alpha.4');
-assert(swContent.includes("const CACHE_REVISION = 'sync-record-delivery-markers-1'"), 'Test 17b: alpha.5 correction should trigger an installed-PWA update');
+assert(swContent.includes("const CACHE_REVISION = 'sync-record-delivery-markers-2'"), 'Test 17b: alpha.5 correction should trigger an installed-PWA update');
 console.log('✓ Test 17: version and cache are 0.11.0-alpha.5');
 
 // Test 18: lifecycle, permission and accessibility wiring exists in the Capture shell
@@ -322,10 +322,15 @@ assert(indexHtml.includes('id="infoMicrophone"'), 'Test 18: info panel should sh
 console.log('✓ Test 18: lifecycle, permission and accessibility wiring');
 
 // Test 19: offline records expose delivery state per row, not only globally
+const recentItemsSource = captureAppContent.slice(
+  captureAppContent.indexOf('function renderRecentItems()'),
+  captureAppContent.indexOf('const PRIORITY_LABELS')
+);
 assert(captureAppContent.includes("getEntityDeliveryState('inbox', itemId)"), 'Test 19a: Capture derives per-record delivery state from outbox');
 assert(captureAppContent.includes("pending: '⏳ Ждёт отправки'"), 'Test 19b: pending record has a clear human label');
 assert(captureAppContent.includes("rejected: '⚠ Не принято сервером'"), 'Test 19c: terminal rejection is distinct');
 assert(captureAppContent.includes("if (currentView === 'inbox') renderInboxList();"), 'Test 19d: ack/status changes refresh visible rows');
+assert(recentItemsSource.includes('buildInboxDeliveryBadge(item.id)'), 'Test 19e: recent cards show the same per-record marker');
 console.log('✓ Test 19: per-record sync delivery markers are wired');
 
 console.log('\n✅ All PWA tests passed.');

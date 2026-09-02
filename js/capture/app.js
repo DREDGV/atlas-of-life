@@ -205,6 +205,8 @@ function renderRecentItems() {
     }
 
     meta.append(time, typeIcon, hint);
+    const deliveryBadge = buildInboxDeliveryBadge(item.id);
+    if (deliveryBadge) meta.appendChild(deliveryBadge);
     card.append(textEl, meta);
     container.appendChild(card);
   });
@@ -874,8 +876,10 @@ function initSync() {
   syncRuntime.subscribe(status => {
     if (status.pulled > 0) {
       updateCounter();
-      renderRecentItems();
     }
+    // Recent cards also carry per-record delivery markers; refresh them on
+    // push/ack even when the cycle pulled no remote operations.
+    renderRecentItems();
     // Delivery metadata changes on push/ack even when nothing was pulled.
     // Re-render the visible Inbox so per-record pending/error markers clear
     // immediately after acknowledgment.
