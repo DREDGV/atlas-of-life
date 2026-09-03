@@ -44,41 +44,92 @@ import {
   updateTask,
 } from "./core/commands.js";
 import { renderToday } from "./view_today.js";
+import { getVisibleDomainIds } from "./ui/map-session.js";
 
 function forInspector(obj, type) {
   return obj ? { ...obj, _type: type } : null;
 }
 
+function inspectorHeading(kind, title, path) {
+  const crumbs = (path || []).filter(Boolean);
+  return `
+    <div class="inspector-heading">
+      <div class="inspector-kind">${kind}:</div>
+      <h2>${title}</h2>
+      ${
+        crumbs.length
+          ? `<div class="inspector-path" aria-label="Положение в карте">${crumbs
+              .map((crumb) => `<span>${crumb}</span>`)
+              .join('<span class="inspector-path-separator" aria-hidden="true">›</span>')}</div>`
+          : ""
+      }
+    </div>
+  `;
+}
+
 export function openInspectorFor(obj) {
   const ins = document.getElementById("inspector");
+  // The map and the Inspector always share the same active object: highlight
+  // the node (or clear the highlight) so the ring matches what is shown here.
+  try {
+    if (window.mapApi && window.mapApi.setSelectedNode) {
+      window.mapApi.setSelectedNode(
+        obj && obj.id ? obj.id : null,
+        obj ? obj._type : null,
+        { focus: false }
+      );
+    }
+  } catch (_) {}
   if (!obj) {
-    ins.innerHTML = `<div class="hint">Выберите объект на карте, чтобы увидеть детали.</div>`;
+    const visibleIds = getVisibleDomainIds(state.domains);
+    const visibleDomains = state.domains.filter(domain => visibleIds.has(domain.id));
+    const projectIds = new Set(state.projects.filter(project => visibleIds.has(project.domainId)).map(project => project.id));
+    const visibleTasks = state.tasks.filter(task => projectIds.has(task.projectId) || (!task.projectId && visibleIds.has(task.domainId)));
+    const unassignedCount = visibleTasks.filter(task => !task.projectId).length;
+    const context = state.domains.find(domain => domain.id === state.activeDomain);
+    ins.innerHTML = `
+      ${inspectorHeading("Обзор", "Видимая карта", [context ? `Контекст: ${context.title}` : "Контекст не выбран"])}
+      <div class="inspector-overview-grid">
+        <div class="inspector-stat"><strong>${visibleDomains.length}</strong><span>доменов</span></div>
+        <div class="inspector-stat"><strong>${projectIds.size}</strong><span>проектов</span></div>
+        <div class="inspector-stat"><strong>${visibleTasks.length}</strong><span>задач</span></div>
+        <div class="inspector-stat"><strong>${unassignedCount}</strong><span>без проекта</span></div>
+      </div>
+      <div class="hint">Чекбоксы слева меняют состав карты. Название домена задаёт контекст для новых задач, а ⌖ только фокусирует камеру.</div>
+    `;
     return;
   }
   const type = obj._type;
   if (type === "domain") {
     const prjs = state.projects.filter((p) => p.domainId === obj.id);
-    const totalTasks = prjs.reduce(
+    const projectTasks = prjs.reduce(
       (a, p) => a + tasksOfProject(p.id).length,
       0
     );
+    const independent = state.tasks.filter(task => !task.projectId && task.domainId === obj.id);
+    const totalTasks = projectTasks + independent.length;
     ins.innerHTML = `
-      <h2>Домен: ${obj.title}</h2>
-      <div class="kv">Проектов: ${prjs.length} · Задач: ${totalTasks}</div>
+      ${inspectorHeading("Домен", obj.title, [obj.title])}
+      <div class="kv">Проектов: ${prjs.length} · Задач: ${totalTasks} · Без проекта: ${independent.length}</div>
       <div class="btns">
         <button class="btn primary" id="addProject">+ Проект</button>
       </div>
       <div class="list">${prjs
         .map(
           (p) => `
-        <div class="card">
+        <button type="button" class="card inspector-card-button" data-project-id="${p.id}">
           <div><strong>${p.title}</strong></div>
           <div class="meta">#${(p.tags || []).join(" #")}</div>
           <div class="meta">Задач: ${tasksOfProject(p.id).length}</div>
-        </div>
+        </button>
       `
         )
         .join("")}</div>
+      ${independent.length ? `<div class="inspector-section-label">Без проекта</div><div class="list">${independent.map(task => `
+        <button type="button" class="card inspector-card-button" data-task-id="${task.id}">
+          <div>${statusPill(task.status)} <strong>${task.title}</strong></div>
+          <div class="meta">#${normalizeTags(task.tags).join(" #") || "—"}</div>
+        </button>`).join("")}</div>` : ''}
     `;
     document.getElementById("addProject").onclick = () => {
       const title = prompt("Название проекта:", "Новый проект");
@@ -91,12 +142,59 @@ export function openInspectorFor(obj) {
       refreshMap({ layout: true });
       openInspectorFor(obj);
     };
+    ins.querySelectorAll("[data-project-id]").forEach((card) => {
+      card.onclick = () => {
+        const projectItem = state.projects.find(
+          (item) => item.id === card.dataset.projectId
+        );
+        if (projectItem) openInspectorFor(forInspector(projectItem, "project"));
+      };
+    });
+    ins.querySelectorAll("[data-task-id]").forEach((card) => {
+      card.onclick = () => {
+        const task = state.tasks.find(item => item.id === card.dataset.taskId);
+        if (!task) return;
+        openInspectorFor(forInspector(task, "task"));
+        window.mapApi?.fitTask?.(task.id);
+      };
+    });
+  }
+  if (type === "unassigned") {
+    const domain = state.domains.find(item => item.id === obj.domainId);
+    const tasks = state.tasks.filter(task => !task.projectId && task.domainId === obj.domainId);
+    ins.innerHTML = `
+      ${inspectorHeading("Группа", "Без проекта", [domain?.title, "Без проекта"])}
+      <div class="kv">Задач: ${tasks.length}</div>
+      <div class="hint">Эти задачи относятся к домену, но пока не входят ни в один проект.</div>
+      <div class="btns"><button class="btn primary" id="unassignedAddProject">+ Проект в домене</button></div>
+      <div class="list">${tasks.map(task => `
+        <button type="button" class="card inspector-card-button" data-task-id="${task.id}">
+          <div>${statusPill(task.status)} <strong>${task.title}</strong></div>
+          <div class="meta">#${normalizeTags(task.tags).join(" #") || "—"}</div>
+        </button>`).join("")}</div>
+    `;
+    document.getElementById("unassignedAddProject").onclick = () => {
+      const title = prompt("Название проекта:", "Новый проект");
+      if (!title) return;
+      const project = createProject({ domainId: obj.domainId, title, tags: [] });
+      refreshMap({ layout: true });
+      openInspectorFor(forInspector(project, "project"));
+    };
+    ins.querySelectorAll("[data-task-id]").forEach(card => {
+      card.onclick = () => {
+        const task = state.tasks.find(item => item.id === card.dataset.taskId);
+        if (!task) return;
+        openInspectorFor(forInspector(task, "task"));
+        window.mapApi?.fitTask?.(task.id);
+      };
+    });
   }
   if (type === "project") {
     const tks = tasksOfProject(obj.id);
+    const projectDomain = domainOf(obj);
     ins.innerHTML = `
-      <h2>Проект: ${obj.title}</h2>
-      <div class="kv">Домен: ${domainOf(obj).title}</div>
+      ${inspectorHeading("Проект", obj.title, [projectDomain?.title, obj.title])}
+      <div class="kv">Домен: ${projectDomain?.title || "Без домена"}</div>
       <div class="kv">Теги: #${(obj.tags || []).join(" #")}</div>
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
@@ -163,6 +261,13 @@ export function openInspectorFor(obj) {
         const task = state.tasks.find((item) => item.id === card.dataset.taskId);
         if (!task) return;
         openInspectorFor(forInspector(task, "task"));
+        // move the map to that task too: the Inspector is the other half of
+        // the map↔Inspector link, so a card click navigates the canvas
+        try {
+          if (window.mapApi && window.mapApi.fitTask) {
+            window.mapApi.fitTask(task.id);
+          }
+        } catch (_) {}
       };
     });
   }
@@ -171,13 +276,18 @@ export function openInspectorFor(obj) {
     const pendForThis = pending && pending.taskId === obj.id;
     const taskProject = project(obj.projectId);
     const taskDomainId = obj.domainId || taskProject?.domainId;
+    const taskDomain = taskDomainId ? byId(state.domains, taskDomainId) : null;
     ins.innerHTML = `
-      <h2>Задача</h2>
-      <div class="kv"><strong>${obj.title}</strong></div>
+      ${inspectorHeading("Задача", obj.title, [
+        taskDomain?.title || "Без домена",
+        taskProject?.title || "Без проекта",
+        obj.title,
+      ])}
       <div class="kv">Проект: ${taskProject?.title || 'Без проекта'}</div>
-      <div class="kv">Домен: ${taskDomainId ? byId(state.domains, taskDomainId)?.title || 'Неизвестный домен' : 'Без домена'}</div>
+      <div class="kv">Домен: ${taskDomain?.title || (taskDomainId ? 'Неизвестный домен' : 'Без домена')}</div>
       ${obj.sourceInboxId ? `<div class="kv">Источник: Входящие</div>` : ''}
       <div class="kv">Теги: #${normalizeTags(obj.tags).join(" #") || "-"}</div>
+      ${obj.due ? `<div class="kv">Срок: ${obj.due.date}${obj.due.time ? ` · ${obj.due.time}` : ""}</div>` : ""}
       <div class="kv">Статус: ${statusPill(obj.status)} · обновл.: ${daysSince(
       obj.updatedAt
     )} дн.</div>
@@ -196,12 +306,13 @@ export function openInspectorFor(obj) {
             }</div>`
           : ""
       }
+      <div class="inspector-section-label">Статус</div>
       <div class="btns">
         <button class="btn" data-st="backlog">Бэклог</button>
         <button class="btn" data-st="today">Сегодня</button>
         <button class="btn" data-st="doing">В работе</button>
         <button class="btn ok" data-st="done">Готово</button>
-        <button class="btn warn" id="delTask">Удалить</button>
+        <button class="btn inspector-destructive" id="delTask">Удалить</button>
         ${
           pendForThis
             ? `<button class="btn" id="confirmAttach">Привязать</button><button class="btn" id="cancelAttach">Отменить привязку</button>`

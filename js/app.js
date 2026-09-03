@@ -13,11 +13,28 @@ import {
   undoLastMove,
 } from "./view_map.js";
 import { renderToday } from "./view_today.js";
-import { parseQuick } from "./parser.js";
+import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
 import { refreshInboxAfterRemoteApply } from "./features/inbox/view.js";
-import { createTask, updateDomain } from "./core/commands.js";
+import { openInspectorFor } from "./inspector.js";
+import {
+  captureInbox,
+  createDomain as createDomainCommand,
+  createTask,
+  deleteDomain,
+  deleteInbox,
+  deleteTask,
+  mergeDomain,
+  updateDomain,
+} from "./core/commands.js";
+import {
+  getVisibleDomainIds,
+  isDomainVisible,
+  setDomainVisible,
+  showAllDomains,
+  syncVisibleDomains,
+} from "./ui/map-session.js";
 import { APP_VERSION, APP_LABEL } from "./version.js";
 import { createSyncRuntime, requestSyncNow } from "./sync/runtime.js";
 import { createSyncBadge, openSyncModal } from "./sync/ui.js";
@@ -49,6 +66,11 @@ const ui = {
   newDomColor: "#2dd4bf",
   newDomDraft: "",
   newDomError: "",
+  quickMode: "inbox",
+  quickSelectedProjectId: null,
+  quickSuggestionIndex: -1,
+  quickSuggestions: [],
+  quickLastResult: null,
 };
 const palette = [
   "#2dd4bf",
@@ -83,11 +105,10 @@ function openModal({
   }
   btnCancel.onclick = () => close();
   btnOk.onclick = () => {
-    try {
-      onConfirm && onConfirm(document.getElementById("modalBody"));
-    } finally {
-      close();
-    }
+    const shouldClose = onConfirm
+      ? onConfirm(document.getElementById("modalBody")) !== false
+      : true;
+    if (shouldClose) close();
   };
   modal.style.display = "flex";
 }
@@ -109,11 +130,20 @@ function showToast(text, cls = "ok", ms = 2500) {
     }, 320);
   }, ms);
 }
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 // expose globally for addons/other modules
 try { window.showToast = showToast; } catch (_) {}
 
 function renderSidebar() {
   const dWrap = document.getElementById("domainsList");
+  const visibleIds = getVisibleDomainIds(state.domains);
   let html = "";
   if (ui.newDomain) {
     html += `<div class="row" id="newDomRow" style="gap:6px;flex-wrap:wrap">
@@ -130,30 +160,27 @@ function renderSidebar() {
       <button class="btn" id="newDomCancel">Отмена</button>
     </div>`;
   } else {
-    html += `<div class="row"><button class="btn" id="btnAddDomain">+ Домен</button></div>`;
+    html += `<div class="domain-toolbar">
+      <button class="btn" id="btnAddDomain">+ Домен</button>
+      <button class="domain-show-all" id="showAllDomains" type="button">Показать все</button>
+      <span class="domain-visible-count">Показано ${visibleIds.size} из ${state.domains.length}</span>
+    </div>`;
   }
   html += state.domains
     .map((d) => {
-      const count = state.projects.filter((p) => p.domainId === d.id).length;
-      let __active = false;
-      try {
-        const ds = state.activeDomains;
-        if (ds && (Array.isArray(ds) ? ds.length : ds.size)) {
-          const ids = new Set(Array.isArray(ds) ? ds : Array.from(ds));
-          __active = ids.has(d.id);
-        } else {
-          __active = state.activeDomain === d.id;
-        }
-      } catch (_) {}
-      const act = __active
-        ? 'style="background:#111a23;border:1px solid #1e2a44"'
-        : "";
+      const projectIds = new Set(state.projects.filter((p) => p.domainId === d.id).map(project => project.id));
+      const taskCount = state.tasks.filter(task => task.domainId === d.id || projectIds.has(task.projectId)).length;
+      const projectCount = projectIds.size;
+      const visible = visibleIds.has(d.id);
+      const context = state.activeDomain === d.id;
       const color = d.color || "#2dd4bf";
-      return `<div class="row" data-domain="${d.id}" ${act}>
-      <div class="dot" style="background:${color}"></div>
-      <div class="title" style="flex:1">${d.title}</div>
-      <div class="hint">${count}</div>
-      <div class="hint actions" data-dom="${d.id}" style="cursor:pointer">⋯</div>
+      return `<div class="domain-row${context ? ' is-context' : ''}${visible ? '' : ' is-hidden'}" data-domain="${escapeHtml(d.id)}">
+      <input class="domain-visibility" type="checkbox" ${visible ? 'checked' : ''} aria-label="Показывать домен ${escapeHtml(d.title)}">
+      <span class="dot" style="background:${escapeHtml(color)}" aria-hidden="true"></span>
+      <button class="domain-name" type="button"><span>${escapeHtml(d.title)}</span>${context ? '<span class="domain-context-badge">Контекст</span>' : ''}</button>
+      <span class="domain-counts">${projectCount} пр · ${taskCount} зад</span>
+      <button class="domain-focus" type="button" title="Показать домен на карте" aria-label="Показать домен ${escapeHtml(d.title)} на карте">⌖</button>
+      <button class="domain-actions actions" type="button" data-dom="${escapeHtml(d.id)}" aria-label="Действия домена ${escapeHtml(d.title)}">⋯</button>
     </div>`;
     })
     .join("");
@@ -167,6 +194,17 @@ function renderSidebar() {
       renderSidebar();
       const inp = $("#newDomName");
       inp && inp.focus();
+    };
+  }
+  const showAllButton = document.getElementById("showAllDomains");
+  if (showAllButton) {
+    showAllButton.disabled = visibleIds.size === state.domains.length;
+    showAllButton.onclick = () => {
+      showAllDomains(state.domains);
+      renderSidebar();
+      layoutMap();
+      drawMap();
+      window.mapApi?.fitAll?.();
     };
   }
   const row = document.getElementById("newDomRow");
@@ -199,36 +237,41 @@ function renderSidebar() {
           renderSidebar();
         };
       });
-    function createDomain() {
-      const name = (nameInput.value || "").trim();
-      if (!name) {
-        alert("Введите название домена");
-        return;
+    function validateDomainName(value) {
+      const name = String(value || "").trim();
+      if (!name) return "Введите название домена";
+      if (state.domains.some((d) => d.title.toLocaleLowerCase("ru-RU") === name.toLocaleLowerCase("ru-RU"))) {
+        return "Такой домен уже существует";
       }
-      if (
-        state.domains.some((d) => d.title.toLowerCase() === name.toLowerCase())
-      ) {
-        alert("Такой домен уже есть");
-        return;
-      }
-      const id = "d" + Math.random().toString(36).slice(2, 8);
-      state.domains.push({
-        id,
-        title: name,
-        color: ui.newDomColor,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      state.activeDomain = id;
-      ui.newDomain = false;
-      ui.newDomDraft = "";
-      saveState();
-      renderSidebar();
-      layoutMap();
-      drawMap();
-      fitActiveDomain();
+      return "";
     }
-    $("#newDomSave").onclick = () => createDomain();
+    function commitDomain() {
+      const name = String(nameInput.value || "").trim();
+      const error = validateDomainName(name);
+      ui.newDomError = error;
+      hint.textContent = error;
+      if (error) return false;
+      try {
+        const domain = createDomainCommand({ title: name, color: ui.newDomColor });
+        state.activeDomain = domain.id;
+        syncVisibleDomains(state.domains);
+        setDomainVisible(domain.id, true, state.domains);
+        ui.newDomain = false;
+        ui.newDomDraft = "";
+        ui.newDomError = "";
+        renderSidebar();
+        layoutMap();
+        drawMap();
+        fitActiveDomain();
+        openInspectorFor({ ...domain, _type: "domain" });
+        showToast(`Создан домен: ${name}`, "ok");
+        return true;
+      } catch (error) {
+        ui.newDomError = error?.message || "Не удалось создать домен";
+        hint.textContent = ui.newDomError;
+        return false;
+      }
+    }
     $("#newDomCancel").onclick = () => {
       ui.newDomain = false;
       ui.newDomDraft = "";
@@ -236,52 +279,15 @@ function renderSidebar() {
     };
     nameInput.addEventListener("input", () => {
       ui.newDomDraft = nameInput.value;
-      let err = "";
-      const n = (nameInput.value || "").trim();
-      if (!n) err = "Введите название домена";
-      else if (
-        state.domains.some((d) => d.title.toLowerCase() === n.toLowerCase())
-      )
-        err = "Такой домен уже существует";
+      const err = validateDomainName(nameInput.value);
       ui.newDomError = err;
       if (hint) hint.textContent = err;
     });
-    // override save with soft validation + toast
-    if (btnSave) {
-      btnSave.onclick = () => {
-        const n = (nameInput.value || "").trim();
-        let err = "";
-        if (!n) err = "Введите название домена";
-        else if (
-          state.domains.some((d) => d.title.toLowerCase() === n.toLowerCase())
-        )
-          err = "Такой домен уже существует";
-        ui.newDomError = err;
-        if (hint) hint.textContent = err;
-        if (err) return;
-        const id = "d" + Math.random().toString(36).slice(2, 8);
-        state.domains.push({
-          id,
-          title: n,
-          color: ui.newDomColor,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        });
-        state.activeDomain = id;
-        ui.newDomain = false;
-        ui.newDomDraft = "";
-        saveState();
-        renderSidebar();
-        layoutMap();
-        drawMap();
-        fitActiveDomain();
-        showToast(`Создан домен: ${n}`, "ok");
-      };
-    }
+    if (btnSave) btnSave.onclick = commitDomain;
     nameInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        createDomain();
+        commitDomain();
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -291,34 +297,45 @@ function renderSidebar() {
       }
     });
   }
-  dWrap.querySelectorAll(".row[data-domain]").forEach((el) => {
+  dWrap.querySelectorAll(".domain-row[data-domain]").forEach((el) => {
     const id = el.dataset.domain;
-    el.onclick = (ev) => {
-      if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
-        // toggle multiselect list
-        let ds = state.activeDomains;
-        if (!ds) ds = state.activeDomains = [];
-        const arr = Array.isArray(ds) ? ds : Array.from(ds);
-        const set = new Set(arr);
-        if (set.has(id)) set.delete(id);
-        else set.add(id);
-        state.activeDomains = Array.from(set);
-        state.activeDomain = null;
-        renderSidebar();
-        layoutMap();
-        drawMap();
-        try { window.mapApi && window.mapApi.fitAll && window.mapApi.fitAll(); } catch(_){}
+    const checkbox = el.querySelector(".domain-visibility");
+    checkbox.onchange = () => {
+      const accepted = setDomainVisible(id, checkbox.checked, state.domains);
+      if (!accepted) {
+        checkbox.checked = true;
+        showToast("На карте должен остаться хотя бы один домен", "warn");
         return;
       }
-      state.activeDomain = id;
-      try { state.activeDomains = []; } catch(_){}
       renderSidebar();
       layoutMap();
       drawMap();
-      fitActiveDomain();
+      window.mapApi?.fitAll?.();
+      openInspectorFor(null);
     };
-    el.ondblclick = () => {
+    el.querySelector(".domain-name").onclick = () => {
+      setDomainVisible(id, true, state.domains);
       state.activeDomain = id;
+      window.refreshQuickDock?.();
+      const domain = state.domains.find(item => item.id === id);
+      renderSidebar();
+      layoutMap();
+      drawMap();
+      if (domain) openInspectorFor({ ...domain, _type: "domain" });
+    };
+    el.querySelector(".domain-focus").onclick = () => {
+      setDomainVisible(id, true, state.domains);
+      renderSidebar();
+      layoutMap();
+      drawMap();
+      window.mapApi?.fitDomain?.(id);
+    };
+    el.ondblclick = (event) => {
+      if (event.target.closest("button,input")) return;
+      setDomainVisible(id, true, state.domains);
+      state.activeDomain = id;
+      window.refreshQuickDock?.();
+      renderSidebar();
       layoutMap();
       drawMap();
       fitActiveDomain();
@@ -352,7 +369,7 @@ function renderSidebar() {
         (t) =>
           `<div class="tag ${
             state.filterTag === t ? "active" : ""
-          }" data-tag="${t}">#${t}</div>`
+          }" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</div>`
       )
       .join("");
   tWrap.querySelectorAll(".tag").forEach((el) => {
@@ -552,16 +569,17 @@ function openDomainMenuX(id, rowEl) {
   document.addEventListener("click", onDocClick, true);
 
   menu.querySelector('[data-act="focus"]').onclick = () => {
-    state.activeDomain = id;
+    setDomainVisible(id, true, state.domains);
+    renderSidebar();
     layoutMap();
     drawMap();
-    fitActiveDomain();
+    window.mapApi?.fitDomain?.(id);
     closeDomainMenu();
   };
 
   menu.querySelector('[data-act="rename"]').onclick = () => {
     const body = `<div style="display:flex;flex-direction:column;gap:8px">
-      <input id=\"domName\" value=\"${d.title}\" placeholder=\"Введите название домена\"/>
+      <input id=\"domName\" value=\"${escapeHtml(d.title)}\" placeholder=\"Введите название домена\"/>
       <div id=\"domHint\" class=\"hint\"></div>
     </div>`;
     openModal({
@@ -574,7 +592,7 @@ function openDomainMenuX(id, rowEl) {
         if (!name) {
           bodyEl.querySelector("#domHint").textContent =
             "Введите название домена";
-          return;
+          return false;
         }
         if (
           state.domains.some(
@@ -583,13 +601,14 @@ function openDomainMenuX(id, rowEl) {
         ) {
           bodyEl.querySelector("#domHint").textContent =
             "Такой домен уже существует";
-          return;
+          return false;
         }
-        updateDomain(id, { title: name }); // C3/W3: Core command + projection re-emit
+        const updated = updateDomain(id, { title: name });
         requestSyncNow(); // C3: refreshed projections reach the phone immediately
         renderSidebar();
         layoutMap();
         drawMap();
+        if (updated?.domain) openInspectorFor({ ...updated.domain, _type: "domain" });
         closeDomainMenu();
       },
     });
@@ -600,9 +619,7 @@ function openDomainMenuX(id, rowEl) {
     pal.style.display = pal.style.display === "none" ? "flex" : "none";
     pal.querySelectorAll(".dot").forEach((dot) => {
       dot.onclick = () => {
-        d.color = dot.dataset.col;
-        d.updatedAt = Date.now();
-        saveState();
+        updateDomain(id, { color: dot.dataset.col });
         renderSidebar();
         layoutMap();
         drawMap();
@@ -618,7 +635,7 @@ function openDomainMenuX(id, rowEl) {
       return;
     }
     const body = `<label>Слить в:</label> <select id=\"selDom\">${others
-      .map((o) => `<option value=\"${o.id}\">${o.title}</option>`)
+      .map((o) => `<option value=\"${escapeHtml(o.id)}\">${escapeHtml(o.title)}</option>`)
       .join("")}</select>`;
     openModal({
       title: `Слить домен "${d.title}"`,
@@ -628,23 +645,17 @@ function openDomainMenuX(id, rowEl) {
         const targetId = bodyEl.querySelector("#selDom").value;
         const target = state.domains.find((x) => x.id === targetId);
         if (!target || target.id === id) return;
-        const movedPrjIds = state.projects
-          .filter((p) => p.domainId === id)
-          .map((p) => p.id);
-        const prCount = movedPrjIds.length;
-        const taskCount = state.tasks.filter((t) =>
-          movedPrjIds.includes(t.projectId)
-        ).length;
-        state.projects.forEach((p) => {
-          if (p.domainId === id) p.domainId = target.id;
-        });
-        state.domains = state.domains.filter((x) => x.id !== id);
+        const merged = mergeDomain(id, target.id);
+        const prCount = merged.movedProjectCount;
+        const taskCount = merged.movedTaskCount;
         state.activeDomain = target.id;
-        saveState();
+        setDomainVisible(target.id, true, state.domains);
+        window.refreshQuickDock?.();
         renderSidebar();
         layoutMap();
         drawMap();
-        fitActiveDomain();
+        window.mapApi?.fitDomain?.(target.id);
+        openInspectorFor({ ...target, _type: "domain" });
         closeDomainMenu();
         showToast(`Перенесено: ${prCount} проектов, ${taskCount} задач`, "ok");
       },
@@ -661,7 +672,7 @@ function openDomainMenuX(id, rowEl) {
       <div style=\"display:flex;flex-direction:column;gap:8px\">
         <label><input type=\"radio\" name=\"mode\" value=\"move\" checked/> Перенести проекты в:</label>
         <select id=\"selDom\">${others
-          .map((o) => `<option value=\"${o.id}\">${o.title}</option>`)
+          .map((o) => `<option value=\"${escapeHtml(o.id)}\">${escapeHtml(o.title)}</option>`)
           .join("")}</select>
         <label><input type=\"radio\" name=\"mode\" value=\"delete\"/> Удалить вместе с проектами и задачами</label>
       </div>`;
@@ -673,157 +684,23 @@ function openDomainMenuX(id, rowEl) {
         const mode = bodyEl.querySelector('input[name="mode"]:checked').value;
         if (mode === "move") {
           const targetId = bodyEl.querySelector("#selDom").value;
-          const projIds = state.projects
-            .filter((p) => p.domainId === id)
-            .map((p) => p.id);
-          const taskCount = state.tasks.filter((t) =>
-            projIds.includes(t.projectId)
-          ).length;
-          state.projects.forEach((p) => {
-            if (p.domainId === id) p.domainId = targetId;
-          });
-          showToast(
-            `Перенесено: ${projIds.length} проектов, ${taskCount} задач`,
-            "ok"
-          );
+          const removed = deleteDomain(id, { mode: "move", targetDomainId: targetId });
+          setDomainVisible(targetId, true, state.domains);
+          showToast(`Перенесено: ${removed.projectCount} проектов, ${removed.taskCount} задач`, "ok");
         } else {
-          const projIds = state.projects
-            .filter((p) => p.domainId === id)
-            .map((p) => p.id);
-          const removedTasks = state.tasks.filter((t) =>
-            projIds.includes(t.projectId)
-          ).length;
-          state.tasks = state.tasks.filter(
-            (t) => !projIds.includes(t.projectId)
-          );
-          state.projects = state.projects.filter((p) => p.domainId !== id);
-          showToast(
-            `Удалено: ${projIds.length} проектов, ${removedTasks} задач`,
-            "warn"
-          );
+          const removed = deleteDomain(id, { mode: "cascade" });
+          showToast(`Удалено: ${removed.projectCount} проектов, ${removed.taskCount} задач`, "warn");
         }
-        state.domains = state.domains.filter((x) => x.id !== id);
-        state.activeDomain = state.domains[0]?.id || null;
-        saveState();
+        syncVisibleDomains(state.domains);
+        window.refreshQuickDock?.();
         renderSidebar();
         layoutMap();
         drawMap();
+        openInspectorFor(null);
         closeDomainMenu();
       },
     });
   };
-}
-
-/* legacy, unused */ function domainActions_old(id) {
-  const d = state.domains.find((x) => x.id === id);
-  const choice = prompt(
-    `Домен "${d.title}": введите действие\nrename / color / merge / delete / focus`,
-    "focus"
-  );
-  if (!choice) return;
-  if (choice === "focus") {
-    state.activeDomain = id;
-    layoutMap();
-    drawMap();
-    fitActiveDomain();
-    return;
-  }
-  if (choice === "rename") {
-    const name = prompt("Новое имя домена:", d.title) || "";
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    if (
-      state.domains.some(
-        (x) => x.id !== id && x.title.toLowerCase() === trimmed.toLowerCase()
-      )
-    ) {
-      alert("Такой домен уже есть");
-      return;
-    }
-    d.title = trimmed;
-    d.updatedAt = Date.now();
-    saveState();
-    renderSidebar();
-    layoutMap();
-    drawMap();
-    return;
-  }
-  if (choice === "color") {
-    const col = prompt("Цвет (hex, например #60a5fa):", d.color || "#2dd4bf");
-    if (!col) return;
-    d.color = col;
-    d.updatedAt = Date.now();
-    saveState();
-    renderSidebar();
-    layoutMap();
-    drawMap();
-    return;
-  }
-  if (choice === "merge") {
-    const names = state.domains
-      .filter((x) => x.id !== id)
-      .map((x) => x.title)
-      .join(", ");
-    const into = prompt(`Слить домен "${d.title}" в: (${names})`, "");
-    if (!into) return;
-    const target = state.domains.find(
-      (x) => x.title.toLowerCase() === into.toLowerCase()
-    );
-    if (!target) {
-      alert("Целевой домен не найден");
-      return;
-    }
-    if (target.id === id) {
-      alert("Нельзя сливать в самого себя");
-      return;
-    }
-    state.projects.forEach((p) => {
-      if (p.domainId === id) p.domainId = target.id;
-    });
-    state.domains = state.domains.filter((x) => x.id !== id);
-    state.activeDomain = target.id;
-    saveState();
-    renderSidebar();
-    layoutMap();
-    drawMap();
-    fitActiveDomain();
-    return;
-  }
-  if (choice === "delete") {
-    if (state.domains.length <= 1) {
-      alert("Нельзя удалить последний домен");
-      return;
-    }
-    if (!confirm(`Удалить домен "${d.title}"?`)) return;
-    const mode = prompt(
-      "Перенести проекты в (название домена) или оставить пустым, чтобы удалить вместе с проектами и задачами:",
-      ""
-    );
-    if (mode) {
-      const target = state.domains.find(
-        (x) => x.title.toLowerCase() === mode.toLowerCase()
-      );
-      if (!target) {
-        alert("Целевой домен не найден");
-        return;
-      }
-      state.projects.forEach((p) => {
-        if (p.domainId === id) p.domainId = target.id;
-      });
-    } else {
-      const projIds = state.projects
-        .filter((p) => p.domainId === id)
-        .map((p) => p.id);
-      state.tasks = state.tasks.filter((t) => !projIds.includes(t.projectId));
-      state.projects = state.projects.filter((p) => p.domainId !== id);
-    }
-    state.domains = state.domains.filter((x) => x.id !== id);
-    state.activeDomain = state.domains[0]?.id || null;
-    saveState();
-    renderSidebar();
-    layoutMap();
-    drawMap();
-  }
 }
 
 function updateWip() {
@@ -834,10 +711,15 @@ function updateWip() {
 }
 
 function setupHeader() {
-  $$(".chip").forEach((ch) => {
+  const viewChips = $$(".chip[data-view]");
+  viewChips.forEach((ch) => {
     ch.onclick = () => {
-      $$(".chip").forEach((c) => c.classList.remove("active"));
+      viewChips.forEach((c) => {
+        c.classList.remove("active");
+        c.setAttribute("aria-pressed", "false");
+      });
       ch.classList.add("active");
+      ch.setAttribute("aria-pressed", "true");
       state.view = ch.dataset.view;
       $("#canvas").style.display = state.view === "map" ? "block" : "none";
       $("#viewToday").style.display = state.view === "today" ? "block" : "none";
@@ -980,28 +862,247 @@ function setupHeader() {
 function setupQuickAdd() {
   const qa = $("#quickAdd");
   const chips = $("#qaChips");
-  qa.addEventListener("input", () => {
+  const preview = $("#qaPreview");
+  const result = $("#qaResult");
+  const suggestions = $("#qaSuggestions");
+  const submit = $("#quickSubmit");
+
+  function closeSuggestions() {
+    ui.quickSuggestions = [];
+    ui.quickSuggestionIndex = -1;
+    suggestions.hidden = true;
+    suggestions.innerHTML = "";
+    qa.setAttribute("aria-expanded", "false");
+    qa.removeAttribute("aria-activedescendant");
+  }
+
+  function chooseSuggestion(item) {
+    if (!item) return;
+    if (item.type === "project") {
+      const start = qa.value.lastIndexOf("@");
+      qa.value = `${qa.value.slice(0, start)}@\"${item.title}\"`;
+      ui.quickSelectedProjectId = item.id;
+    } else {
+      const start = qa.value.lastIndexOf("#");
+      qa.value = `${qa.value.slice(0, start)}#${item.title} `;
+    }
+    closeSuggestions();
+    updateQuickPreview();
+    qa.focus();
+  }
+
+  function renderSuggestions() {
+    if (ui.quickMode !== "task") return closeSuggestions();
+    const projectMatch = qa.value.match(/@(?:"([^"]*)|([^#@!~]*))$/u);
+    const tagMatch = qa.value.match(/(?:^|\s)#([^\s#@!~]*)$/u);
+    let items = [];
+    if (projectMatch) {
+      const query = String(projectMatch[1] ?? projectMatch[2] ?? "").trim().toLocaleLowerCase("ru-RU");
+      items = state.projects
+        .filter(project => !query || project.title.toLocaleLowerCase("ru-RU").includes(query))
+        .slice(0, 8)
+        .map(project => ({
+          type: "project",
+          id: project.id,
+          title: project.title,
+          context: state.domains.find(domain => domain.id === project.domainId)?.title || "Без домена",
+        }));
+    } else if (tagMatch) {
+      const query = tagMatch[1].toLocaleLowerCase("ru-RU");
+      const tags = [...new Set(state.tasks.flatMap(task => normalizeTags(task.tags)).concat(state.projects.flatMap(project => normalizeTags(project.tags))))];
+      items = tags.filter(tag => !query || tag.toLocaleLowerCase("ru-RU").includes(query)).slice(0, 8)
+        .map(tag => ({ type: "tag", id: `tag:${tag}`, title: tag, context: "Тег" }));
+    }
+    ui.quickSuggestions = items;
+    ui.quickSuggestionIndex = items.length
+      ? Math.max(0, Math.min(ui.quickSuggestionIndex, items.length - 1))
+      : -1;
+    if (!items.length) return closeSuggestions();
+    suggestions.innerHTML = items.map((item, index) => `
+      <button type="button" class="quick-suggestion${index === ui.quickSuggestionIndex ? " active" : ""}" role="option" id="qa-option-${index}" aria-selected="${index === ui.quickSuggestionIndex}" data-suggestion-index="${index}">
+        <span>${item.type === "project" ? "@" : "#"}${escapeHtml(item.title)}</span><small>${escapeHtml(item.context)}</small>
+      </button>`).join("");
+    suggestions.hidden = false;
+    qa.setAttribute("aria-expanded", "true");
+    qa.setAttribute("aria-activedescendant", `qa-option-${ui.quickSuggestionIndex}`);
+    suggestions.querySelectorAll("[data-suggestion-index]").forEach(button => {
+      button.onmousedown = event => event.preventDefault();
+      button.onclick = () => chooseSuggestion(items[Number(button.dataset.suggestionIndex)]);
+    });
+  }
+
+  function updateQuickPreview({ keepResult = false } = {}) {
+    if (!keepResult) result.innerHTML = "";
+    if (ui.quickMode === "inbox") {
+      chips.innerHTML = "";
+      preview.className = "quick-preview";
+      preview.textContent = "Во Входящие · без разбора";
+      renderSuggestions();
+      return;
+    }
     const parsed = parseQuick(qa.value);
-    chips.innerHTML = "";
-    if (parsed.tag)
-      chips.innerHTML += `<div class="chip-mini">#${parsed.tag}</div>`;
-    if (parsed.project)
-      chips.innerHTML += `<div class="chip-mini">@${parsed.project}</div>`;
-    if (parsed.when)
-      chips.innerHTML += `<div class="chip-mini">!${parsed.when.label}</div>`;
-    if (parsed.estimate)
-      chips.innerHTML += `<div class="chip-mini">~${parsed.estimate}м</div>`;
-    if (parsed.priority)
-      chips.innerHTML += `<div class="chip-mini">p${parsed.priority}</div>`;
+    const resolved = resolveQuickDraft(parsed, {
+      projects: state.projects,
+      domains: state.domains,
+      activeDomainId: state.activeDomain,
+      selectedProjectId: ui.quickSelectedProjectId,
+    });
+    const destination = resolved.projectId
+      ? state.projects.find(project => project.id === resolved.projectId)?.title
+      : state.domains.find(domain => domain.id === resolved.domainId)?.title;
+    chips.innerHTML = [
+      ...parsed.tags.map(tag => `#${tag}`),
+      parsed.projectQuery ? `@${parsed.projectQuery}` : null,
+      parsed.whenLabel ? `!${parsed.whenLabel}` : null,
+      parsed.estimateMin ? `~${parsed.estimateMin}м` : null,
+      `p${parsed.priority}`,
+    ].filter(Boolean).map(label => `<span class="chip-mini">${escapeHtml(label)}</span>`).join("");
+    preview.className = `quick-preview${resolved.errors.length ? " error" : ""}`;
+    preview.textContent = resolved.errors.length
+      ? resolved.errors[0]
+      : `${resolved.status === "today" ? "Сегодня" : "Бэклог"} · ${destination || "место не выбрано"}${resolved.due ? ` · ${resolved.due.date}${resolved.due.time ? ` ${resolved.due.time}` : ""}` : ""}`;
+    renderSuggestions();
+  }
+
+  function showQuickResult(message, type, id) {
+    ui.quickLastResult = { type, id };
+    result.innerHTML = `<span>${escapeHtml(message)}</span>
+      ${type === "inbox" ? '<button type="button" data-quick-action="open">Открыть Входящие</button>' : '<button type="button" data-quick-action="open">Показать</button>'}
+      <button type="button" data-quick-action="undo">Отменить</button>`;
+    result.querySelector('[data-quick-action="open"]').onclick = () => {
+      if (type === "inbox") document.getElementById("btnInbox")?.click();
+      else window.mapApi?.fitTask?.(id);
+    };
+    result.querySelector('[data-quick-action="undo"]').onclick = () => {
+      try {
+        if (type === "inbox") deleteInbox(id);
+        else deleteTask(id);
+        ui.quickLastResult = null;
+        result.innerHTML = '<span>Добавление отменено</span>';
+        renderSidebar();
+        renderToday();
+        layoutMap();
+        drawMap();
+        if (type === "task") openInspectorFor(null);
+      } catch (error) {
+        result.innerHTML = `<span class="quick-error">${escapeHtml(error?.message || "Не удалось отменить")}</span>`;
+      }
+    };
+  }
+
+  function submitQuick() {
+    const rawText = qa.value;
+    if (!rawText.trim()) {
+      result.innerHTML = "";
+      preview.className = "quick-preview error";
+      preview.textContent = "Введите текст";
+      qa.focus();
+      return false;
+    }
+    try {
+      if (ui.quickMode === "inbox") {
+        const created = captureInbox(rawText, {
+          splitLines: false,
+          source: "desktop-capture",
+          inputType: "text",
+          entryPoint: "app",
+        });
+        if (!created.length) throw new Error("Не удалось сохранить запись");
+        qa.value = "";
+        showQuickResult("Добавлено во Входящие", "inbox", created[0].id);
+      } else {
+        const parsed = parseQuick(rawText);
+        const resolved = resolveQuickDraft(parsed, {
+          projects: state.projects,
+          domains: state.domains,
+          activeDomainId: state.activeDomain,
+          selectedProjectId: ui.quickSelectedProjectId,
+        });
+        if (resolved.errors.length) throw new Error(resolved.errors[0]);
+        const task = createTask({
+          projectId: resolved.projectId,
+          domainId: resolved.projectId ? undefined : resolved.domainId,
+          title: resolved.title,
+          tags: resolved.tags,
+          status: resolved.status,
+          due: resolved.due,
+          estimateMin: resolved.estimateMin,
+          priority: resolved.priority,
+        });
+        if (resolved.domainId) {
+          setDomainVisible(resolved.domainId, true, state.domains);
+        }
+        qa.value = "";
+        ui.quickSelectedProjectId = null;
+        renderSidebar();
+        renderToday();
+        layoutMap();
+        drawMap();
+        openInspectorFor({ ...task, _type: "task" });
+        window.mapApi?.fitTask?.(task.id);
+        showQuickResult("Задача создана", "task", task.id);
+      }
+      requestSyncNow();
+      chips.innerHTML = "";
+      closeSuggestions();
+      updateQuickPreview({ keepResult: true });
+      updateWip();
+      if (window.bus) window.bus.emit('state:changed', { reason: 'quick-add' });
+      return true;
+    } catch (error) {
+      result.innerHTML = "";
+      preview.className = "quick-preview error";
+      preview.textContent = error?.message || "Не удалось добавить";
+      qa.focus();
+      return false;
+    }
+  }
+
+  document.querySelectorAll("[data-quick-mode]").forEach(button => {
+    button.onclick = () => {
+      ui.quickMode = button.dataset.quickMode;
+      ui.quickSelectedProjectId = null;
+      document.querySelectorAll("[data-quick-mode]").forEach(item => {
+        const active = item.dataset.quickMode === ui.quickMode;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      qa.placeholder = ui.quickMode === "inbox"
+        ? "Записать мысль во Входящие…"
+        : "Задача #тег @проект !сегодня 10:00 ~30м p2";
+      updateQuickPreview();
+      qa.focus();
+    };
+  });
+  qa.addEventListener("input", () => {
+    ui.quickSelectedProjectId = null;
+    updateQuickPreview();
   });
   qa.addEventListener("keydown", (e) => {
+    if (!suggestions.hidden && ["ArrowDown", "ArrowUp"].includes(e.key)) {
+      e.preventDefault();
+      const direction = e.key === "ArrowDown" ? 1 : -1;
+      ui.quickSuggestionIndex = (ui.quickSuggestionIndex + direction + ui.quickSuggestions.length) % ui.quickSuggestions.length;
+      renderSuggestions();
+      return;
+    }
+    if (e.key === "Escape" && !suggestions.hidden) {
+      e.preventDefault();
+      closeSuggestions();
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
-      submitQuick(qa.value.trim());
-      qa.value = "";
-      chips.innerHTML = "";
+      if (!suggestions.hidden && ui.quickSuggestionIndex >= 0) {
+        chooseSuggestion(ui.quickSuggestions[ui.quickSuggestionIndex]);
+        return;
+      }
+      submitQuick();
     }
   });
+  submit.onclick = submitQuick;
+  window.refreshQuickDock = updateQuickPreview;
+  updateQuickPreview();
   // zoom slider hookup (view_map exposes setZoom)
   const zs = $("#zoomSlider");
   try{

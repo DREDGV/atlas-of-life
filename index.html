@@ -17,35 +17,48 @@
 <div class="app">
   <header>
     <div class="brand">Атлас жизни</div>
-    <div class="chip active" data-view="map">Карта</div>
-    <div class="chip" data-view="today">Сегодня</div>
-    <button class="chip inbox-header-button" id="btnInbox" type="button" title="Входящие (N — быстрый захват)">
-      Входящие <span id="inboxCount" class="inbox-count" hidden></span>
-    </button>
-    <div class="chip" id="btnCenter" title="Центр (C)">Центр</div>
-    <div class="chip" id="btnFitDomain" title="Подогнать домен (F)">Подогнать домен</div>
-    <div class="chip" id="btnFitProject" title="Подогнать проект (P)">Подогнать проект</div>
-    <div class="chip" id="btnReset" title="Сброс вида (R)">Сброс</div>
-    <div class="chip" id="btnSync" title="Синхронизация между устройствами">Синхронизация</div>
-    <div class="spacer"></div>
-    <div class="chip" id="btnFullscreen" title="Полный экран">Экран</div>
-    <div class="toggle">
-      <div class="legend">
-        <span class="pill pill-backlog" title="Задачи в планах (backlog)">план</span>
-        <span class="pill pill-today" title="Задачи на сегодня">сегодня</span>
-        <span class="pill pill-doing" title="Задачи в работе">в работе</span>
-        <span class="pill pill-done" title="Выполненные задачи">готово</span>
-      </div>
-  <label>Зум:<input id="zoomSlider" class="zoom-slider" type="range" min="50" max="220" step="1" value="100">
-
-      <button class="chip" id="btnExport" title="Экспорт JSON">Экспорт</button>
-      <label class="chip" for="fileImport" title="Импорт JSON">Импорт</label>
-      <input id="fileImport" type="file" accept="application/json" class="hidden" />
-      <label><input type="checkbox" id="tgLinks" checked/> Связи</label>
-      <label><input type="checkbox" id="tgAging" checked/> Давность</label>
-      <label><input type="checkbox" id="tgGlow" checked/> Свечение</label>
-      <button class="chip" id="btnAbout" title="О версии">О версии</button>
+    <nav class="chip-group" aria-label="Основная навигация">
+      <button class="chip active" type="button" data-view="map" aria-pressed="true">Карта</button>
+      <button class="chip" type="button" data-view="today" aria-pressed="false">Сегодня</button>
+      <button class="chip inbox-header-button" id="btnInbox" type="button" title="Входящие (N — быстрый захват)">
+        Входящие <span id="inboxCount" class="inbox-count" hidden></span>
+      </button>
+    </nav>
+    <div class="chip-group" role="group" aria-label="Камера карты">
+      <button class="chip" type="button" id="btnCenter" title="Показать всю карту (C)">Всё</button>
+      <button class="chip" type="button" id="btnFitDomain" title="Подогнать активный домен (F)">Домен</button>
+      <button class="chip" type="button" id="btnFitProject" title="Подогнать активный проект (P)">Проект</button>
+      <button class="chip" type="button" id="btnReset" title="Сбросить камеру (R)">Сброс</button>
     </div>
+    <button class="chip" type="button" id="btnSync" title="Синхронизация между устройствами">Синхронизация</button>
+    <div class="spacer"></div>
+    <button class="chip header-quiet-action" type="button" id="btnFullscreen" title="Полный экран">Экран</button>
+    <label class="map-zoom" for="zoomSlider"><span>Масштаб</span><input id="zoomSlider" class="zoom-slider" type="range" min="50" max="220" step="1" value="100"></label>
+    <details class="header-popover">
+      <summary>Вид карты</summary>
+      <div class="header-popover-menu header-map-settings">
+        <div class="popover-title">Статусы задач</div>
+        <div class="legend">
+          <span class="pill pill-backlog">план</span>
+          <span class="pill pill-today">сегодня</span>
+          <span class="pill pill-doing">в работе</span>
+          <span class="pill pill-done">готово</span>
+        </div>
+        <div class="popover-title">Слои</div>
+        <label><input type="checkbox" id="tgLinks" checked/> Связи</label>
+        <label><input type="checkbox" id="tgAging" checked/> Давность</label>
+        <label><input type="checkbox" id="tgGlow" checked/> Свечение</label>
+      </div>
+    </details>
+    <details class="header-popover header-popover-secondary">
+      <summary>Ещё</summary>
+      <div class="header-popover-menu header-secondary-actions">
+        <button class="header-action" type="button" id="btnExport">Экспорт JSON</button>
+        <label class="header-action" for="fileImport">Импорт JSON</label>
+        <input id="fileImport" type="file" accept="application/json" class="hidden" />
+        <button class="header-action" type="button" id="btnAbout">О версии</button>
+      </div>
+    </details>
   </header>
 
   <main>
@@ -55,31 +68,52 @@
       <div class="section"><h3>Фильтры</h3></div>
       <div class="filters" id="tagsList"></div>
       <div class="section">
-        <div class="hint">Шорткаты для быстрого ввода: <span class="kbd">#тег</span> <span class="kbd">@проект</span> <span class="kbd">!сегодня 10:00</span> <span class="kbd">~30м</span></div>
+        <div class="hint">В режиме «Задача»: <span class="kbd">#тег</span> <span class="kbd">@проект</span> <span class="kbd">!сегодня 10:00</span> <span class="kbd">~30м</span> <span class="kbd">p1–p4</span></div>
       </div>
     </aside>
 
     <section id="canvasWrap">
       <canvas id="canvas"></canvas>
       <div class="tooltip" id="tooltip"></div>
+      <div class="map-empty" id="mapEmpty" hidden>
+        <div class="map-empty-card">
+          <div class="map-empty-orbit" aria-hidden="true"><span></span></div>
+          <div class="map-empty-kicker">Первый ориентир</div>
+          <div class="map-empty-title">Начните с области жизни</div>
+          <div class="hint">Создайте домен — например, «Дом», «Работа» или «Здоровье». Внутри появятся проекты и задачи.</div>
+          <button class="btn primary" type="button" id="mapEmptyAddDomain">Создать первый домен</button>
+        </div>
+      </div>
       <div class="viewToday hidden" id="viewToday"></div>
     </section>
 
     <aside class="right">
       <div class="section"><h3>Инспектор</h3></div>
-      <div class="inspector" id="inspector">
+      <div class="inspector" id="inspector" aria-live="polite">
         <div class="hint">Выберите домен/проект/задачу на карте для подробностей.</div>
       </div>
     </aside>
   </main>
 
-  <footer>
-    <div class="input">
-      <span>➕</span>
-      <input id="quickAdd" autocomplete="off" placeholder="Быстро добавить: Написать план #дом @проект !сегодня 10:00 ~5м p2" />
-      <div class="chips" id="qaChips"></div>
+  <footer class="quick-dock" aria-label="Быстрый ввод">
+    <div class="quick-dock-modes" role="group" aria-label="Что создать">
+      <button class="quick-mode active" type="button" data-quick-mode="inbox" aria-pressed="true">Входящие</button>
+      <button class="quick-mode" type="button" data-quick-mode="task" aria-pressed="false">Задача</button>
     </div>
-    <div class="wip" id="wipInfo">WIP: 0 / 3</div>
+    <div class="quick-dock-main">
+      <div class="quick-input-wrap">
+        <span class="quick-input-mark" aria-hidden="true">＋</span>
+        <input id="quickAdd" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qaSuggestions" placeholder="Записать мысль во Входящие…" />
+      </div>
+      <button class="quick-submit" id="quickSubmit" type="button">Добавить</button>
+      <div class="quick-suggestions" id="qaSuggestions" role="listbox" hidden></div>
+    </div>
+    <div class="quick-dock-meta">
+      <div class="chips" id="qaChips" aria-label="Распознанные параметры"></div>
+      <div class="quick-preview" id="qaPreview" role="status">Во Входящие · без разбора</div>
+      <div class="quick-result" id="qaResult" aria-live="polite"></div>
+      <div class="wip" id="wipInfo">WIP: 0 / 3</div>
+    </div>
   </footer>
 </div>
 
@@ -107,7 +141,6 @@
 <!-- Existing addons -->
 <link rel="stylesheet" href="addons/addons.css">
 <script src="addons/ics-export.js"></script>
-<script src="addons/autocomplete.js"></script>
 <script src="addons/today-plus.js"></script>
 <script src="addons/inspector-plus.js"></script>
 
@@ -116,6 +149,3 @@
 <!-- <script src="addons/fixes-v0.2.6.js"></script> -->
 </body>
 </html>
-
-
-

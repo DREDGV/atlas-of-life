@@ -1,74 +1,210 @@
-// js/parser.js
+// Deterministic parser for the direct Task mode in Quick Dock.
+// Inbox mode deliberately does not call this parser: capture remains literal.
 
-// Parse quick-add text like: "Сделать обзор #дом @Проект !сегодня 10:00 ~30м p2"
-export function parseQuick(text){
-  const out = {title:text};
-  // tag
-  const mTag = text.match(/#([^\s#@!~p]+)/i);
-  if(mTag){ out.tag=mTag[1].trim(); out.title=out.title.replace(mTag[0],'').trim(); }
-  // project
-  const mProj = text.match(/@([^\s#@!~p][^#@!~p]*)/i);
-  if(mProj){ out.project=mProj[1].trim(); out.title=out.title.replace(mProj[0],'').trim(); }
-  // estimate: ~30, ~30м, ~1h, ~1ч
-  const mEst = text.match(/~\s*([0-9]{1,3})\s*(м|мин|m|min|ч|h|hour|час|часа|часов)?/i);
-  if(mEst){
-    let val = parseInt(mEst[1],10);
-    const unit = (mEst[2]||'').toLowerCase();
-    if(/ч|h|hour|час/.test(unit)) val = val*60;
-    out.estimate = val;
-    out.title=out.title.replace(mEst[0],'').trim();
-  }
-  // priority p1..p4
-  const mPr = text.match(/\bp([1-4])\b/i);
-  if(mPr){ out.priority=parseInt(mPr[1]); out.title=out.title.replace(mPr[0],'').trim(); }
-  // when !...
-  const mWhen = text.match(/!([^\s].*)/i);
-  if(mWhen){
-    const raw = mWhen[1].trim();
-    out.when = parseWhenRU(raw);
-    out.title = out.title.replace(mWhen[0],'').trim();
-  }
-  out.title = out.title.replace(/\s{2,}/g,' ').trim();
-  return out;
+const META_BOUNDARY = String.raw`(?=\s+(?:[#@!~]|p[1-4]\b)|$)`;
+
+function pad(value){
+  return String(value).padStart(2, '0');
 }
 
-export function parseWhenRU(s){
-  s = s.toLowerCase().trim();
-  const weekdayMap = {
-    'пн':1,'вт':2,'ср':3,'чт':4,'пт':5,'сб':6,'вс':0,
-    'понедельник':1,'вторник':2,'среда':3,'четверг':4,'пятница':5,'суббота':6,'воскресенье':0
-  };
-  const now = new Date(); let target = new Date(now);
-  // относительные
-  if(s.startsWith('сейчас')) return {date:now.getTime(), label:'сейчас'};
-  if(s.startsWith('завтра')){ target.setDate(now.getDate()+1); s=s.replace('завтра','').trim(); }
-  else if(s.startsWith('послезавтра')){ target.setDate(now.getDate()+2); s=s.replace('послезавтра','').trim(); }
-  else if(s.startsWith('сегодня')){ s=s.replace('сегодня','').trim(); }
-  const mRel = s.match(/через\s+(\d+)\s*(ч|час|часа|часов|м|мин|минут)/);
-  if(mRel){
-    const n=parseInt(mRel[1],10); const unit=mRel[2];
-    target = new Date(now);
-    if(/ч|час/.test(unit)) target.setHours(target.getHours()+n);
-    else target.setMinutes(target.getMinutes()+n);
-    return {date:target.getTime(), label:`через ${n}${/ч|час/.test(unit)?'ч':'м'}`};
+function localDate(value){
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
+
+function localTime(value){
+  return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
+
+function removeOnce(text, match){
+  return text.slice(0, match.index) + ' ' + text.slice(match.index + match[0].length);
+}
+
+export function parseWhenRU(value, { now = new Date() } = {}){
+  const source = String(value || '').trim().toLowerCase();
+  if (!source) return { error: 'После ! укажите дату или время' };
+
+  const base = new Date(now);
+  const target = new Date(base);
+  let rest = source;
+  let kind = 'future';
+
+  const relative = rest.match(/^через\s+(\d+)\s*(мин(?:ут[уы]?)?|м|час(?:а|ов)?|ч)(?=\s|$)/u);
+  if (relative) {
+    const amount = Number(relative[1]);
+    const hours = /^(?:ч|час)/u.test(relative[2]);
+    if (hours) target.setHours(target.getHours() + amount);
+    else target.setMinutes(target.getMinutes() + amount);
+    return {
+      due: { date: localDate(target), time: localTime(target) },
+      kind: localDate(target) === localDate(base) ? 'today' : 'future',
+      label: `через ${amount}${hours ? 'ч' : 'м'}`,
+    };
   }
-  // день недели
-  for(const [k,v] of Object.entries(weekdayMap)){
-    if(s.startsWith(k)){
-      const diffRaw = (v - now.getDay() + 7) % 7;
-      const diff = diffRaw===0 ? 7 : diffRaw; // ближайший следующий
-      target.setDate(now.getDate()+diff);
-      s=s.slice(k.length).trim(); break;
+
+  if (rest.startsWith('сейчас')) {
+    kind = 'now';
+    rest = rest.slice('сейчас'.length).trim();
+  } else if (rest.startsWith('послезавтра')) {
+    target.setDate(target.getDate() + 2);
+    rest = rest.slice('послезавтра'.length).trim();
+  } else if (rest.startsWith('завтра')) {
+    target.setDate(target.getDate() + 1);
+    rest = rest.slice('завтра'.length).trim();
+  } else if (rest.startsWith('сегодня')) {
+    kind = 'today';
+    rest = rest.slice('сегодня'.length).trim();
+  } else {
+    const exact = rest.match(/^(\d{1,2})[.\/-](\d{1,2})(?:[.\/-](\d{4}))?/u);
+    if (exact) {
+      const year = Number(exact[3] || base.getFullYear());
+      const month = Number(exact[2]);
+      const day = Number(exact[1]);
+      const candidate = new Date(year, month - 1, day);
+      if (candidate.getFullYear() !== year || candidate.getMonth() !== month - 1 || candidate.getDate() !== day) {
+        return { error: `Некорректная дата: ${exact[0]}` };
+      }
+      target.setFullYear(year, month - 1, day);
+      rest = rest.slice(exact[0].length).trim();
+      if (localDate(target) === localDate(base)) kind = 'today';
+    } else {
+      const weekdays = new Map([
+        ['воскресенье', 0], ['понедельник', 1], ['вторник', 2], ['среда', 3],
+        ['четверг', 4], ['пятница', 5], ['суббота', 6], ['вс', 0], ['пн', 1],
+        ['вт', 2], ['ср', 3], ['чт', 4], ['пт', 5], ['сб', 6],
+      ]);
+      const weekday = [...weekdays.keys()].find(name => rest === name || rest.startsWith(`${name} `));
+      if (!weekday) return { error: `Не удалось распознать дату: ${value}` };
+      const delta = (weekdays.get(weekday) - target.getDay() + 7) % 7 || 7;
+      target.setDate(target.getDate() + delta);
+      rest = rest.slice(weekday.length).trim();
     }
   }
-  // время HH[:MM]
-  const mTime = s.match(/(\d{1,2})(?::(\d{2}))?/);
-  if(mTime){
-    const hh=parseInt(mTime[1],10); const mm=mTime[2]?parseInt(mTime[2],10):0;
-    target.setHours(hh, mm, 0, 0);
-    return {date:target.getTime(), label:target.toLocaleString()};
+
+  let time = null;
+  if (kind === 'now' && !rest) time = localTime(base);
+  if (rest) {
+    const timeMatch = rest.match(/^(\d{1,2})(?::(\d{2}))?$/u);
+    if (!timeMatch) return { error: `Некорректное время: ${rest}` };
+    const hours = Number(timeMatch[1]);
+    const minutes = Number(timeMatch[2] || 0);
+    if (hours > 23 || minutes > 59) return { error: `Некорректное время: ${rest}` };
+    time = `${pad(hours)}:${pad(minutes)}`;
   }
-  // дата по умолчанию
-  return {date:target.getTime(), label:target.toLocaleDateString()};
+
+  const due = { date: localDate(target), time };
+  return { due, kind, label: time ? `${due.date} ${time}` : due.date };
 }
 
+export function parseQuick(value, { now = new Date() } = {}){
+  const rawText = String(value ?? '');
+  let working = rawText;
+  const errors = [];
+  const tags = [];
+
+  for (const match of [...working.matchAll(/(?:^|\s)#([^\s#@!~]+)/gu)].reverse()) {
+    const tag = match[1].trim();
+    if (tag && !tags.some(item => item.toLowerCase() === tag.toLowerCase())) tags.unshift(tag);
+    working = removeOnce(working, match);
+  }
+
+  const projectPattern = new RegExp(String.raw`(?:^|\s)@(?:"([^"]+)"|(.+?))${META_BOUNDARY}`, 'iu');
+  const projectMatches = [...working.matchAll(new RegExp(projectPattern.source, 'giu'))];
+  let projectQuery = null;
+  if (/(?:^|\s)@(?=\s|$)/u.test(working)) errors.push('После @ укажите проект');
+  if (projectMatches.length > 1) errors.push('Укажите только один @проект');
+  if (projectMatches[0]) {
+    projectQuery = String(projectMatches[0][1] || projectMatches[0][2] || '').trim();
+  }
+  for (const match of projectMatches.reverse()) working = removeOnce(working, match);
+
+  const estimatePattern = /(?:^|\s)~\s*(\d{1,3})\s*(м|мин(?:ут[уы]?)?|m|min|ч|час(?:а|ов)?|h|hour(?:s)?)?(?=\s|$)/giu;
+  const estimateMatches = [...working.matchAll(estimatePattern)];
+  let estimateMin = null;
+  if (estimateMatches.length > 1) errors.push('Укажите только одну оценку времени');
+  if (estimateMatches[0]) {
+    estimateMin = Number(estimateMatches[0][1]);
+    if (/^(?:ч|час|h|hour)/iu.test(estimateMatches[0][2] || '')) estimateMin *= 60;
+    if (estimateMin <= 0) errors.push('Оценка должна быть больше нуля');
+  }
+  for (const match of estimateMatches.reverse()) working = removeOnce(working, match);
+
+  const priorityMatches = [...working.matchAll(/(?:^|\s)p(\d+)(?=\s|$)/giu)];
+  const validPriorities = priorityMatches.filter(match => Number(match[1]) >= 1 && Number(match[1]) <= 4);
+  if (priorityMatches.some(match => Number(match[1]) < 1 || Number(match[1]) > 4)) {
+    errors.push('Приоритет должен быть в диапазоне p1–p4');
+  }
+  if (priorityMatches.length > 1) errors.push('Укажите только один приоритет');
+  const priority = validPriorities[0] ? Number(validPriorities[0][1]) : 2;
+  for (const match of priorityMatches.reverse()) working = removeOnce(working, match);
+
+  const whenPattern = new RegExp(String.raw`(?:^|\s)!(.+?)${META_BOUNDARY}`, 'iu');
+  const whenMatches = [...working.matchAll(new RegExp(whenPattern.source, 'giu'))];
+  const whenMatch = whenMatches[0] || null;
+  let due = null;
+  let whenKind = null;
+  let whenLabel = null;
+  if (/(?:^|\s)!(?=\s|$)/u.test(working)) errors.push('После ! укажите дату или время');
+  if (whenMatches.length > 1) errors.push('Укажите только одно время');
+  if (whenMatch) {
+    const parsedWhen = parseWhenRU(whenMatch[1], { now });
+    if (parsedWhen.error) errors.push(parsedWhen.error);
+    else {
+      due = parsedWhen.due;
+      whenKind = parsedWhen.kind;
+      whenLabel = parsedWhen.label;
+    }
+  }
+  for (const match of whenMatches.reverse()) working = removeOnce(working, match);
+
+  const title = working.replace(/\s{2,}/g, ' ').trim();
+  if (!title) errors.push('Введите название задачи');
+
+  return {
+    rawText, title, tags, projectQuery, due, whenKind, whenLabel,
+    estimateMin, priority, errors,
+  };
+}
+
+export function resolveQuickDraft(parsed, {
+  projects = [],
+  domains = [],
+  activeDomainId = null,
+  selectedProjectId = null,
+} = {}){
+  const errors = [...(parsed?.errors || [])];
+  let projectId = null;
+  let domainId = null;
+
+  if (selectedProjectId && parsed?.projectQuery) {
+    const selected = projects.find(project => project.id === selectedProjectId);
+    if (!selected) errors.push('Выбранный проект больше не существует');
+    else if (String(selected.title || '').trim().toLocaleLowerCase('ru-RU') !== parsed.projectQuery.toLocaleLowerCase('ru-RU')) {
+      errors.push('Выбранный проект не совпадает с текущим @проектом');
+    }
+    else {
+      projectId = selected.id;
+      domainId = selected.domainId;
+    }
+  } else if (parsed?.projectQuery) {
+    const query = parsed.projectQuery.toLocaleLowerCase('ru-RU');
+    const matches = projects.filter(project => String(project.title || '').trim().toLocaleLowerCase('ru-RU') === query);
+    if (matches.length === 0) errors.push(`Проект «${parsed.projectQuery}» не найден`);
+    else if (matches.length > 1) errors.push(`Проект «${parsed.projectQuery}» неоднозначен — выберите его из списка`);
+    else {
+      projectId = matches[0].id;
+      domainId = matches[0].domainId;
+    }
+  } else {
+    const domain = domains.find(item => item.id === activeDomainId);
+    if (!domain) errors.push('Выберите домен-контекст для задачи');
+    else domainId = domain.id;
+  }
+
+  return {
+    ...parsed,
+    projectId,
+    domainId,
+    status: parsed?.whenKind === 'today' || parsed?.whenKind === 'now' ? 'today' : 'backlog',
+    errors: [...new Set(errors)],
+  };
+}
