@@ -3,6 +3,7 @@ import { getInboxItems } from './model.js';
 import { createEditState } from './edit-state.js';
 import { createRoutingDraftState } from './routing-draft.js';
 import { openInspectorFor } from '../../inspector.js';
+import { setDomainVisible } from '../../ui/map-session.js';
 import {
   captureInbox,
   createDomain,
@@ -468,7 +469,7 @@ function buildLinkedResult(item, task){
       const domainId = task.domainId || taskProject?.domainId || null;
       if (domainId) {
         state.activeDomain = domainId;
-        try { state.activeDomains = []; } catch (_) {}
+        setDomainVisible(domainId, true, state.domains);
       }
       state.view = 'map';
       const canvasEl = document.getElementById('canvas');

@@ -216,6 +216,29 @@ function normalizeDue(value){
   return { date, time };
 }
 
+function normalizeCreateTaskDue(value){
+  if (value == null) return null;
+  const normalized = normalizeDue(value);
+  const timeWasSupplied = Object.hasOwn(value, 'time') && value.time != null;
+  if (!normalized || (timeWasSupplied && normalized.time !== value.time)) {
+    throw new Error('Invalid task due');
+  }
+  const [year, month, day] = normalized.date.split('-').map(Number);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) {
+    throw new Error('Invalid task due');
+  }
+  if (normalized.time) {
+    const [hours, minutes] = normalized.time.split(':').map(Number);
+    if (hours > 23 || minutes > 59) throw new Error('Invalid task due');
+  }
+  return normalized;
+}
+
 function normalizePosition(position){
   if (!position || typeof position !== 'object') return null;
   const x = Number(position.x);
@@ -229,6 +252,9 @@ function applyTaskPlacement(task, destination){
     if (projectId) {
       const targetProject = state.projects.find(project => project.id === projectId);
       if (!targetProject) throw new Error(`Unknown target project: ${projectId}`);
+      if (!state.domains.some(domain => domain.id === targetProject.domainId)) {
+        throw new Error(`Unknown target domain: ${targetProject.domainId}`);
+      }
       task.projectId = projectId;
       delete task.domainId;
       delete task.pos;
@@ -1029,19 +1055,29 @@ export function convertInboxToTask(id, options = {}){
 
 function createTaskMutation(input, options){
   const now = options.now ?? Date.now();
+  const title = String(input.title || '').trim();
+  if (!title) throw new Error('Task title cannot be empty');
   const projectId = input.projectId ?? null;
+  const domainId = projectId
+    ? null
+    : (input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null);
+  if (!projectId && domainId && !state.domains.some(domain => domain.id === domainId)) {
+    throw new Error(`Unknown target domain: ${domainId}`);
+  }
   const task = {
     id: input.id || options.taskId || generateTaskId(),
-    projectId,
-    domainId: projectId ? undefined : (input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null),
-    title: String(input.title || '').trim() || 'Новая задача',
+    projectId: null,
+    domainId: null,
+    title,
     tags: normalizeTags(input.tags),
     status: normalizeTaskStatus(input.status),
     estimateMin: input.estimateMin ?? null,
-    priority: input.priority || 2,
+    priority: normalizePriority(input.priority),
+    due: normalizeCreateTaskDue(input.due),
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
   };
+  applyTaskPlacement(task, { projectId, domainId });
   state.tasks.push(task);
   appendOperation({
     type: 'task.create',
@@ -1286,6 +1322,7 @@ function updateDomainMutation(domainId, patch, options){
     type: 'domain.update',
     entityType: 'domain',
     entityId: domain.id,
+    baseVersion: before.updatedAt || null,
     payload: { before, after: domain },
   }, { timestamp: domain.updatedAt, deviceId: options.deviceId });
   finish(options);
@@ -1322,6 +1359,7 @@ function updateProjectMutation(projectId, patch, options){
     type: 'project.update',
     entityType: 'project',
     entityId: project.id,
+    baseVersion: before.updatedAt || null,
     payload: { before, after: project },
   }, { timestamp: project.updatedAt, deviceId: options.deviceId });
   finish(options);
@@ -1336,6 +1374,106 @@ function updateProjectMutation(projectId, patch, options){
 
 export function updateProject(projectId, patch, options = {}){
   return runAtomicCommand(() => updateProjectMutation(projectId, patch, options));
+}
+
+function mergeDomainMutation(sourceDomainId, targetDomainId, options){
+  if (sourceDomainId === targetDomainId) throw new Error('Cannot merge a domain into itself');
+  const source = state.domains.find(item => item.id === sourceDomainId);
+  const target = state.domains.find(item => item.id === targetDomainId);
+  if (!source) throw new Error(`Unknown source domain: ${sourceDomainId}`);
+  if (!target) throw new Error(`Unknown target domain: ${targetDomainId}`);
+  const now = options.now ?? Date.now();
+  const movingProjectIds = new Set(state.projects.filter(project => project.domainId === sourceDomainId).map(project => project.id));
+  const routedTasks = state.tasks.filter(task =>
+    task?.sourceInboxId &&
+    (movingProjectIds.has(task.projectId) || (!task.projectId && task.domainId === sourceDomainId))
+  );
+  const movedTaskCount = state.tasks.filter(task => movingProjectIds.has(task.projectId) || (!task.projectId && task.domainId === sourceDomainId)).length;
+  const movedProjects = [];
+  const movedTasks = [];
+  state.projects.forEach(project => {
+    if (project.domainId !== sourceDomainId) return;
+    movedProjects.push(snapshot(project));
+    project.domainId = targetDomainId;
+    project.updatedAt = now;
+  });
+  state.tasks.forEach(task => {
+    if (task.projectId || task.domainId !== sourceDomainId) return;
+    movedTasks.push(snapshot(task));
+    task.domainId = targetDomainId;
+    task.updatedAt = now;
+  });
+  state.domains.splice(state.domains.indexOf(source), 1);
+  if (state.activeDomain === sourceDomainId) state.activeDomain = targetDomainId;
+  const operation = appendOperation({
+    type: 'domain.merge', entityType: 'domain', entityId: sourceDomainId,
+    payload: { source: snapshot(source), targetDomainId, movedProjects, movedTasks },
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  routedTasks.forEach(task => {
+    enqueueTaskResultOperation('task.result.upsert', task, options);
+  });
+  return { source, target, movedProjectCount: movedProjects.length, movedTaskCount, operation };
+}
+
+export function mergeDomain(sourceDomainId, targetDomainId, options = {}){
+  return runAtomicCommand(() => mergeDomainMutation(sourceDomainId, targetDomainId, options));
+}
+
+function deleteDomainMutation(domainId, options){
+  if (state.domains.length <= 1) throw new Error('Cannot delete the last domain');
+  const domain = state.domains.find(item => item.id === domainId);
+  if (!domain) return null;
+  const mode = options.mode === 'cascade' ? 'cascade' : 'move';
+  const target = mode === 'move'
+    ? state.domains.find(item => item.id === options.targetDomainId && item.id !== domainId)
+    : null;
+  if (mode === 'move' && !target) throw new Error(`Unknown target domain: ${options.targetDomainId}`);
+  const now = options.now ?? Date.now();
+  const projectIds = new Set(state.projects.filter(project => project.domainId === domainId).map(project => project.id));
+  const affectedProjects = state.projects.filter(project => projectIds.has(project.id)).map(snapshot);
+  const affectedTasks = state.tasks.filter(task => projectIds.has(task.projectId) || (!task.projectId && task.domainId === domainId)).map(snapshot);
+  const routedTasks = state.tasks.filter(task =>
+    task?.sourceInboxId &&
+    (projectIds.has(task.projectId) || (!task.projectId && task.domainId === domainId))
+  );
+  if (mode === 'cascade' && routedTasks.length > 0) {
+    throw new Error('Cannot cascade-delete a domain with routed Inbox tasks; move it or return those tasks to Inbox first');
+  }
+  if (mode === 'move') {
+    state.projects.forEach(project => {
+      if (!projectIds.has(project.id)) return;
+      project.domainId = target.id;
+      project.updatedAt = now;
+    });
+    state.tasks.forEach(task => {
+      if (task.projectId || task.domainId !== domainId) return;
+      task.domainId = target.id;
+      task.updatedAt = now;
+    });
+  } else {
+    const remainingTasks = state.tasks.filter(task => !projectIds.has(task.projectId) && !(!task.projectId && task.domainId === domainId));
+    const remainingProjects = state.projects.filter(project => !projectIds.has(project.id));
+    state.tasks.splice(0, state.tasks.length, ...remainingTasks);
+    state.projects.splice(0, state.projects.length, ...remainingProjects);
+  }
+  state.domains.splice(state.domains.indexOf(domain), 1);
+  if (state.activeDomain === domainId) state.activeDomain = target?.id || state.domains[0]?.id || null;
+  const operation = appendOperation({
+    type: 'domain.delete', entityType: 'domain', entityId: domainId,
+    payload: { domain: snapshot(domain), mode, targetDomainId: target?.id || null, projects: affectedProjects, tasks: affectedTasks },
+  }, { timestamp: now, deviceId: options.deviceId });
+  finish(options);
+  if (mode === 'move') {
+    routedTasks.forEach(task => {
+      enqueueTaskResultOperation('task.result.upsert', task, options);
+    });
+  }
+  return { domain, mode, target, projectCount: affectedProjects.length, taskCount: affectedTasks.length, operation };
+}
+
+export function deleteDomain(domainId, options = {}){
+  return runAtomicCommand(() => deleteDomainMutation(domainId, options));
 }
 
 function promoteTaskToProjectMutation(taskId, options){
