@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=atlas-sync
 Group=atlas-sync
+UMask=0027
 WorkingDirectory=/opt/atlas-sync/current
 EnvironmentFile=/etc/atlas-sync/atlas-sync.env
 ExecStart=/opt/atlas-sync/runtime/bin/node --no-warnings server/start.js
@@ -24,6 +25,7 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
 ReadWritePaths=/var/lib/atlas-sync
+ReadOnlyPaths=/var/lib/atlas-sync/backups
 
 [Install]
 WantedBy=multi-user.target

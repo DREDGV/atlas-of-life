@@ -40,6 +40,8 @@ export const OPERATION_TYPES = new Set([
   'inbox.update',
   'inbox.route_to_task',
   'inbox.route_revert',
+  'inbox.delete',
+  'inbox.restore',
   'task.result.upsert',
   'task.result.remove',
 ]);
@@ -120,14 +122,22 @@ function normalizeOperation(operation){
   const deviceId = boundedString(operation.deviceId, 160);
   const entityId = boundedString(operation.entityId, 160);
   const timestamp = Number(operation.timestamp);
-  const baseVersion = operation.baseVersion == null ? null : Number(operation.baseVersion);
+  const baseVersion = operation.baseVersion == null ? null : operation.baseVersion;
   const sequence = Number(operation.sequence);
   if (!id || !/^op-[\w.-]{8,}$/.test(id)) return null;
   if (!deviceId) return null;
   if (!OPERATION_TYPES.has(operation.type)) return null;
   if (!ENTITY_TYPES.has(operation.entityType) || !entityId) return null;
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
-  if (baseVersion !== null && !Number.isFinite(baseVersion)) return null;
+  // Review: baseVersion is strictly a finite number or absent — strings,
+  // booleans, whitespace must never slip through as "versions".
+  if (baseVersion !== null && (typeof baseVersion !== 'number' || !Number.isFinite(baseVersion))) return null;
+  // Review: inbox.delete / inbox.restore are version-sensitive — a missing
+  // baseVersion must never be stored (the client would otherwise apply them
+  // without race detection).
+  if ((operation.type === 'inbox.delete' || operation.type === 'inbox.restore') && baseVersion === null) {
+    return null;
+  }
   if (!Number.isFinite(sequence) || sequence <= 0) return null;
   if (!operation.payload || typeof operation.payload !== 'object') return null;
   let payload;
@@ -157,41 +167,94 @@ function normalizeOperation(operation){
 // SQLite store
 // ---------------------------------------------------------------------------
 
+const CURRENT_OPERATION_COLUMNS = ['sequence', 'operation_id', 'device_id', 'operation_json', 'received_at'];
+const LEGACY_INBOX_OPERATION_COLUMNS = ['operation_id', 'device_id', 'item_id', 'item_json', 'received_at'];
+const LEGACY_OPERATION_ARCHIVE = 'sync_operations_legacy_inbox_v0';
+
+function tableExists(db, tableName){
+  return Boolean(db.prepare(
+    'SELECT name FROM sqlite_master WHERE type = ? AND name = ?'
+  ).get('table', tableName));
+}
+
+function migrateLegacyStore(db){
+  if (!tableExists(db, 'sync_operations')) return;
+  const columnNames = db.prepare('PRAGMA table_info(sync_operations)').all()
+    .map(row => String(row.name));
+  const columns = new Set(columnNames);
+  if (CURRENT_OPERATION_COLUMNS.every(name => columns.has(name))) return;
+
+  const legacyInboxSchema = columnNames.length === LEGACY_INBOX_OPERATION_COLUMNS.length &&
+    LEGACY_INBOX_OPERATION_COLUMNS.every(name => columns.has(name));
+  if (!legacyInboxSchema) {
+    throw new Error(`Unsupported sync_operations schema: ${columnNames.join(', ') || '(no columns)'}`);
+  }
+
+  const operationCount = Number(db.prepare(
+    'SELECT COUNT(*) AS count FROM sync_operations'
+  ).get().count);
+  const inboxCount = tableExists(db, 'inbox_records')
+    ? Number(db.prepare('SELECT COUNT(*) AS count FROM inbox_records').get().count)
+    : 0;
+  if (operationCount > 0 || inboxCount > 0) {
+    throw new Error(
+      `Legacy Inbox database contains ${inboxCount} records and ${operationCount} operations; ` +
+      'refusing automatic migration. Export or migrate legacy data before starting Sync v1.'
+    );
+  }
+  if (tableExists(db, LEGACY_OPERATION_ARCHIVE)) {
+    throw new Error(`Legacy operation archive already exists: ${LEGACY_OPERATION_ARCHIVE}`);
+  }
+
+  // Preserve the old table even though it is empty. The new table is created
+  // by the normal schema initializer below, while rollback evidence remains
+  // available until an operator deliberately removes it.
+  db.exec(`ALTER TABLE sync_operations RENAME TO ${LEGACY_OPERATION_ARCHIVE}`);
+}
+
 function createStore(dbPath, pairing){
   const db = new DatabaseSync(dbPath);
   const codeTtlMs = pairing.codeTtlMs;
   const attemptLimit = pairing.attemptLimit;
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA synchronous = FULL;
-    PRAGMA foreign_keys = ON;
+  try {
+    db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = FULL;
+      PRAGMA foreign_keys = ON;
+    `);
+    migrateLegacyStore(db);
+    db.exec(`
 
-    CREATE TABLE IF NOT EXISTS sync_operations (
-      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-      operation_id TEXT NOT NULL UNIQUE,
-      device_id TEXT NOT NULL,
-      operation_json TEXT NOT NULL,
-      received_at INTEGER NOT NULL
-    );
+      CREATE TABLE IF NOT EXISTS sync_operations (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_id TEXT NOT NULL UNIQUE,
+        device_id TEXT NOT NULL,
+        operation_json TEXT NOT NULL,
+        received_at INTEGER NOT NULL
+      );
 
-    CREATE TABLE IF NOT EXISTS sync_devices (
-      device_id TEXT PRIMARY KEY,
-      device_name TEXT NOT NULL,
-      token_hash TEXT NOT NULL UNIQUE,
-      created_at INTEGER NOT NULL,
-      last_seen_at INTEGER NOT NULL,
-      revoked_at INTEGER
-    );
+      CREATE TABLE IF NOT EXISTS sync_devices (
+        device_id TEXT PRIMARY KEY,
+        device_name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      );
 
-    CREATE TABLE IF NOT EXISTS pairing_codes (
-      code_hash TEXT PRIMARY KEY,
-      created_by TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL,
-      used_at INTEGER,
-      claimed_device_id TEXT
-    );
-  `);
+      CREATE TABLE IF NOT EXISTS pairing_codes (
+        code_hash TEXT PRIMARY KEY,
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER,
+        claimed_device_id TEXT
+      );
+    `);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 
   const findOperation = db.prepare(
     'SELECT device_id, operation_json FROM sync_operations WHERE operation_id = ?'
@@ -246,6 +309,15 @@ function createStore(dbPath, pairing){
   const countDevices = db.prepare(
     'SELECT COUNT(*) AS count FROM sync_devices WHERE revoked_at IS NULL'
   );
+  const listDevices = db.prepare(`
+    SELECT device_id, device_name, created_at, last_seen_at
+    FROM sync_devices
+    WHERE revoked_at IS NULL
+    ORDER BY created_at ASC
+  `);
+  const renameDevice = db.prepare(
+    'UPDATE sync_devices SET device_name = ? WHERE device_id = ?'
+  );
 
   return {
     authenticate(token){
@@ -257,6 +329,24 @@ function createStore(dbPath, pairing){
 
     revokeDevice(deviceId){
       return revokeDevice.run(Date.now(), deviceId).changes === 1;
+    },
+
+    // C4 device management: every device of the same sync-space may see the
+    // list; renaming applies to the authenticated device only.
+    devices(){
+      return listDevices.all().map(row => ({
+        deviceId: row.device_id,
+        deviceName: row.device_name,
+        createdAt: row.created_at,
+        lastSeenAt: row.last_seen_at,
+      }));
+    },
+
+    renameDevice(deviceId, deviceName){
+      const name = boundedString(deviceName, 80);
+      if (!name) throw Object.assign(new Error('Invalid device name'), { statusCode: 400 });
+      renameDevice.run(name, deviceId);
+      return { deviceId, deviceName: name };
     },
 
     createPairingCode(createdBy){
@@ -490,6 +580,28 @@ export function createSyncServer(options = {}){
         return send(200, { revoked: true });
       }
 
+      // C4 device management
+      if (request.method === 'GET' && url.pathname === '/v1/devices') {
+        return send(200, { devices: store.devices() });
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/devices/rename') {
+        if (credential.type !== 'device') {
+          return send(403, { error: 'device_credential_required' });
+        }
+        const body = await readJson(request);
+        return send(200, store.renameDevice(credential.deviceId, body?.deviceName));
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/devices/revoke') {
+        // Admin can revoke any device of the sync-space (device recovery path).
+        if (credential.type !== 'admin') {
+          return send(403, { error: 'admin_credential_required' });
+        }
+        const body = await readJson(request);
+        const deviceId = boundedString(body?.deviceId, 160);
+        if (!deviceId) return send(400, { error: 'invalid_request', message: 'deviceId required' });
+        return send(200, { revoked: store.revokeDevice(deviceId) });
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/ops/push') {
         return send(200, store.push(await readJson(request), credential.deviceId));
       }
@@ -521,4 +633,3 @@ export function createSyncServer(options = {}){
   });
   return server;
 }
-

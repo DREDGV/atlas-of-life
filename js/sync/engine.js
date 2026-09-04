@@ -25,7 +25,8 @@ import {
   MAX_ATTEMPTS,
 } from './outbox.js';
 import { applyIncomingOperation } from './apply.js';
-import { recordConflict, listConflicts } from './quarantine.js';
+import { recordConflict, listConflicts, listUnresolvedConflicts, resolveConflictEntry } from './quarantine.js';
+import { resolveConflict } from '../core/commands.js';
 
 const CURSOR_KEY = 'atlas-sync-cursor-v1';
 const LAST_SYNC_KEY = 'atlas-sync-last-sync-at';
@@ -44,7 +45,10 @@ export function createSyncEngine({ transport, storage } = {}){
   let lastSyncAt = Number(store.get(LAST_SYNC_KEY)) || null;
   let lastError = null;
   let authFailed = false;
-  let conflicts = listConflicts().length;
+  // Conflict count reflects UNRESOLVED quarantine entries (C3): resolved ones
+  // no longer demand attention.
+  const unresolvedCount = () => listUnresolvedConflicts().length;
+  let conflicts = unresolvedCount();
 
   const saveCursor = () => store.set(CURSOR_KEY, cursor);
 
@@ -79,6 +83,10 @@ export function createSyncEngine({ transport, storage } = {}){
     return promoted;
   }
 
+  function findOutboxEntry(id){
+    return listOutbox().find(entry => entry.operation?.id === id) || null;
+  }
+
   async function pushOutbox(){
     const pending = getPendingOps();
     if (pending.length === 0) return { pushed: 0 };
@@ -92,8 +100,22 @@ export function createSyncEngine({ transport, storage } = {}){
       // removed; every entry still `sent` after this becomes retryable.
       const ackedIds = result?.ackedIds || [];
       ackedIds.forEach(id => markAcked(id));
+      // P1 review fix: per-op server rejections are TERMINAL. Unlike transient
+      // network failures they must never retry — a malformed operation would
+      // otherwise loop forever between retryable → failed → promoteFailed.
+      // Mark BEFORE recoverSent so the rejected entries are not resurrected.
+      const serverConflicts = result?.conflicts || [];
+      for (const conflict of serverConflicts) {
+        const operationId = conflict?.operationId;
+        if (!operationId) continue;
+        updateOutboxEntry(operationId, {
+          syncStatus: 'rejected',
+          attempts: (findOutboxEntry(operationId)?.attempts || 0) + 1,
+          lastError: `server rejected: ${conflict?.reason || 'invalid_operation'}`,
+        });
+      }
       recoverSent();
-      return { pushed: pending.length, acked: ackedIds.length };
+      return { pushed: pending.length, acked: ackedIds.length, rejected: serverConflicts.length };
     } catch (error) {
       const message = error?.message || String(error);
       lastError = message;
@@ -119,16 +141,31 @@ export function createSyncEngine({ transport, storage } = {}){
       try {
         const result = applyIncomingOperation(operation);
         if (result.conflict) {
-          recordConflict({ operation, serverSequence, reason: 'baseVersion mismatch', status: 'conflict' });
-          conflicts += 1;
+          recordConflict({
+            operation,
+            serverSequence,
+            reason: result.reason || 'conflict',
+            status: 'conflict',
+            conflictStatus: result.conflictStatus || 'base_version',
+          });
         } else if (result.unsupported) {
-          recordConflict({ operation, serverSequence, reason: `unsupported type: ${operation.type}`, status: 'unsupported' });
-          conflicts += 1;
+          recordConflict({
+            operation,
+            serverSequence,
+            reason: `unsupported type: ${operation.type}`,
+            status: 'unsupported',
+            conflictStatus: 'unsupported',
+          });
         }
       } catch (error) {
         // Permanently invalid operation: quarantine durably, then move past it.
-        recordConflict({ operation, serverSequence, reason: error?.message || String(error), status: 'invalid' });
-        conflicts += 1;
+        recordConflict({
+          operation,
+          serverSequence,
+          reason: error?.message || String(error),
+          status: 'invalid',
+          conflictStatus: 'invalid',
+        });
         lastError = `apply failed (${operation.type}): ${error?.message || error}`;
       }
       // Cursor advances only after apply OR durable quarantine.
@@ -170,20 +207,31 @@ export function createSyncEngine({ transport, storage } = {}){
       lastSyncAt = Date.now();
       store.set(LAST_SYNC_KEY, String(lastSyncAt));
     }
-    return { pulled, pushed: pushResult.pushed, failed: pushResult.failed || 0, cursor };
+    return {
+      pulled,
+      pushed: pushResult.pushed,
+      acked: pushResult.acked || 0,
+      rejected: pushResult.rejected || 0,
+      failed: pushResult.failed || 0,
+      cursor,
+    };
   }
 
   function getStatus(){
     const outbox = listOutbox();
+    const rejectedEntries = outbox.filter(entry => entry.syncStatus === 'rejected');
     return {
       deviceId: getSyncDeviceId(),
       pending: getPendingOps().length,
       failed: outbox.filter(entry => entry.syncStatus === 'failed').length,
+      rejected: rejectedEntries.length,
+      // Server-side reasons only (no operation payloads, no secrets).
+      rejectedReasons: rejectedEntries.slice(-5).map(entry => entry.lastError || 'server rejected'),
       cursor,
       lastSyncAt,
       lastError,
       authFailed,
-      conflicts,
+      conflicts: unresolvedCount(),
     };
   }
 
@@ -191,5 +239,17 @@ export function createSyncEngine({ transport, storage } = {}){
     return listConflicts();
   }
 
-  return { sync, pull, pushOutbox, recoverSent, getStatus, getConflicts, get cursor(){ return cursor; } };
+  // C3: the user resolved a quarantined conflict — apply the chosen action to
+  // local state (Core command) and durably mark the entry resolved.
+  function resolveConflictEntryUser(conflict, action){
+    const op = conflict?.operation;
+    if (!op) throw new Error('resolveConflict: conflict missing operation');
+    resolveConflict(conflict, action, { deviceId: getSyncDeviceId() });
+    const resolved = resolveConflictEntry(op.id, action);
+    if (!resolved) throw new Error('resolveConflict: quarantine entry not found');
+    conflicts = unresolvedCount();
+    return resolved;
+  }
+
+  return { sync, pull, pushOutbox, recoverSent, getStatus, getConflicts, resolveConflict: resolveConflictEntryUser, get cursor(){ return cursor; } };
 }

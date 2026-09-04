@@ -1,0 +1,24 @@
+[Unit]
+Description=Atlas of Life Sync SQLite backup
+After=atlas-sync.service
+ConditionPathExists=/var/lib/atlas-sync/atlas-sync.sqlite
+
+[Service]
+Type=oneshot
+User=atlas-sync
+Group=atlas-sync
+UMask=0077
+ExecStart=/usr/local/libexec/atlas-sync/backup-atlas-sync.sh
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/var/lib/atlas-sync/atlas-sync.sqlite
+ReadWritePaths=/var/lib/atlas-sync/backups

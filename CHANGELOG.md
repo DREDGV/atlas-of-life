@@ -16,6 +16,61 @@
 
 ---
 
+## 0.11.0-alpha.5 - 2026-08-30
+
+### Stage C4 — Sync v1 Product Closure
+
+#### Добавлено
+- **Device management**: сервер `GET /v1/devices` (список устройств sync-space: имя, последний вход), `POST /v1/devices/rename` (себя), `POST /v1/devices/revoke` (admin — путь восстановления при утере устройства); UI — секция «Мои устройства» в панели Sync (список, переименование себя)
+- **Bootstrap нового устройства**: свежий клиент привязывается и в один sync воспроизводит **весь** stream с нуля (captures, updates, routes, deletes, restores, проекции результата) — без ручного JSON-импорта; snapshot-сервис не строится (replay достаточно, мастер-план §11.2)
+- **Экспорт диагностики**: кнопка в панели Sync → JSON (appVersion, deviceId, endpoint, pending/failed/conflicts, cursor, lastSyncAt, lastError, …) **без секретов** (проверено тестом)
+- **Disable/unlink явно отделён от удаления данных**: «Отключить синхронизацию» = revoke-self + очистка конфигурации; локальные данные Atlas не трогаются (подтверждение в диалоге)
+
+#### Техническое
+- `tests/sync-c4.mjs` — device management (list/rename/admin-revoke), bootstrap-replay свежего клиента, diagnostics без секретов, renameSelf без потери токена
+- `tools/smoke-c4.mjs` — три независимых браузера: новое устройство bootstrap'ится из нуля, панель «Мои устройства» показывает все три, переименование применяется на сервере и в конфиге
+- C3/C4 review remediation: terminal server rejection; строгие `rawText`/result-link invariants; schema 5 + versioned tombstones; deterministic delete/restore race; compensating restore с numeric `baseVersion` и `resolvesOperationId`, закрывающий matching quarantine на третьем устройстве
+- Recovery-safe VDS tooling: обязательный Certbot e-mail; ежедневный private SQLite `.backup` с integrity-check и 30-дневным retention; systemd timer; reversible restore runbook; allowlist deployment bundle без runtime, `.env` и SQLite data
+- **Версия** `0.11.0-alpha.5`; PWA cache `atlas-capture-0.11.0-alpha.5`
+
+#### Code complete; field validation pending
+- C0 Foundation → C1 Remote → C2 Result Bridge → C3 Conflicts → C4 Closure собраны в один non-stacked alpha.5 release candidate.
+- Локально пройдены все C-тесты, C3/C4 multi-browser smokes, shell syntax и deployment bundle inspection.
+- До Stage C DONE остаются реальные VDS HTTPS + backup/restore proof и физический phone ↔ desktop acceptance; до этого Sync v1 не production-ready.
+- Следующий крупный этап выбирается только после closure между Today 2.0 discovery и отдельным Studio map-actionability pass.
+- Остаётся на будущее: Full Sync (Tasks/Projects/Domains/History), encryption at rest, background push, WebSocket realtime.
+
+---
+
+## 0.11.0-alpha.4 - 2026-08-26
+
+### Stage C3 — Conflicts & Recovery
+
+> **Примечание:** review-фиксы по этой части (terminal `rejected` для
+> server-отклонённых операций, delete/restore race с tombstones,
+> capability-флаг route-валидации, invariant guards, schema 4→5) вошли в
+> объединённый `0.11.0-alpha.5` release candidate и в alpha.4 отсутствуют.
+
+#### Добавлено
+- **Человеческие конфликты вместо «detect + refuse»**: quarantine обогащён (`conflictStatus`: base_version / deleted_race / unsupported / invalid; `resolution`: pending / resolved; `resolutionAction`; `resolvedAt`); `conflicts` в статусе = число неразрешённых; resolution durable (переживает reload)
+- **Действия разрешения в панели Sync** (без технических терминов): base_version — «Оставить локальную» / «Принять удалённую» / «Сохранить обе» (копия локальной версии создаётся и доставляется через inbox.capture, оригинал принимает remote); deleted_race — «Оставить удалённой» / «Восстановить и применить» (запись восстанавливается с remote-состоянием и **восстановление доставляется остальным** через inbox.restore — иначе устройства разошлись бы); invalid/unsupported — «Пропустить»
+- **W2 — удаление/восстановление Inbox синхронизируется**: `inbox.delete` / `inbox.restore` enqueue + серверные типы + идемпотентный remote apply; удалил на телефоне → исчезает на ПК, «Отменить» → восстанавливается везде; update/route для локально удалённой записи → `deleted_race` (раньше падал/quarantine-invalid)
+- **W3 — rename Domain/Project обновляет телефон**: Core-команды `updateDomain` / `updateProject` пере-эмитят `task.result.upsert` для routed-задач домена/проекта (проекция не показывает старое имя); обработчики rename в Studio переведены на команды + мгновенный sync
+- Capture PWA: удаление/восстановление записи триггерят мгновенный sync (как захват)
+
+#### Исправлено
+- `failed`-записи outbox больше не застревают навсегда после долгого офлайна — первый успешный цикл возвращает их в доставку (W1, stabilize)
+
+#### Техническое
+- `tests/sync-c3.mjs` — delete/restore sync, классификация гонок, матрица разрешения, durability, rename re-emit, live HTTP round trip
+- `tools/smoke-c3.mjs` — двухбраузерный smoke: delete-синхронизация → deleted_race → разрешение в панели → сходимость; без дублей
+- **Версия** `0.11.0-alpha.4`; PWA cache `atlas-capture-0.11.0-alpha.4`
+
+#### Не в этом PR (C4+)
+- Device management, initial bootstrap, diagnostics export, Full Task Sync, CRDT
+
+---
+
 ## 0.11.0-alpha.3 - 2026-08-20
 
 ### Stage C2 — Task Result Bridge

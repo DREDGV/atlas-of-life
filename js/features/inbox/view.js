@@ -520,7 +520,16 @@ function buildLinkedResult(item, task){
   deleteRouted.className = 'inbox-button destructive';
   deleteRouted.textContent = 'Удалить';
   deleteRouted.addEventListener('click', () => {
-    lastRemoval = deleteInbox(item.id);
+    try {
+      lastRemoval = deleteInbox(item.id);
+    } catch (error) {
+      // Review: routed records cannot be deleted while linked to a result —
+      // revert first, then delete. Explain instead of failing silently.
+      if (typeof window.showToast === 'function') {
+        window.showToast('Сначала «Вернуть в разбор» — запись связана с результатом', 'warn');
+      }
+      return;
+    }
     if (lastRemoval) {
       editState.clear(item.id);
       routingDraftState.clear(item.id);

@@ -1,12 +1,12 @@
 # Atlas of Life — Stage C: Sync v1 Master Plan
 
 **Документ:** `STAGE_C_SYNC_V1_MASTER_PLAN.md`  
-**Статус:** рабочий мастер-план Stage C  
-**Дата:** 20 августа 2026  
+**Статус:** C0–C4 code complete; field closure pending
+**Дата:** 30 августа 2026
 **Линейка версий:** `0.11.x`  
-**Текущий этап:** C2 — Task Result Bridge  
-**База:** `revival-preparation`  
-**C0:** завершён и замержен в `revival-preparation`
+**Текущий этап:** Alpha.5 release candidate + VDS/physical closure gates
+**База RC:** `origin/revival-preparation` (`4eef9b6`)
+**Публикация C3/C4:** единая non-stacked ветка `feat/sync-v1-alpha5-release`; исторические Draft PR #21/#22 отдельно не merge'ятся
 
 ---
 
@@ -219,10 +219,14 @@ outbox ждёт
 | Этап | Версия | Назначение | Статус |
 |---|---|---|---|
 | C0 | `0.11.0-alpha.1` | Sync Foundation + local Inbox vertical slice | ✅ DONE |
-| C1 | `0.11.0-alpha.2` | Real Remote Sync | ✅ DONE (Draft PR #17; VDS-деплой и физический прогон отложены решением пользователя) |
-| C2 | `0.11.0-alpha.3` | Routed Result / Task Bridge | 🔴 CURRENT |
-| C3 | `0.11.0-alpha.4` | Multi-device Conflicts & Recovery | Planned |
-| C4 | `0.11.0-alpha.5` | Sync v1 Product Closure | Planned |
+| C1 | `0.11.0-alpha.2` | Real Remote Sync | ✅ DONE (PR #17) |
+| C2 | `0.11.0-alpha.3` | Routed Result / Task Bridge | ✅ DONE (PR #20) |
+| C3 | `0.11.0-alpha.4` | Multi-device Conflicts & Recovery | ✅ CODE COMPLETE внутри alpha.5 RC; field validation pending |
+| C4 | `0.11.0-alpha.5` | Sync v1 Product Closure | ✅ CODE COMPLETE; VDS/physical closure pending |
+
+Версия остаётся `0.11.0-alpha.5`: review remediation, release-candidate
+подготовка и последующая интеграция с Map + Quick Dock не являются новым
+product milestone и не требуют искусственного `alpha.6`.
 
 Это рабочая структура, а не священная табличка.
 
@@ -749,6 +753,17 @@ C2 готов, когда:
 
 **Целевая версия:** `0.11.0-alpha.4`
 
+**Реализованный подход (26.08.2026): классификация + человеческое разрешение без CRDT.**
+
+Подробности — `docs/SYNC_C3_CONFLICTS.md`. Кратко: quarantine обогащён
+`conflictStatus`/`resolution`; гонка «update для локально удалённой записи»
+классифицируется как `deleted_race` (а не падает/quarantine-invalid);
+пользователь разрешает в панели Sync: base_version → оставить/принять/
+сохранить обе, deleted_race → оставить удалённой/восстановить и применить
+(восстановление доставляется остальным); resolution durable. Дополнительно
+в C3: синхронизация удаления/восстановления Inbox (W2) и обновление
+проекций результата при rename Domain/Project (W3).
+
 ## 10.1 Цель
 
 C0 уже умеет не затирать конфликт молча.
@@ -1023,6 +1038,11 @@ online recovery
 
 ## 11.8 Definition of Done C4
 
+**Текущий статус:** code-level пункты ниже доказаны unit/integration и
+multi-browser smoke. Реальная эксплуатация через VDS и физический телефон ещё
+не доказана, поэтому C4 имеет статус **code complete / field pending**, а не
+production-ready.
+
 Stage C закрывается, когда:
 
 - Phone ↔ Desktop flow работает через настоящий remote service;
@@ -1042,6 +1062,9 @@ Stage C закрывается, когда:
 # 12. Definition of Done всей Stage C
 
 Перед переходом в `0.12.x` должны выполняться все пункты:
+
+На 30 августа 2026 code-gates закрыты. Открыты: HTTPS VDS `/health`, первый
+проверенный backup, restore drill и полный физический phone ↔ desktop flow.
 
 ## Core
 
@@ -1260,21 +1283,22 @@ reconnect / failed / stale recovery
 
         ↓
 
-C4 — Product Closure
+C4 — Product Closure (code complete)
 bootstrap
 device management
 unlink
 clear Sync status
-real-life usage
+recovery-safe VDS tooling
 
         ↓
 
-Stage C DONE
-0.11.x complete
+VDS HTTPS + backup/restore proof
+physical phone ↔ desktop acceptance
 
         ↓
 
-0.12.x — Today 2.0
+Stage C DONE → выбор следующего этапа
+(Today 2.0 discovery или отдельный Studio actionability pass)
 ```
 
 ---

@@ -16,6 +16,13 @@ import {
 } from './voice.js';
 import { createSyncRuntime, requestSyncNow } from '../sync/runtime.js';
 import { createSyncPanel } from '../sync/ui.js';
+import { syncCapabilities } from '../sync/capabilities.js';
+import { getEntityDeliveryState } from '../sync/outbox.js';
+
+// Capture is a projection-only client: it never owns a Task model, so a
+// routed resultRef arriving here is accepted only as a C2 projection
+// reference. Declared explicitly — never inferred from state shape.
+syncCapabilities.hasTaskModel = false;
 
 const RECENT_LIMIT = 8;
 const DRAFT_DEBOUNCE_MS = 400;
@@ -87,6 +94,7 @@ function showToastWithUndo(message) {
       updateCounter();
       renderInboxList();
       renderRecentItems();
+      requestSyncNow(); // C3/W2: the restoration reaches other devices immediately
       toast.hidden = true;
     }
   });
@@ -197,6 +205,8 @@ function renderRecentItems() {
     }
 
     meta.append(time, typeIcon, hint);
+    const deliveryBadge = buildInboxDeliveryBadge(item.id);
+    if (deliveryBadge) meta.appendChild(deliveryBadge);
     card.append(textEl, meta);
     container.appendChild(card);
   });
@@ -247,6 +257,20 @@ function buildInboxStatusBadge(item) {
     badge.textContent = 'К разбору';
     badge.dataset.state = 'pending';
   }
+  return badge;
+}
+
+function buildInboxDeliveryBadge(itemId) {
+  const deliveryState = getEntityDeliveryState('inbox', itemId);
+  if (!deliveryState) return null;
+  const badge = document.createElement('span');
+  badge.className = 'inbox-row-delivery';
+  badge.dataset.state = deliveryState;
+  badge.textContent = {
+    pending: '⏳ Ждёт отправки',
+    failed: '⚠ Ошибка отправки',
+    rejected: '⚠ Не принято сервером',
+  }[deliveryState];
   return badge;
 }
 
@@ -346,6 +370,8 @@ function renderInboxList() {
     }
 
     meta.append(time, typeIcon, source, hint);
+    const deliveryBadge = buildInboxDeliveryBadge(item.id);
+    if (deliveryBadge) meta.appendChild(deliveryBadge);
     body.append(textEl, meta);
     body.appendChild(buildInboxStatusBadge(item));
     if (item.resultRef?.type === 'task') {
@@ -367,6 +393,7 @@ function renderInboxList() {
         updateCounter();
         renderInboxList();
         renderRecentItems();
+        requestSyncNow(); // C3/W2: the deletion reaches other devices immediately
         showToastWithUndo('Запись удалена');
       }
     });
@@ -849,9 +876,14 @@ function initSync() {
   syncRuntime.subscribe(status => {
     if (status.pulled > 0) {
       updateCounter();
-      renderRecentItems();
-      if (currentView === 'inbox') renderInboxList();
     }
+    // Recent cards also carry per-record delivery markers; refresh them on
+    // push/ack even when the cycle pulled no remote operations.
+    renderRecentItems();
+    // Delivery metadata changes on push/ack even when nothing was pulled.
+    // Re-render the visible Inbox so per-record pending/error markers clear
+    // immediately after acknowledgment.
+    if (currentView === 'inbox') renderInboxList();
   });
 
   // The header status line reflects the delivery state while sync is
@@ -875,6 +907,8 @@ function initSync() {
       safeSetText(statusEl, 'Синхронизация: ошибка');
     } else if (status.pending > 0) {
       safeSetText(statusEl, `Ожидают отправки: ${status.pending}`);
+    } else if (status.rejected > 0) {
+      safeSetText(statusEl, `Отклонено сервером: ${status.rejected}`);
     } else if (status.failed > 0) {
       safeSetText(statusEl, `Ошибки отправки: ${status.failed}`);
     } else {

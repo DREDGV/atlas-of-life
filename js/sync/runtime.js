@@ -17,6 +17,7 @@ import { getSyncConfig, saveSyncConfig, clearSyncConfig } from './config.js';
 import { createHttpTransport, claimPairingCode } from './http-transport.js';
 import { createSyncEngine } from './engine.js';
 import { getSyncDeviceId } from './device.js';
+import { APP_VERSION } from '../version.js';
 
 const DEFAULT_INTERVAL_MS = 30_000;
 const REQUEST_SYNC_DEBOUNCE_MS = 2_500;
@@ -54,6 +55,7 @@ export function createSyncRuntime(options = {}){
       deviceId: getSyncDeviceId(),
       pending: 0,
       failed: 0,
+      rejected: 0,
       cursor: 0,
       lastSyncAt: null,
       lastError: null,
@@ -71,6 +73,8 @@ export function createSyncRuntime(options = {}){
       syncing: inFlight,
       pending: status.pending,
       failed: status.failed,
+      rejected: status.rejected || 0,
+      rejectedReasons: Array.isArray(status.rejectedReasons) ? status.rejectedReasons : [],
       conflicts: status.conflicts,
       lastSyncAt: status.lastSyncAt,
       lastError: status.lastError,
@@ -183,6 +187,52 @@ export function createSyncRuntime(options = {}){
     return transport.createPairingCode();
   }
 
+  // C4: device management — the whole sync-space is visible to any paired
+  // device of this space; only the device itself can rename itself here.
+  async function listDevices(){
+    if (!config) throw new Error('Sync is not configured');
+    const transport = createHttpTransport({
+      endpoint: config.endpoint,
+      getToken: () => config.token,
+    });
+    return transport.listDevices();
+  }
+
+  async function renameSelf(deviceName){
+    if (!config) throw new Error('Sync is not configured');
+    const transport = createHttpTransport({
+      endpoint: config.endpoint,
+      getToken: () => config.token,
+    });
+    const result = await transport.renameSelf(deviceName);
+    config = saveSyncConfig({ ...config, deviceName: result.deviceName });
+    refreshEngine();
+    notify();
+    return result;
+  }
+
+  // C4: diagnostic snapshot for the user — never includes secrets.
+  function getDiagnostics(){
+    const status = snapshot();
+    return {
+      generatedAt: new Date().toISOString(),
+      appVersion: APP_VERSION,
+      deviceId: status.deviceId,
+      deviceName: status.deviceName,
+      endpoint: status.endpoint,
+      online: status.online,
+      configured: status.configured,
+      pending: status.pending,
+      failed: status.failed,
+      rejected: status.rejected,
+      conflicts: status.conflicts,
+      cursor: status.cursor,
+      lastSyncAt: status.lastSyncAt,
+      lastError: status.lastError,
+      authFailed: status.authFailed,
+    };
+  }
+
   const onOnline = () => syncNow();
   const onVisibility = () => {
     if (!document.hidden && config) syncNow();
@@ -225,10 +275,23 @@ export function createSyncRuntime(options = {}){
     pair,
     unpair,
     createPairingCode,
+    listDevices,
+    renameSelf,
+    getDiagnostics,
     isConfigured,
     getConfig,
     getStatus: snapshot,
     getConflicts: () => (engine ? engine.getConflicts() : []),
+    // C3: resolve a quarantined conflict (keep local / accept remote / keep
+    // both / keep deleted / dismiss). State change runs through Core; any
+    // resulting outbound ops (restore, copy capture) are delivered promptly.
+    resolveConflict: (conflict, action) => {
+      if (!engine) throw new Error('Sync is not configured');
+      const resolved = engine.resolveConflict(conflict, action);
+      notify();
+      requestSync();
+      return resolved;
+    },
     subscribe,
   };
 }

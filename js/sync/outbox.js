@@ -9,7 +9,10 @@
 //     sequence, timestamp, type, entityType, entityId, baseVersion, payload);
 //   - `syncStatus`/`attempts`/`lastError` are LOCAL delivery metadata:
 //     'pending' → 'sent' (awaiting ack) → removed on ack;
-//     'retryable' (transient failure), 'failed' (permanent).
+//     'retryable' (transient failure), 'failed' (gave up after MAX_ATTEMPTS),
+//     'rejected' (TERMINAL: the server refused this operation per-op — e.g.
+//     invalid_operation / operation_id_conflict). Rejected entries are never
+//     retried automatically (see engine promoteFailed: transient only).
 //
 // Durability guarantees:
 //   - entries are never silently dropped to respect a size cap (unacked queue is
@@ -64,6 +67,25 @@ export function getPendingOps(){
   return listOutbox().filter(entry =>
     entry.syncStatus === 'pending' || entry.syncStatus === 'retryable'
   );
+}
+
+// Ephemeral UI projection: delivery state for one persisted entity. This is
+// derived from the durable outbox and never written onto the Inbox item.
+// Multiple operations can target the same entity; surface the most actionable
+// state while any operation remains unacknowledged.
+export function getEntityDeliveryState(entityType, entityId){
+  const statuses = new Set(
+    listOutbox()
+      .filter(entry =>
+        entry.operation?.entityType === entityType &&
+        entry.operation?.entityId === entityId
+      )
+      .map(entry => entry.syncStatus)
+  );
+  if (statuses.has('rejected')) return 'rejected';
+  if (statuses.has('failed')) return 'failed';
+  if (['pending', 'retryable', 'sent'].some(status => statuses.has(status))) return 'pending';
+  return null;
 }
 
 export function updateOutboxEntry(id, patch){

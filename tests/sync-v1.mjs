@@ -16,6 +16,7 @@ import {
   enqueueSyncOperation,
   listOutbox,
   getPendingOps,
+  getEntityDeliveryState,
   markAcked,
   updateOutboxEntry,
 } from '../js/sync/outbox.js';
@@ -47,6 +48,8 @@ function resetState(){
   state.tasks = [];
   state.inbox = [];
   state.operationLog = [];
+  state.taskProjections = [];
+  state.inboxTombstones = [];
   state.activeDomain = 'd1';
   state.settings = { layoutMode: 'auto' };
   state.maxEdges = 300;
@@ -90,8 +93,17 @@ const transport = createLocalRelay({
   assert(pending[0].operation.id === 'op-o1' && pending[0].operation.sequence === 1, 'Test 2b: entry has operation + sequence');
   assert(pending[0].syncStatus === 'pending' && !('syncStatus' in pending[0].operation), 'Test 2c: delivery state lives on the entry, not the envelope');
   assert(listOutbox().length === 1, 'Test 2d: persists (listOutbox reads durable store)');
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'pending', 'Test 2e: entity exposes its pending delivery state');
+  updateOutboxEntry('op-o1', { syncStatus: 'sent' });
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'pending', 'Test 2f: sent but unacked remains visibly pending');
+  updateOutboxEntry('op-o1', { syncStatus: 'failed' });
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'failed', 'Test 2g: entity exposes failed delivery');
+  updateOutboxEntry('op-o1', { syncStatus: 'rejected' });
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === 'rejected', 'Test 2h: terminal rejection has highest priority');
+  assert(getEntityDeliveryState('inbox', 'other') === null, 'Test 2i: unrelated entity has no marker');
   markAcked('op-o1');
-  assert(getPendingOps().length === 0 && listOutbox().length === 0, 'Test 2e: ack removes entry');
+  assert(getPendingOps().length === 0 && listOutbox().length === 0, 'Test 2j: ack removes entry');
+  assert(getEntityDeliveryState('inbox', 'inbox-1') === null, 'Test 2k: ack removes the per-record marker');
   console.log('✓ Test 2: outbox create/persist/ack + envelope split');
 }
 
@@ -148,19 +160,18 @@ const transport = createLocalRelay({
   console.log('✓ Test 6: resultRef survives + revert');
 }
 
-// Test 7: invalid operation does not corrupt state
+// Test 7: update for an unknown record does not corrupt state — C3 classifies
+// it as a deleted_race conflict instead of throwing (a real multi-device
+// collision: the record was deleted locally while the remote still edited it).
 {
   const store = makeStore();
   switchClient(store);
   applyIncomingOperation({ id: 'op-c3', deviceId: 'device-X', timestamp: 1, type: 'inbox.capture', entityType: 'inbox', entityId: 'inbox-v', payload: { id: 'inbox-v', rawText: 'Целая запись', status: 'new' } });
   const before = JSON.stringify(state.inbox);
-  let threw = null;
-  try {
-    applyIncomingOperation({ id: 'op-bad', deviceId: 'device-X', timestamp: 2, type: 'inbox.update', entityType: 'inbox', entityId: 'inbox-missing', payload: { after: { id: 'inbox-missing', status: 'processed' } } });
-  } catch (error) { threw = error; }
-  assert(threw !== null, 'Test 7a: invalid op throws');
+  const result = applyIncomingOperation({ id: 'op-bad', deviceId: 'device-X', timestamp: 2, type: 'inbox.update', entityType: 'inbox', entityId: 'inbox-missing', payload: { after: { id: 'inbox-missing', status: 'processed' } } });
+  assert(result.conflict === true && result.conflictStatus === 'deleted_race', 'Test 7a: unknown-record update reported as deleted_race conflict');
   assert(JSON.stringify(state.inbox) === before, 'Test 7b: state unchanged');
-  console.log('✓ Test 7: invalid op does not corrupt state');
+  console.log('✓ Test 7: deleted-race update does not corrupt state');
 }
 
 // Test 8: baseVersion conflict → detect + refuse (no silent last-write-wins)

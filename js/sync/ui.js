@@ -58,6 +58,9 @@ export function createSyncBadge({ runtime, onClick }){
     } else if (status.pending > 0) {
       text = `Ожидают: ${status.pending}`;
       state = 'pending';
+    } else if (status.rejected > 0) {
+      text = `Отклонено: ${status.rejected}`;
+      state = 'error';
     } else if (status.failed > 0) {
       text = `Ошибки: ${status.failed}`;
       state = 'error';
@@ -184,9 +187,16 @@ export function createSyncPanel({ runtime, mount }){
       row('Последняя синхронизация', formatTime(status.lastSyncAt)),
       row('Ожидают отправки', String(status.pending)),
       row('Ошибки отправки', String(status.failed)),
+      row('Отклонено сервером', String(status.rejected)),
       row('Конфликты', String(status.conflicts)),
     );
     wrap.appendChild(rows);
+
+    if (status.rejected > 0 && Array.isArray(status.rejectedReasons) && status.rejectedReasons.length > 0) {
+      const rejected = el('div', 'atlas-sync-error');
+      rejected.textContent = `Сервер отклонил операции: ${status.rejectedReasons.join('; ')}`;
+      wrap.appendChild(rejected);
+    }
 
     if (status.lastError) {
       const error = el('div', 'atlas-sync-error');
@@ -228,16 +238,27 @@ export function createSyncPanel({ runtime, mount }){
       revoke.disabled = true;
       await runtime.unpair();
     });
-    actions.append(syncNow, createCode, revoke);
+    const diagnostics = el('button', 'atlas-sync-btn', 'Экспорт диагностики');
+    diagnostics.type = 'button';
+    diagnostics.title = 'Сохранить техническую информацию о синхронизации (без секретов)';
+    diagnostics.addEventListener('click', () => exportDiagnostics(runtime));
+    actions.append(syncNow, createCode, revoke, diagnostics);
     wrap.appendChild(actions);
 
+    wrap.appendChild(buildDevicesSection(runtime));
+
     const conflicts = runtime.getConflicts();
+    const unresolved = conflicts.filter(entry => entry.resolution !== 'resolved');
     if (conflicts.length > 0) {
       const details = el('details', 'atlas-sync-conflicts');
-      details.appendChild(el('summary', 'atlas-sync-conflicts-summary', `Конфликты и пропущенные операции (${conflicts.length})`));
+      details.appendChild(el('summary', 'atlas-sync-conflicts-summary',
+        unresolved.length > 0
+          ? `Требуют решения: ${unresolved.length}${conflicts.length > unresolved.length ? ` (решено ${conflicts.length - unresolved.length})` : ''}`
+          : `Конфликты (решено: ${conflicts.length})`));
       const list = el('ul', 'atlas-sync-conflicts-list');
       for (const entry of conflicts.slice(-20).reverse()) {
         const item = el('li');
+        item.className = entry.resolution === 'resolved' ? 'atlas-sync-conflict is-resolved' : 'atlas-sync-conflict';
         const type = entry.operation?.type || 'unknown';
         const reason = entry.reason || '';
         const when = formatTime(entry.detectedAt);
@@ -245,6 +266,12 @@ export function createSyncPanel({ runtime, mount }){
           el('strong', null, type),
           el('span', null, ` — ${reason} · ${when}`),
         );
+        if (entry.resolution === 'resolved') {
+          item.appendChild(el('div', 'atlas-sync-conflict-resolved',
+            `решено: ${entry.resolutionAction || 'dismiss'}`));
+        } else {
+          item.appendChild(buildConflictActions(entry));
+        }
         list.appendChild(item);
       }
       details.appendChild(list);
@@ -252,6 +279,56 @@ export function createSyncPanel({ runtime, mount }){
     }
 
     return wrap;
+  }
+
+  // C3: user actions for a pending conflict. The wording is human, not
+  // technical — no "baseVersion mismatch" in the UI.
+  function buildConflictActions(entry){
+    const actions = el('div', 'atlas-sync-conflict-actions');
+    const opType = entry.operation?.type || '';
+    const conflictStatus = entry.conflictStatus || (entry.status || '');
+
+    const addAction = (label, action, primary) => {
+      const button = el('button', `atlas-sync-btn${primary ? ' atlas-sync-btn-primary' : ''}`, label);
+      button.type = 'button';
+      button.addEventListener('click', async () => {
+        try {
+          await runtime.resolveConflict(entry, action);
+        } catch (error) {
+          button.after(el('div', 'atlas-sync-error', error?.message || String(error)));
+        }
+      });
+      actions.appendChild(button);
+    };
+
+    if (conflictStatus === 'deleted_race') {
+      addAction('Оставить удалённой', 'keep_deleted');
+      addAction('Восстановить и применить', 'restore_apply', true);
+      return actions;
+    }
+    if (conflictStatus === 'delete_restore_race' && opType === 'inbox.delete') {
+      addAction('Оставить запись', 'keep_local');
+      addAction('Удалить', 'accept_delete', true);
+      return actions;
+    }
+    if (conflictStatus === 'delete_restore_race' && opType === 'inbox.restore') {
+      addAction('Оставить удалённой', 'keep_deleted');
+      addAction('Восстановить', 'restore_apply', true);
+      return actions;
+    }
+    if (conflictStatus === 'linked_result_delete') {
+      addAction('Пропустить', 'dismiss');
+      return actions;
+    }
+    if (conflictStatus === 'base_version' && opType === 'inbox.update') {
+      addAction('Оставить локальную', 'keep_local');
+      addAction('Принять удалённую', 'accept_remote');
+      addAction('Сохранить обе', 'keep_both');
+      return actions;
+    }
+    // invalid / unsupported / other: dismissing is the only sensible action.
+    addAction('Пропустить', 'dismiss');
+    return actions;
   }
 
   render();
@@ -309,3 +386,75 @@ export function openSyncModal({ runtime, title = 'Синхронизация' })
 // Helper for capturing the pairing code entered in a dialog created by the
 // host app (kept for symmetry with claimPairingCode usage).
 export { claimPairingCode };
+
+// ---------------------------------------------------------------------------
+// C4: device management + diagnostics export
+// ---------------------------------------------------------------------------
+
+// Download a diagnostic JSON snapshot. No secrets: the token never leaves
+// localStorage and is not part of the payload.
+function exportDiagnostics(runtime){
+  try {
+    const diagnostics = runtime.getDiagnostics();
+    const blob = new Blob([JSON.stringify(diagnostics, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `atlas-sync-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  } catch (error) {
+    console.warn('diagnostics export failed', error?.message || error);
+  }
+}
+
+function buildDevicesSection(runtime){
+  const details = el('details', 'atlas-sync-devices');
+  details.appendChild(el('summary', 'atlas-sync-devices-summary', 'Мои устройства'));
+  const list = el('ul', 'atlas-sync-devices-list');
+  details.appendChild(list);
+  list.appendChild(el('li', 'atlas-sync-devices-empty', 'Загрузка…'));
+
+  runtime.listDevices()
+    .then(devices => {
+      list.replaceChildren();
+      if (devices.length === 0) {
+        list.appendChild(el('li', 'atlas-sync-devices-empty', 'Пока нет устройств'));
+        return;
+      }
+      const selfId = runtime.getStatus().deviceId;
+      for (const device of devices) {
+        const item = el('li', 'atlas-sync-device');
+        const name = el('span', 'atlas-sync-device-name', device.deviceName || 'Без имени');
+        if (device.deviceId === selfId) name.textContent = `${name.textContent} (это устройство)`;
+        const meta = el('div', 'atlas-sync-device-meta',
+          `id ${shortId(device.deviceId)} · вход ${formatTime(device.lastSeenAt)}`);
+        item.append(name, meta);
+        if (device.deviceId === selfId) {
+          const rename = el('button', 'atlas-sync-btn', 'Переименовать');
+          rename.type = 'button';
+          rename.addEventListener('click', async () => {
+            const next = window.prompt('Новое имя устройства:', device.deviceName || 'Atlas device');
+            if (!next || !next.trim()) return;
+            try {
+              await runtime.renameSelf(next.trim());
+            } catch (error) {
+              item.after(el('div', 'atlas-sync-error', error?.message || String(error)));
+            }
+          });
+          item.appendChild(rename);
+        }
+        list.appendChild(item);
+      }
+    })
+    .catch(error => {
+      list.replaceChildren();
+      list.appendChild(el('li', 'atlas-sync-devices-empty', `Не удалось загрузить: ${error?.message || error}`));
+    });
+
+  return details;
+}

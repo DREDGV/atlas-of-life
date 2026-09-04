@@ -17,7 +17,7 @@ import { parseQuick } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
 import { refreshInboxAfterRemoteApply } from "./features/inbox/view.js";
-import { createTask } from "./core/commands.js";
+import { createTask, updateDomain } from "./core/commands.js";
 import { APP_VERSION, APP_LABEL } from "./version.js";
 import { createSyncRuntime, requestSyncNow } from "./sync/runtime.js";
 import { createSyncBadge, openSyncModal } from "./sync/ui.js";
@@ -422,9 +422,8 @@ function onDocClick(e) {
           alert("Такой домен уже есть");
           return;
         }
-        d.title = trimmed;
-        d.updatedAt = Date.now();
-        saveState();
+        updateDomain(id, { title: trimmed }); // C3/W3: Core command + projection re-emit
+        requestSyncNow(); // C3: refreshed projections reach the phone immediately
         renderSidebar();
         layoutMap();
         drawMap();
@@ -586,9 +585,8 @@ function openDomainMenuX(id, rowEl) {
             "Такой домен уже существует";
           return;
         }
-        d.title = name;
-        d.updatedAt = Date.now();
-        saveState();
+        updateDomain(id, { title: name }); // C3/W3: Core command + projection re-emit
+        requestSyncNow(); // C3: refreshed projections reach the phone immediately
         renderSidebar();
         layoutMap();
         drawMap();

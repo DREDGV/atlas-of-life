@@ -13,13 +13,28 @@ processes or Apache sites.
   `current`, DocumentRoot of the Apache vhost);
 - configuration and admin bootstrap token: `/etc/atlas-sync/atlas-sync.env`;
 - SQLite database: `/var/lib/atlas-sync/atlas-sync.sqlite`;
+- private SQLite backups: `/var/lib/atlas-sync/backups` (30-day retention);
 - process identity: `atlas-sync`;
 - loopback API port: `127.0.0.1:8787`;
-- Apache site: `/etc/apache2/sites-available/atlas-sync.conf`.
+- Apache site: `/etc/apache2/sites-available/atlas-sync.conf`;
+- managed HTTPS site: `/etc/apache2/sites-available/atlas-sync-ssl.conf`;
+- daily backup timer: `atlas-sync-backup.timer`.
 
-The initial hostname is `atlas.31.28.27.96.sslip.io` (no DNS registration
-needed — wildcard DNS of the VDS IP). HTTPS must be enabled before
-configuring a physical phone: the Capture PWA requires a secure context.
+The live database, WAL and shared-memory files are owned by
+`atlas-sync:atlas-sync` with mode `0640`; the service uses `UMask=0027` so a
+restart cannot recreate them as world-readable files.
+
+An empty database from the older Inbox API is upgraded in place: its
+incompatible `sync_operations` table is preserved as
+`sync_operations_legacy_inbox_v0` and Sync v1 creates its current operation
+stream table. If the legacy `inbox_records` or `sync_operations` table contains
+data, startup refuses the automatic migration so an operator must export or
+migrate those records explicitly instead of silently losing them.
+
+`ATLAS_HOSTNAME` holds the final public hostname. An `sslip.io` hostname can be
+used for the first deployment when its address resolves to the VDS. HTTPS must
+be enabled before configuring a physical phone: the Capture PWA requires a
+secure context.
 
 ## Install
 
@@ -31,38 +46,56 @@ node tools/build-sync-deploy.mjs
 # → dist/atlas-sync-upload.tar.gz
 ```
 
-Upload the bundle and the verified Node.js 22 Linux x64 archive to `/root`
-on the VDS, then run:
+The bundle is assembled from an allowlist of deployment files and rejects
+`.env`, SQLite and database files. The Node.js runtime archive is intentionally
+not embedded. Upload the bundle and the verified Node.js 22 Linux x64 archive
+to `/root` on the VDS.
+
+Install the required system packages (exact package names shown for Debian /
+Ubuntu), then run the installer with the final hostname and a real Certbot
+contact e-mail:
 
 ```bash
+apt-get update
+apt-get install --yes apache2 certbot python3-certbot-apache sqlite3
+
+export ATLAS_HOSTNAME=atlas.example.com
+export ATLAS_CERTBOT_EMAIL=admin@example.com
 bash /root/atlas-sync-upload/deploy/vds/install-atlas-sync.sh \
   /root/atlas-sync-upload \
   /root/node-v22.22.0-linux-x64.tar.xz
+unset ATLAS_CERTBOT_EMAIL
 ```
 
 The installer generates the admin bootstrap token once and preserves it on
 later deployments. It is used only to create the first pairing code or
 recover access. Never paste it into issues, chats, client settings or
-service logs.
+service logs. The installer refuses to continue without
+`ATLAS_CERTBOT_EMAIL`, obtains or reuses the HTTPS certificate, enables the
+daily backup timer and creates one verified first backup. Existing
+installations are explicitly restarted so the running Node process loads the
+new release and the hardened database-file permissions take effect.
+
+On upgrades, the installer also reconciles the non-secret runtime values in
+the existing env without replacing `ATLAS_SYNC_TOKEN`: the public
+`https://<ATLAS_HOSTNAME>` Origin is appended to any existing
+localhost/Capacitor origins, and the previous env is retained as a private
+`atlas-sync.env.pre-<release>` copy. The upload bundle includes the complete
+active Studio asset graph (`styles.css` and `addons/`) as well as Capture.
+
+After Certbot obtains or reuses the certificate, the installer enables the
+managed `atlas-sync-ssl` vhost and disables the legacy
+`atlas-sync-le-ssl` vhost when present. This keeps Studio, Capture and the API
+on the same routing contract during upgrades from older API-only deployments.
 
 ## HTTPS
 
-After installing Certbot's Apache plugin, issue the certificate and redirect
-HTTP to HTTPS:
+The installer runs Certbot with `--email "$ATLAS_CERTBOT_EMAIL"` and enables
+the HTTP → HTTPS redirect. Verify the endpoint and automatic renewal after the
+installer finishes:
 
 ```bash
-certbot --apache \
-  --domain atlas.31.28.27.96.sslip.io \
-  --non-interactive \
-  --agree-tos \
-  --register-unsafely-without-email \
-  --redirect
-```
-
-Verify the endpoint and automatic renewal:
-
-```bash
-curl --fail --silent https://atlas.31.28.27.96.sslip.io/health
+curl --fail --silent "https://${ATLAS_HOSTNAME}/health"
 systemctl is-enabled certbot.timer
 certbot renew --dry-run
 ```
@@ -73,11 +106,19 @@ certbot renew --dry-run
 systemctl status atlas-sync.service --no-pager
 journalctl -u atlas-sync.service --since today --no-pager
 ss -ltnp | grep ':8787 '
+systemctl status atlas-sync-backup.timer --no-pager
+systemctl list-timers atlas-sync-backup.timer --no-pager
+ls -l /var/lib/atlas-sync/backups
 ```
 
 Port 8787 must remain bound to `127.0.0.1`; Apache is the only public entry
 point. The API synchronizes the Inbox/Processing lifecycle only (captures,
 updates, routes, reverts) — Tasks/Projects/Domains are not synced yet.
+
+The backup job uses SQLite's online `.backup`, verifies
+`PRAGMA integrity_check`, writes with private permissions and deletes only
+matching backups older than 30 days. Before deployment acceptance, perform a
+test restore during the maintenance window using [`RESTORE.md`](RESTORE.md).
 
 ## Pair the first device
 
@@ -92,7 +133,7 @@ curl --fail --silent --show-error \
   -H "Authorization: Bearer ${ATLAS_SYNC_TOKEN}" \
   -H 'Content-Type: application/json' \
   --data '{}' \
-  https://atlas.31.28.27.96.sslip.io/v1/pair/codes
+  "https://${ATLAS_HOSTNAME}/v1/pair/codes"
 unset ATLAS_SYNC_TOKEN
 ```
 
@@ -105,12 +146,14 @@ independently («Отключить синхронизацию»).
 
 ## Physical device check (phone ↔ desktop)
 
-1. Open `https://atlas.31.28.27.96.sslip.io/capture/` on the phone, install
+1. Open `https://<ATLAS_HOSTNAME>/capture/` on the phone, install
    the PWA («Установить»), pair it.
-2. Open `https://atlas.31.28.27.96.sslip.io/` on the PC, pair it.
+2. Open `https://<ATLAS_HOSTNAME>/` on the PC, pair it.
 3. Capture on the phone → the record appears in the Studio Inbox within the
    poll interval (default 30 s).
 4. Process it in Studio (routed / processed / discarded) → the phone shows
    the new state after the next poll.
 5. Offline test: airplane mode → capture → still saved locally
    («Ожидают отправки: 1»); restore network → delivered automatically.
+6. Revoke one device, confirm it can no longer sync, then re-pair it and export
+   diagnostics; the export must contain no bootstrap token or device token.

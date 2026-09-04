@@ -87,7 +87,13 @@ export function createHttpTransport({ endpoint, getToken, fetchImpl }){
           operations: ops,
         },
       });
-      return { ackedIds: Array.isArray(result?.ackedIds) ? result.ackedIds : [] };
+      return {
+        ackedIds: Array.isArray(result?.ackedIds) ? result.ackedIds : [],
+        // Per-op server rejections (invalid_operation, operation_id_conflict,
+        // …). The engine turns these into a TERMINAL outbox status — unlike
+        // transient network failures they must never be retried.
+        conflicts: Array.isArray(result?.conflicts) ? result.conflicts : [],
+      };
     },
 
     async pullOperations(cursor = 0, opts = {}){
@@ -119,6 +125,16 @@ export function createHttpTransport({ endpoint, getToken, fetchImpl }){
     async createPairingCode(){
       const result = await request('/v1/pair/codes', { method: 'POST', body: {} });
       return { code: result?.code, expiresAt: Number(result?.expiresAt) || 0 };
+    },
+
+    // C4 device management — the authenticated device sees its own sync-space.
+    async listDevices(){
+      const result = await request('/v1/devices');
+      return Array.isArray(result?.devices) ? result.devices : [];
+    },
+
+    async renameSelf(deviceName){
+      return request('/v1/devices/rename', { method: 'POST', body: { deviceName } });
     },
   };
 }
