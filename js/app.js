@@ -1151,6 +1151,10 @@ function submitQuick(text) {
 }
 
 async function init() {
+  document.getElementById('btnKnowledge').onclick = () => {
+    document.querySelector('.chip[data-view="map"]')?.click();
+    openInspectorFor({ _type: 'knowledge-library' });
+  };
   const ok = loadState();
   if (!ok) initDemoData();
   // set version in brand + document title

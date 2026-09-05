@@ -42,6 +42,7 @@ import {
   deleteTask,
   promoteTaskToProject,
   updateTask,
+  revertInboxRoute,
 } from "./core/commands.js";
 import { renderToday } from "./view_today.js";
 import { getVisibleDomainIds } from "./ui/map-session.js";
@@ -67,15 +68,50 @@ function inspectorHeading(kind, title, path) {
   `;
 }
 
+const escapeKnowledge = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
+const materialKind = item => item.kind === 'thought' ? 'Мысль' : 'Заметка';
+function materialLocation(item){
+  const project = state.projects.find(entry => entry.id === item.projectId);
+  const domain = state.domains.find(entry => entry.id === (project?.domainId || item.domainId));
+  return [domain?.title, project?.title].filter(Boolean).join(' / ') || 'Без контекста';
+}
+function appendMaterials(ins, context){
+  const materials = state.knowledge.filter(item => {
+    if (!context) return true;
+    if (context._type === 'project') return item.projectId === context.id;
+    if (context._type === 'domain') return item.domainId === context.id || state.projects.some(p => p.id === item.projectId && p.domainId === context.id);
+    return false;
+  });
+  if (!materials.length) return;
+  const section = document.createElement('section');
+  section.className = 'inspector-materials';
+  const heading = document.createElement('h3');
+  heading.textContent = `Мысли и заметки · ${materials.length}`;
+  section.append(heading);
+  materials.forEach(item => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'card inspector-card-button';
+    button.dataset.knowledgeId = item.id;
+    button.innerHTML = `<div class="meta">${materialKind(item)} · ${escapeKnowledge(materialLocation(item))}</div><strong>${escapeKnowledge(item.title)}</strong>`;
+    button.onclick = () => openInspectorFor({ ...item, _type: 'knowledge' });
+    section.append(button);
+  });
+  ins.append(section);
+}
+
 export function openInspectorFor(obj) {
   const ins = document.getElementById("inspector");
   // The map and the Inspector always share the same active object: highlight
   // the node (or clear the highlight) so the ring matches what is shown here.
   try {
     if (window.mapApi && window.mapApi.setSelectedNode) {
+      const selected = obj?._type === 'knowledge'
+        ? { id: obj.projectId || obj.domainId, _type: obj.projectId ? 'project' : 'domain' }
+        : obj;
       window.mapApi.setSelectedNode(
-        obj && obj.id ? obj.id : null,
-        obj ? obj._type : null,
+        selected?.id || null,
+        selected?._type || null,
         { focus: false }
       );
     }
@@ -97,9 +133,42 @@ export function openInspectorFor(obj) {
       </div>
       <div class="hint">Чекбоксы слева меняют состав карты. Название домена задаёт контекст для новых задач, а ⌖ только фокусирует камеру.</div>
     `;
+    appendMaterials(ins, null);
     return;
   }
   const type = obj._type;
+  if (type === 'knowledge-library') {
+    ins.innerHTML = `${inspectorHeading('Материалы', 'Мысли и заметки', [])}<div class="hint">Мысли — идеи для развития. Заметки — сведения, к которым можно вернуться.</div>`;
+    appendMaterials(ins, null);
+    if (!state.knowledge.length) ins.insertAdjacentHTML('beforeend', '<p class="hint">Пока нет материалов. Сохраните мысль или заметку из Входящих, выбрав домен, проект или «Без контекста».</p>');
+    return;
+  }
+  if (type === "knowledge") {
+    const item = state.knowledge.find(entry => entry.id === obj.id);
+    if (!item) return openInspectorFor(null);
+    const source = state.inbox.find(entry => entry.id === item.sourceInboxId);
+    ins.innerHTML = `${inspectorHeading(materialKind(item), escapeKnowledge(item.title), [escapeKnowledge(materialLocation(item))])}
+      <div class="knowledge-text">${escapeKnowledge(item.text)}</div>
+      <div class="hint">Сохранено в Atlas · ${new Date(item.createdAt).toLocaleDateString("ru-RU")}</div>
+      ${source ? `<details class="knowledge-source"><summary>Исходник из Inbox</summary><div class="knowledge-text">${escapeKnowledge(source.rawText)}</div></details>` : ""}
+      <div class="btns"><button class="btn" id="materialContext">Открыть контекст</button>${source ? `<button class="btn" id="materialRevert">Вернуть в разбор</button>` : ""}</div>`;
+    ins.querySelector("#materialContext").onclick = () => {
+      const project = state.projects.find(entry => entry.id === item.projectId);
+      const domain = state.domains.find(entry => entry.id === item.domainId);
+      openInspectorFor(project ? { ...project, _type: "project" } : domain ? { ...domain, _type: "domain" } : null);
+    };
+    ins.querySelector("#materialRevert")?.addEventListener("click", async () => {
+      try {
+        const result = revertInboxRoute(source.id);
+        if (result?.refused) { window.showToast?.('Материал изменён — автоматический возврат небезопасен', 'warn'); return; }
+        requestSyncNow();
+        openInspectorFor(null);
+        const { openProcessingItem } = await import("./features/inbox/view.js");
+        openProcessingItem(source.id);
+      } catch (error) { window.showToast?.(error.message, "warn"); }
+    });
+    return;
+  }
   if (type === "domain") {
     const prjs = state.projects.filter((p) => p.domainId === obj.id);
     const projectTasks = prjs.reduce(
@@ -389,4 +458,5 @@ export function openInspectorFor(obj) {
       }
     }catch(_){ }
   }
+  if (["domain", "project"].includes(type)) appendMaterials(ins, obj);
 }

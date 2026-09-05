@@ -531,3 +531,11 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .atlas-sync-device-meta { color: var(--muted); font-size: 11px; }
 .atlas-sync-device .atlas-sync-btn { align-self: flex-start; margin-top: 4px; }
 .atlas-sync-devices-empty { color: var(--muted); font-size: 12px; }
+
+/* Knowledge Foundation: quiet reading surface and contextual material lists. */
+.inspector-materials { margin-top: 24px; border-top: 1px solid var(--border, #293b58); padding-top: 12px; }
+.inspector-materials h3 { font-size: 14px; margin: 0 0 12px; }
+.inspector-materials .card { display: block; width: 100%; margin: 8px 0; text-align: left; overflow-wrap: anywhere; }
+.knowledge-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; margin: 18px 0; }
+.knowledge-source { margin: 20px 0; }
+.knowledge-source summary { cursor: pointer; }

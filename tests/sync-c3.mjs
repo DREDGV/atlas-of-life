@@ -782,7 +782,7 @@ function outboxOpsOfType(type){
   }));
   switchClient(store, 'device-c3-mig2'); // loadState runs the 4→5 migration + immediate save
   const persisted = JSON.parse(store.getItem('atlas_v2_data'));
-  assert(persisted.schema === 5, 'Test 14a: persisted schema bumped to 5');
+  assert(persisted.schema === 6, 'Test 14a: persisted schema includes knowledge foundation');
   assert(Array.isArray(persisted.inboxTombstones) && persisted.inboxTombstones.length === 0, 'Test 14b: persisted inboxTombstones present as []');
   assert(Array.isArray(persisted.taskProjections) && persisted.taskProjections.length === 0, 'Test 14c: persisted taskProjections present as []');
   assert(state.inboxTombstones.length === 0, 'Test 14d: in-memory tombstones initialized');
