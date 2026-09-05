@@ -1,6 +1,6 @@
 # Атлас Жизни — дорожная карта возрождения
 
-Обновлено: 30 августа 2026 года.
+Обновлено: 5 сентября 2026 года.
 
 ## Видение продукта
 
@@ -97,30 +97,63 @@ AI не является условием Definition of Done для 0.10.x.
   decision — являются ли Thought/Note самостоятельными сущностями или единым
   Knowledge/Context-объектом, куда они маршрутизируются, как связаны с
   Domain/Project, как работают resultRef/revert/history и что синхронизируется.
-- Решение включить в выбор следующего продуктового этапа перед Today 2.0 или
-  новым Map actionability pass; реализацию не начинать без утверждённой модели.
+- Решение: закрыть dead-end этапом **0.12.x — Processing Destinations /
+  Knowledge Foundation** (ниже). Реализацию не начинать без утверждённой модели.
 
-### 0.12.x — Today 2.0 (desktop + mobile)
+### 0.12.x — Processing Destinations / Knowledge Foundation (следующий этап)
+
+**Продуктовая проблема.** После Processing у Task есть продолжение, у
+Thought/Note — нет:
+
+```text
+Task:         Capture → Inbox → Processing → Task → Domain/Project → Today/Map
+Thought/Note: Capture → Inbox → Processing → processed → тупик (dead end)
+```
+
+Это product-flow dead-end из field-finding 0.11.x, а не дефект Sync-транспорта:
+«Сохранить как мысль/заметку» сейчас только выставляет Inbox-записи `itemType`
+и `status: processed`; отдельная persisted-сущность, `resultRef`, destination и
+Map-проекция не создаются. Map строится из Tasks/Projects/Domains, поэтому
+запись уходит из очереди «К разбору», но остаётся в «Разобранных» без
+следующего места назначения.
+
+**Цель этапа:**
+
+```text
+Thought / Note
+→ полноценная persisted-сущность
+→ Domain / Project / без контекста
+→ resultRef
+→ Inspector
+→ Map
+```
+
+Модель (единая Knowledge/Context-сущность или раздельные Thought/Note, связи,
+revert/history, рамки Sync) утверждается в начале этапа до реализации; детальную
+schema за следующих агентов не проектировать. Dead-end не закрывать быстрым
+отображением processed Inbox на Map.
+
+### 0.13.x — Today 2.0 (desktop + mobile)
 
 Сейчас / Focus-3 / план дня / ёмкость / переносы / выполнено; задачи после Processing Center.
 
-### 0.13.x — Smart Processing / Inbox Intelligence
+### 0.14.x — Smart Processing / Inbox Intelligence
 
 Поверх готового Processing Core: правила пользователя, детерминированный parser, suggestions с confidence, первые AI-assist функции. Режимы Manual / Assist / Auto.
 
-### 0.14.x — Native Android capabilities (условный этап)
+### 0.15.x — Native Android capabilities (условный этап)
 
 Подключается только при доказанной продуктовой необходимости: widget, Quick Settings, notifications/reminders, native SpeechRecognizer, original audio, biometric lock. Если PWA продолжает закрывать сценарии — этап откладывается.
 
-### 0.15.x — Map vNext + Entity Context
+### 0.16.x — Map vNext + Entity Context
 
 Performance, Inspector, aging, связи, Entity/Topic/Context представление, распределение внимания.
 
-### 0.16.x — Full Sync + History
+### 0.17.x — Full Sync + History
 
 Tasks → Projects → Domains → Notes/Ideas/Entities; conflict resolution; durable history; фундамент обзоров.
 
-### 0.17.x — Intelligence / Reviews / Atlas Q&A
+### 0.18.x — Intelligence / Reviews / Atlas Q&A
 
 AI Inbox/Processing, анализ дня, недельный обзор, проектный помощник, patterns, Atlas Q&A.
 
