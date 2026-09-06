@@ -1,5 +1,5 @@
 import { state, normalizeTags } from '../state.js';
-import { saveState } from '../storage.js';
+import { saveState, prepareState, replaceStoredState } from '../storage.js';
 import { appendOperation } from './operations.js';
 import { enqueueSyncOperation } from '../sync/outbox.js';
 import { syncCapabilities } from '../sync/capabilities.js';
@@ -26,23 +26,48 @@ const COMMAND_ARRAY_KEYS = [
   'knowledge',
   'inbox',
   'operationLog',
+  'pendingSyncOperations',
   'taskProjections',
   'inboxTombstones',
 ];
 
+let commandTransaction = null;
 function finish(options){
-  if (options.persist !== false) saveState();
+  if (commandTransaction) commandTransaction.persist ||= options.persist !== false;
+  else if (options.persist !== false) saveState();
 }
 
 // Enqueue a syncable operation after the command persisted successfully. An
 // outbox persistence failure must not fail the already-saved local change, but
 // it must be observable (console), never silently swallowed as success.
 function enqueueOutbound(operation){
+  if (commandTransaction) {
+    commandTransaction.outbound.push(operation);
+    return;
+  }
   try {
     enqueueSyncOperation(operation);
   } catch (error) {
     console.warn('sync outbox enqueue failed', error?.message || error);
   }
+}
+
+// The state commit owns the delivery intent. Outbox writes may fail independently;
+// replaying the same operation id after reload is safe on the v1 relay.
+export function flushPendingSyncOperations(options = {}){
+  const count = state.pendingSyncOperations.length;
+  const remaining = [];
+  for (const operation of state.pendingSyncOperations) {
+    try { enqueueSyncOperation(operation); }
+    catch (_) { remaining.push(operation); }
+  }
+  state.pendingSyncOperations.splice(0, state.pendingSyncOperations.length, ...remaining);
+  if (count !== remaining.length && options.persist !== false) {
+    // If cleanup fails, durable intent remains and will be replayed idempotently.
+    // Never roll back an already committed command or rotate the user backup here.
+    try { saveState({ backup:false, notify:false }); } catch (_) {}
+  }
+  return remaining.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,9 +187,36 @@ function restoreCommandState(checkpoint){
 }
 
 function runAtomicCommand(execute){
+  if (commandTransaction) return execute();
+  const checkpoint = captureCommandState();
+  commandTransaction = { persist:false, outbound:[] };
+  let result;
+  let persist = false;
+  try {
+    result = execute();
+    state.pendingSyncOperations.push(...commandTransaction.outbound);
+    persist = commandTransaction.persist;
+    if (commandTransaction.persist) saveState();
+  } catch (error) {
+    restoreCommandState(checkpoint);
+    throw error;
+  } finally {
+    commandTransaction = null;
+  }
+  flushPendingSyncOperations({ persist });
+  return result;
+}
+
+export function restoreAtlasSnapshot(raw, options = {}){
+  if (typeof window !== 'undefined' && window.atlasSync?.getStatus().syncing) {
+    throw new Error('Дождитесь завершения текущей синхронизации и повторите восстановление.');
+  }
+  prepareState(raw); // Refuse malformed input before touching state/history.
   const checkpoint = captureCommandState();
   try {
-    return execute();
+    const operation = appendOperation({ type:'state.restore', entityType:'state',
+      entityId:'atlas', payload:{ reason:'explicit-local-restore' } });
+    return replaceStoredState(raw, operation, options);
   } catch (error) {
     restoreCommandState(checkpoint);
     throw error;
@@ -1256,6 +1308,9 @@ function updateTaskMutation(taskId, patch, options){
   if (Object.hasOwn(patch, 'status')) changes.status = normalizeTaskStatus(patch.status);
   if (Object.hasOwn(patch, 'estimateMin')) changes.estimateMin = patch.estimateMin ?? null;
   if (Object.hasOwn(patch, 'priority')) changes.priority = patch.priority || 2;
+  if (Object.hasOwn(patch, 'due')) changes.due = normalizeCreateTaskDue(patch.due);
+  if (patch.domainId && !state.domains.some(domain => domain.id === patch.domainId)) throw new Error('Unknown target domain');
+  if (patch.projectId && !state.projects.some(project => project.id === patch.projectId)) throw new Error('Unknown target project');
   if (Object.hasOwn(patch, 'projectId')) changes.projectId = patch.projectId ?? null;
   if (Object.hasOwn(patch, 'domainId')) changes.domainId = patch.domainId ?? null;
 
@@ -1266,10 +1321,13 @@ function updateTaskMutation(taskId, patch, options){
 
   const before = snapshot(task);
   Object.assign(task, changes);
+  if (changes.status && changes.status !== before.status) {
+    task.completedAt = changes.status === 'done' ? (options.now ?? Date.now()) : null;
+  }
   if (Object.hasOwn(changes, 'projectId') && changes.projectId) {
     delete task.domainId;
   }
-  task.updatedAt = options.now ?? Date.now();
+  task.updatedAt = Math.max(options.now ?? Date.now(), (before.updatedAt || 0) + 1);
   const operation = appendOperation({
     type: 'task.update',
     entityType: 'task',

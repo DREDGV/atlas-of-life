@@ -54,6 +54,7 @@
       <summary>Ещё</summary>
       <div class="header-popover-menu header-secondary-actions">
         <button class="header-action" type="button" id="btnExport">Экспорт JSON</button>
+        <button class="header-action" type="button" id="btnRecovery">Резервные данные</button>
         <label class="header-action" for="fileImport">Импорт JSON</label>
         <input id="fileImport" type="file" accept="application/json" class="hidden" />
         <button class="header-action" type="button" id="btnAbout">О версии</button>
@@ -141,9 +142,9 @@
 
 <!-- Existing addons -->
 <link rel="stylesheet" href="addons/addons.css">
-<script src="addons/ics-export.js"></script>
-<script src="addons/today-plus.js"></script>
-<script src="addons/inspector-plus.js"></script>
+<!-- Legacy ICS exporter used an obsolete due format; calendar work is deferred. -->
+<!-- Today is owned by js/view_today.js. Legacy overlay is retired. -->
+
 
 <!-- Disabled conflicting addons that override main styles -->
 <!-- <link rel="stylesheet" href="addons/fix-ui.css"> -->

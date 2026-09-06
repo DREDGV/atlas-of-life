@@ -18,6 +18,9 @@ import { createHttpTransport, claimPairingCode } from './http-transport.js';
 import { createSyncEngine } from './engine.js';
 import { getSyncDeviceId } from './device.js';
 import { APP_VERSION } from '../version.js';
+import { flushPendingSyncOperations } from '../core/commands.js';
+import { state } from '../state.js';
+import { getStorageStatus } from '../storage.js';
 
 const DEFAULT_INTERVAL_MS = 30_000;
 const REQUEST_SYNC_DEBOUNCE_MS = 2_500;
@@ -35,6 +38,7 @@ export function createSyncRuntime(options = {}){
   let inFlight = false;
   let requestTimer = null;
   let lastCyclePulled = 0;
+  let localError = null;
   const subscribers = new Set();
 
   function buildEngine(){
@@ -47,11 +51,12 @@ export function createSyncRuntime(options = {}){
   }
 
   function refreshEngine(){
-    engine = buildEngine();
+    try { engine = buildEngine(); localError = null; }
+    catch (error) { engine = null; localError = 'Очередь Sync недоступна: ' + error.message; }
   }
 
   function snapshot(){
-    const status = engine ? engine.getStatus() : {
+    let status = {
       deviceId: getSyncDeviceId(),
       pending: 0,
       failed: 0,
@@ -62,6 +67,10 @@ export function createSyncRuntime(options = {}){
       authFailed: false,
       conflicts: 0,
     };
+    if (engine) {
+      try { status = engine.getStatus(); localError = null; }
+      catch (error) { localError = 'Очередь Sync недоступна: ' + error.message; }
+    }
     let online = true;
     try { online = navigator.onLine !== false; } catch (_) {}
     return {
@@ -71,13 +80,13 @@ export function createSyncRuntime(options = {}){
       deviceId: status.deviceId,
       online,
       syncing: inFlight,
-      pending: status.pending,
+      pending: status.pending + state.pendingSyncOperations.length,
       failed: status.failed,
       rejected: status.rejected || 0,
       rejectedReasons: Array.isArray(status.rejectedReasons) ? status.rejectedReasons : [],
       conflicts: status.conflicts,
       lastSyncAt: status.lastSyncAt,
-      lastError: status.lastError,
+      lastError: localError || status.lastError,
       authFailed: Boolean(status.authFailed),
       cursor: status.cursor,
       // How many operations the LAST completed cycle applied locally — the
@@ -100,6 +109,9 @@ export function createSyncRuntime(options = {}){
   }
 
   async function syncNow(){
+    if (getStorageStatus().status === 'error') return { skipped:'storage_recovery' };
+    flushPendingSyncOperations();
+    if (!engine && config) refreshEngine();
     if (!engine) {
       notify();
       return { skipped: 'not_configured' };

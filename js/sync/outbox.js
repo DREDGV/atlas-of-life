@@ -20,18 +20,18 @@
 //   - a storage write failure propagates as an error instead of being swallowed
 //     as a success.
 import { nextDeviceSequence } from './device.js';
+import { state } from '../state.js';
 
 const OUTBOX_KEY = 'atlas-sync-outbox-v1';
 export const MAX_ATTEMPTS = 5;
 
 function read(){
-  try {
-    const raw = globalThis.localStorage?.getItem(OUTBOX_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      if (Array.isArray(data?.entries)) return data;
-    }
-  } catch (_) {}
+  const raw = globalThis.localStorage?.getItem(OUTBOX_KEY);
+  if (raw != null) {
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data?.entries)) throw new Error('Sync outbox is unreadable; original preserved');
+    return data;
+  }
   return { entries: [] };
 }
 
@@ -42,6 +42,8 @@ function write(data){
 
 export function enqueueSyncOperation(operation){
   const data = read();
+  const existing = data.entries.find(entry => entry.operation?.id === operation.id);
+  if (existing) return existing;
   // The envelope carries its own monotonic sequence; assign one if the caller
   // supplied a hand-built operation without it.
   if (!operation.sequence) operation.sequence = nextDeviceSequence();
@@ -74,8 +76,11 @@ export function getPendingOps(){
 // Multiple operations can target the same entity; surface the most actionable
 // state while any operation remains unacknowledged.
 export function getEntityDeliveryState(entityType, entityId){
+  if (state.pendingSyncOperations.some(operation => operation.entityType === entityType && operation.entityId === entityId)) return 'pending';
+  let entries;
+  try { entries = listOutbox(); } catch (_) { return 'failed'; }
   const statuses = new Set(
-    listOutbox()
+    entries
       .filter(entry =>
         entry.operation?.entityType === entityType &&
         entry.operation?.entityId === entityId

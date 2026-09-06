@@ -16,6 +16,12 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(server.origin);
+  // Seed the old demo explicitly as a test fixture; real startup stays empty.
+  await page.evaluate(async () => {
+    const { initDemoData } = await import('/js/state.js');
+    const { saveState } = await import('/js/storage.js');
+    initDemoData(); saveState();
+  });
   const token = makeAdminToken();
   relay = await startSyncServer({ token, allowedOrigins: [server.origin] });
   await pairDevice(page, relay.endpoint, token, 'Usability Studio');
