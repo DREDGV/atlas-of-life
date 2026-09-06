@@ -1,31 +1,33 @@
-Chat history
-============
+# Codex в Atlas of Life
 
-This workspace stores Codex chat history locally in a JSONL file.
+Актуальные правила разработки находятся в корневом `AGENTS.md`, состояние
+продукта — в `docs/ROADMAP_REVIVAL.md`. Локальные Atlas skills расположены в
+`.agents/skills/`.
 
-- File: `.codex/chat-history.jsonl`
-- Format: one JSON object per line with fields: `timestamp`, `role`, `session`, `content`.
+Персональные настройки модели и инструментов находятся в пользовательском
+`~/.codex/config.toml`; они не входят в репозиторий и могут быть переопределены
+приложением или настройками конкретного потока. Изменение файла не означает
+смену модели/reasoning уже выполняющейся сессии.
 
-Logging helper
---------------
+## Как задавать работу
 
-Use `scripts/log-chat.ps1` to append entries:
+Достаточно указать желаемый пользовательский результат, важные ограничения
+и критерий готовности. Агент сам выбирает техническое решение и проверки.
+Если нужен только обзор или план — укажите это; такой запрос не запускает
+изменение приложения. Для продолжения полезны branch/PR и ссылка на свежий
+handoff, если они не известны из текущего контекста.
 
-`powershell -ExecutionPolicy Bypass -File scripts/log-chat.ps1 -Role user -Content "Hello" -Session my-session`
+## Локальная проверка
 
-If `-Session` is omitted, the current date `yyyyMMdd` is used.
+- Focused test: `node tests/<name>.mjs`.
+- Baseline: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-baseline.ps1`.
+- Browser: существующие `tools/smoke-*.mjs`, отдельный профиль и тестовые данные;
+  Chromium находить через установленный Playwright.
+- QA-артефакты — `output/playwright/`; они не являются релизными файлами.
 
-Version bump
-------------
+Версия приложения берётся из `js/version.js`, cache Capture — из `capture/sw.js`.
+Старые инструкции о версии из CHANGELOG больше не актуальны.
 
-Automates versioning in `CHANGELOG.md` and fallback in `js/app.js`.
-The script now PRESERVES history by inserting a new section at the top.
-
-- Bump patch (reads current version from CHANGELOG):
-  `powershell -ExecutionPolicy Bypass -File tools/bump-version.ps1`
-- Bump specific part: `-Part minor` or `-Part major`
-- Set exact version: `-Version 0.2.3`
-- Optional date override: `-Date 2025-09-03`
-- Optional time override: `-Time 14:30` (defaults to current time)
-
-The resulting heading format is: `## Atlas_of_life_vX.Y.Z - YYYY-MM-DD HH:mm`.
+`chat-history.jsonl` — исторический файл. Автоматически дублировать сюда
+текущую переписку не требуется. Свежий handoff должен содержать результат,
+проверки, ограничения и следующий конкретный шаг, а не копию всей беседы.
