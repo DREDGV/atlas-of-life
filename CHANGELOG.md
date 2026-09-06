@@ -429,6 +429,8 @@ I18N/UX
 
 ## [Unreleased]
 
+- docs(roadmap): fix 0.12.x as Processing Destinations / Knowledge Foundation + stage handoff (308b963)
+- feat(knowledge): edit/move materials in Inspector, library search + «Без контекста» (0.12.0-alpha.2)
 ### Added
 - Storage migrations and adapter layer.
 - Light/dark theme via CSS variables and toggle.

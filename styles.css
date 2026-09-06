@@ -539,3 +539,12 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .knowledge-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; margin: 18px 0; }
 .knowledge-source { margin: 20px 0; }
 .knowledge-source summary { cursor: pointer; }
+.knowledge-edit { display: grid; gap: 6px; margin: 14px 0; padding: 10px; border: 1px solid var(--panel-2); border-radius: 10px; background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.knowledge-edit label { font-size: 11px; color: var(--muted); }
+.knowledge-edit textarea, .knowledge-edit select { width: 100%; box-sizing: border-box; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 8px; color: var(--text); padding: 7px 8px; font: inherit; }
+.knowledge-edit textarea { min-height: 120px; resize: vertical; line-height: 1.6; white-space: pre-wrap; }
+.knowledge-edit textarea:focus, .knowledge-edit select:focus { border-color: var(--accent); outline: none; }
+.knowledge-library-tools { display: grid; gap: 8px; margin: 12px 0; }
+.knowledge-library-tools input[type="search"] { width: 100%; box-sizing: border-box; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 8px; color: var(--text); padding: 7px 8px; font: inherit; }
+.knowledge-library-tools input[type="search"]:focus { border-color: var(--accent); outline: none; }
+.knowledge-filter { display: flex; gap: 6px; flex-wrap: wrap; }
