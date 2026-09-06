@@ -986,6 +986,17 @@ export function drawMap() {
       }
     });
 
+  // Materials remain in their context: one count badge, never one orb per note.
+  nodes.filter(n => n._type === 'domain' || n._type === 'project').forEach(n => {
+    const count = state.knowledge.filter(item => n._type === 'project' ? item.projectId === n.id :
+      (!item.projectId && item.domainId === n.id)).length;
+    if (!count) return;
+    ctx.font = `600 ${css(11)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#b9cbe4';
+    ctx.fillText(`Мысли и заметки · ${count}`, n.x, n.y + n.r + css(22));
+  });
+
   // View-only home for tasks that belong to a Domain but not to a Project.
   nodes
     .filter((n) => n._type === "unassigned")

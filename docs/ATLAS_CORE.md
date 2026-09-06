@@ -1,6 +1,6 @@
 # Atlas Core — команды и журнал операций
 
-Обновлено: 29 августа 2026 года.
+Обновлено: 6 сентября 2026 года.
 
 ## Зачем нужен этот слой
 
@@ -32,7 +32,10 @@ Android и ПК не должны изменять данные разными �
 - `js/core/device.js` выдаёт стабильный локальный `deviceId`. Он хранится отдельно от пользовательского экспорта, чтобы импорт на новое устройство не клонировал идентичность старого устройства.
 - `js/core/operations.js` создаёт неизменяемые снимки операций и ограничивает журнал последними 1000 записями.
 - `js/core/commands.js` содержит первые команды и сохраняет состояние после успешного изменения.
-- Схема состояния (`SCHEMA_VERSION` в `js/storage.js`) — **версия 5** (миграции: 0→1 layoutMode, 1→2 tags-массивы, 2→3 Inbox, 3→4 operationLog, 4→5 inboxTombstones для delete/restore-race).
+- Схема состояния (`SCHEMA_VERSION` в `js/storage.js`) — **версия 6** (миграции: 0→1 layoutMode, 1→2 tags-массивы, 2→3 Inbox, 3→4 operationLog, 4→5 inboxTombstones, 5→6 knowledge).
+- `state.knowledge` — самостоятельные материалы `kind: thought | note`, полный `text`, краткий `title`, `projectId` или `domainId` или без контекста, `sourceInboxId`, timestamps. UI-поле `_type` не сохраняется.
+- `routeInboxToKnowledge` атомарно создаёт материал и ссылку Inbox; `revertInboxRoute` удаляет только неизменённый локальный материал с проверенной обратной связью. Журнал содержит `inbox.route_to_knowledge` / `knowledge.route_revert` со снимками.
+- Sync v1 передаёт квитанцию материала внутри существующего `inbox.update` (тип/название/контекст на момент сохранения); материалы не реплицируются. Remote apply и conflict resolution не разрушают связь локального материала. Подробности: `docs/KNOWLEDGE_FOUNDATION.md`.
 - `state.taskProjections` (C2) и `state.inboxTombstones` (C3) — persisted-коллекции; миграционная запись сразу сохраняет их в полном виде.
 
 Сейчас через команды проходят:

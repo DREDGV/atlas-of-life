@@ -23,6 +23,7 @@ const COMMAND_ARRAY_KEYS = [
   'domains',
   'projects',
   'tasks',
+  'knowledge',
   'inbox',
   'operationLog',
   'taskProjections',
@@ -460,6 +461,69 @@ export function routeInboxToTask(id, options = {}){
   return runAtomicCommand(() => routeInboxToTaskMutation(id, options));
 }
 
+// Materials have content and context, but no task status, priority or due date.
+// Sync v1 carries only a result receipt inside the existing inbox.update envelope.
+export function routeInboxToKnowledge(id, options = {}){
+  return runAtomicCommand(() => {
+    const item = state.inbox.find(entry => entry.id === id);
+    if (!item) return null;
+    if (!['thought', 'note'].includes(item.itemType)) throw new Error('Выберите мысль или заметку');
+    if (item.resultRef) throw new Error('Запись уже имеет результат');
+    if (item.status === 'discarded') throw new Error('Сначала верните запись в разбор');
+    const before = snapshot(item);
+    const now = Math.max(options.now ?? Date.now(), (item.updatedAt || 0) + 1);
+    const material = {
+      id: options.knowledgeId || generateTaskId().replace('task-', 'knowledge-'),
+      kind: item.itemType,
+      title: item.text.trim().split(/\r?\n/)[0].slice(0, 160),
+      text: item.text,
+      projectId: null,
+      domainId: null,
+      sourceInboxId: item.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (state.knowledge.some(entry => entry.id === material.id)) throw new Error('Duplicate material id');
+    if (options.domainId && !state.domains.some(entry => entry.id === options.domainId)) throw new Error('Неизвестный домен');
+    applyTaskPlacement(material, { projectId: options.projectId ?? null, domainId: options.domainId ?? null });
+    state.knowledge.push(material);
+    const project = state.projects.find(entry => entry.id === material.projectId);
+    const domain = state.domains.find(entry => entry.id === (project?.domainId || material.domainId));
+    item.status = 'processed';
+    item.resultRef = { type: 'knowledge', id: material.id, kind: material.kind,
+      title: material.title, domainTitle: domain?.title || null, projectTitle: project?.title || null };
+    item.updatedAt = now;
+    appendOperation({ type: 'inbox.route_to_knowledge', entityType: 'knowledge', entityId: material.id,
+      payload: { inboxBefore: before, inboxAfter: item, material } }, { timestamp: now, deviceId: options.deviceId });
+    const operation = appendOperation({ type: 'inbox.update', entityType: 'inbox', entityId: item.id,
+      baseVersion: before.updatedAt, payload: { before, after: item } }, { timestamp: now, deviceId: options.deviceId });
+    finish(options);
+    enqueueOutbound(operation);
+    return { inboxItem: item, material };
+  });
+}
+
+function revertKnowledgeRoute(item, options){
+  const index = state.knowledge.findIndex(entry => entry.id === item.resultRef.id);
+  // A receipt on another device is not ownership of the actual material.
+  if (index < 0) return { refused: true, reason: 'knowledge-remote' };
+  const material = state.knowledge[index];
+  if (material.sourceInboxId !== item.id) throw new Error('Material source mismatch');
+  if (material.updatedAt !== material.createdAt) return { refused: true, reason: 'knowledge-modified' };
+  const before = snapshot(item);
+  state.knowledge.splice(index, 1);
+  delete item.resultRef;
+  item.status = 'reviewed';
+  item.updatedAt = Math.max(options.now ?? Date.now(), item.updatedAt + 1);
+  appendOperation({ type: 'knowledge.route_revert', entityType: 'knowledge', entityId: material.id,
+    payload: { material, inboxBefore: before, inboxAfter: item } }, { timestamp: item.updatedAt, deviceId: options.deviceId });
+  const operation = appendOperation({ type: 'inbox.update', entityType: 'inbox', entityId: item.id,
+    baseVersion: before.updatedAt, payload: { before, after: item } }, { timestamp: item.updatedAt, deviceId: options.deviceId });
+  finish(options);
+  enqueueOutbound(operation);
+  return { inboxItem: item, material };
+}
+
 /**
  * Reverts a routed result: deletes the linked Task only when it was created by
  * this processing operation AND has not been modified since (updatedAt ===
@@ -471,6 +535,7 @@ function revertInboxRouteMutation(id, options){
   const inboxItem = state.inbox.find(item => item.id === id);
   if (!inboxItem) return null;
   const ref = inboxItem.resultRef;
+  if (ref?.type === 'knowledge') return revertKnowledgeRoute(inboxItem, options);
   if (!ref || ref.type !== 'task') return null;
 
   const now = options.now ?? Date.now();
@@ -560,6 +625,22 @@ export function applyRemoteInboxCapture(payload, options = {}){
 function applyRemoteInboxUpdateMutation(id, after, options){
   const item = state.inbox.find(entry => entry.id === id);
   if (!item) throw new Error(`remote inbox.update: unknown inbox item ${id}`);
+  if (after.resultRef?.type === 'knowledge' || item.resultRef?.type === 'knowledge') {
+    const ref = after.resultRef;
+    if (item.resultRef && item.resultRef.type !== 'knowledge') throw new Error('Existing routed result is locked');
+    if (state.knowledge.some(entry => entry.sourceInboxId === id)) throw new Error('Local material is owned by this device; revert locally');
+    if (ref && (typeof ref.id !== 'string' || !ref.id || !['thought', 'note'].includes(ref.kind) || after.itemType !== ref.kind || after.status !== 'processed')) throw new Error('Invalid material receipt');
+    if (ref && item.resultRef && ref.id !== item.resultRef.id) throw new Error('Existing material receipt is locked');
+    if (!ref && after.status !== 'reviewed') throw new Error('Invalid material revert');
+    if (typeof after.text !== 'string' || !after.text.trim()) throw new Error('Material receipt text missing');
+    if (ref) item.resultRef = snapshot(ref);
+    else delete item.resultRef;
+    item.text = after.text;
+    item.status = after.status;
+    item.itemType = after.itemType;
+    item.updatedAt = after.updatedAt ?? options.now ?? Date.now();
+    return { item };
+  }
   const patch = {};
   if (Object.hasOwn(after, 'text')) patch.text = after.text;
   if (Object.hasOwn(after, 'itemType')) patch.itemType = after.itemType;
@@ -595,6 +676,7 @@ function applyRemoteInboxRouteMutation(payload, options){
   const after = payload?.inboxAfter || {};
   const item = state.inbox.find(entry => entry.id === after.id);
   if (!item) return null;
+  if (item.resultRef?.type === 'knowledge') throw new Error('Material result is locked');
   if (after.resultRef?.type === 'task' && hasTaskModel()) {
     const linked = state.tasks.find(task => task.id === after.resultRef.id);
     if (linked && linked.sourceInboxId !== item.id) {
@@ -619,6 +701,7 @@ function applyRemoteInboxRevertMutation(payload, options){
   const after = payload?.inboxAfter || {};
   const item = state.inbox.find(entry => entry.id === after.id);
   if (!item) return null;
+  if (item.resultRef?.type === 'knowledge') throw new Error('Material result is locked');
   delete item.resultRef;
   item.status = after.status || 'reviewed';
   item.updatedAt = after.updatedAt ?? options.now ?? Date.now();
@@ -875,6 +958,10 @@ function restoreInboxFromSnapshot(after){
 // Force-apply the quarantined operation's final state to the local Inbox
 // record (used by accept_remote / keep_both / restore_apply resolutions).
 function applyRemoteStateForConflict(op, options = {}){
+  const sourceId = op.payload?.after?.id || op.payload?.inboxAfter?.id || op.payload?.item?.id || op.entityId;
+  if (state.knowledge.some(entry => entry.sourceInboxId === sourceId)) {
+    throw new Error('Сначала верните локальный материал в разбор: конфликт не должен разрушать его связь с Inbox');
+  }
   switch (op.type) {
     case 'inbox.update': {
       const after = op.payload?.after;
@@ -885,6 +972,9 @@ function applyRemoteStateForConflict(op, options = {}){
         if (!restored) throw new Error('conflict update: cannot rebuild the record');
         state.inbox.push(restored);
         item = restored;
+      }
+      if (after.resultRef?.type === 'knowledge' || item.resultRef?.type === 'knowledge') {
+        return applyRemoteInboxUpdateMutation(item.id, after, options).item;
       }
       if (Object.hasOwn(after, 'text')) item.text = String(after.text).trim();
       if (Object.hasOwn(after, 'itemType')) item.itemType = after.itemType ?? null;
@@ -1377,6 +1467,7 @@ export function updateProject(projectId, patch, options = {}){
 }
 
 function mergeDomainMutation(sourceDomainId, targetDomainId, options){
+  if (state.knowledge.some(item => item.domainId === sourceDomainId || state.projects.some(p => p.id === item.projectId && p.domainId === sourceDomainId))) throw new Error('В домене есть мысли и заметки. Сначала верните их в разбор.');
   if (sourceDomainId === targetDomainId) throw new Error('Cannot merge a domain into itself');
   const source = state.domains.find(item => item.id === sourceDomainId);
   const target = state.domains.find(item => item.id === targetDomainId);
@@ -1425,6 +1516,9 @@ function deleteDomainMutation(domainId, options){
   const domain = state.domains.find(item => item.id === domainId);
   if (!domain) return null;
   const mode = options.mode === 'cascade' ? 'cascade' : 'move';
+  if (state.knowledge.some(item => item.domainId === domainId || state.projects.some(p => p.id === item.projectId && p.domainId === domainId))) {
+    throw new Error('В домене есть мысли и заметки. Сначала верните их в разбор.');
+  }
   const target = mode === 'move'
     ? state.domains.find(item => item.id === options.targetDomainId && item.id !== domainId)
     : null;

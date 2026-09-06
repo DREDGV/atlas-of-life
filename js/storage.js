@@ -4,7 +4,7 @@ import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
@@ -83,6 +83,12 @@ function normalizeInboxTombstones(entries){
     }));
 }
 
+function normalizeKnowledge(entries){
+  return Array.isArray(entries) ? entries.filter(entry => entry && entry.id &&
+    ['thought', 'note'].includes(entry.kind) && typeof entry.text === 'string')
+    .map(({ _type, ...entry }) => ({ ...entry })) : [];
+}
+
 const MIGRATIONS = [
   // 0 -> 1
   (data) => {
@@ -130,6 +136,8 @@ const MIGRATIONS = [
     ...data,
     inboxTombstones: normalizeInboxTombstones(data?.inboxTombstones),
   }),
+  // 5 -> 6: explicit materials; legacy processed Inbox stays untouched.
+  data => ({ ...data, knowledge: normalizeKnowledge(data?.knowledge) }),
 ];
 
 function normalizeEntities(entities, options = {}){
@@ -160,6 +168,7 @@ export function loadState(){
     state.domains = normalizeEntities(data.domains, { tags: false });
     state.projects = normalizeEntities(data.projects);
     state.tasks = normalizeEntities(data.tasks);
+    state.knowledge = normalizeKnowledge(data.knowledge);
     state.inbox = normalizeInboxEntries(data.inbox);
     state.operationLog = normalizeOperationLog(data.operationLog);
     state.taskProjections = normalizeTaskProjections(data.taskProjections);
@@ -187,6 +196,7 @@ export function loadState(){
       data.schema = SCHEMA_VERSION;
       data.projects = state.projects;
       data.tasks = state.tasks;
+      data.knowledge = state.knowledge;
       data.inbox = state.inbox;
       data.operationLog = state.operationLog;
       // Review: the immediate migration save must persist the full new shape —
@@ -211,6 +221,7 @@ export function saveState(){
       domains: normalizeEntities(state.domains, { tags: false }),
       projects: normalizeEntities(state.projects),
       tasks: normalizeEntities(state.tasks),
+      knowledge: normalizeKnowledge(state.knowledge),
       inbox: normalizeInboxEntries(state.inbox),
       operationLog: normalizeOperationLog(state.operationLog),
       taskProjections: normalizeTaskProjections(state.taskProjections),
@@ -254,6 +265,7 @@ export function exportJson(){
     domains: normalizeEntities(state.domains, { tags: false }),
     projects: normalizeEntities(state.projects),
     tasks: normalizeEntities(state.tasks),
+    knowledge: normalizeKnowledge(state.knowledge),
     inbox: normalizeInboxEntries(state.inbox),
     operationLog: normalizeOperationLog(state.operationLog),
     taskProjections: normalizeTaskProjections(state.taskProjections),
@@ -294,6 +306,7 @@ export function importJson(file){
         state.domains = normalizeEntities(data.domains, { tags: false });
         state.projects = normalizeEntities(data.projects);
         state.tasks = normalizeEntities(data.tasks);
+        state.knowledge = normalizeKnowledge(data.knowledge);
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
         state.taskProjections = normalizeTaskProjections(data.taskProjections);
@@ -333,6 +346,7 @@ export function importJsonV26(file){
         state.domains = normalizeEntities(data.domains, { tags: false });
         state.projects = normalizeEntities(data.projects);
         state.tasks = normalizeEntities(data.tasks);
+        state.knowledge = normalizeKnowledge(data.knowledge);
         state.inbox = normalizeInboxEntries(data.inbox);
         state.operationLog = normalizeOperationLog(data.operationLog);
         state.taskProjections = normalizeTaskProjections(data.taskProjections);

@@ -376,6 +376,11 @@ function renderInboxList() {
     body.appendChild(buildInboxStatusBadge(item));
     if (item.resultRef?.type === 'task') {
       body.appendChild(buildTaskResultCard(item));
+    } else if (item.resultRef?.type === 'knowledge') {
+      const receipt = document.createElement('div');
+      receipt.className = 'inbox-result';
+      receipt.textContent = `${item.resultRef.kind === 'thought' ? 'Мысль' : 'Заметка'} · ${item.resultRef.title} · ${[item.resultRef.domainTitle, item.resultRef.projectTitle].filter(Boolean).join(' / ') || 'Без контекста'} · Сохранено в Studio`;
+      body.appendChild(receipt);
     }
 
     const actions = document.createElement('div');
@@ -387,6 +392,10 @@ function renderInboxList() {
     deleteBtn.setAttribute('aria-label', 'Удалить запись');
     deleteBtn.title = 'Удалить запись';
     deleteBtn.textContent = '🗑';
+    if (item.resultRef?.type === 'knowledge') {
+      deleteBtn.disabled = true;
+      deleteBtn.title = 'Сначала верните материал в разбор в Studio';
+    }
     deleteBtn.addEventListener('click', () => {
       lastRemoval = deleteInbox(item.id);
       if (lastRemoval) {

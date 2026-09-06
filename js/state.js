@@ -9,6 +9,7 @@ export const state = {
   domains:[],
   projects:[],
   tasks:[],
+  knowledge:[],
   inbox:[],
   operationLog:[],
   // Sync v1 C2: read-only projections of routed Tasks for remote devices.
