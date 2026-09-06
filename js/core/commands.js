@@ -524,6 +524,65 @@ function revertKnowledgeRoute(item, options){
   return { inboxItem: item, material };
 }
 
+// ---------------------------------------------------------------------------
+// 0.12.0-alpha.2 — Material Usability.
+//
+// Editing or moving a saved material is a normal action: it must never destroy
+// the object and create a new one. `id`, `kind`, `sourceInboxId` and `createdAt`
+// stay untouched; only `text` (with the derived `title`) and placement change.
+// Materials are owned by this Studio (no full replication in Sync v1), so this
+// is a local command: operation log + storage, no sync outbox. Remote devices
+// keep showing the save-time receipt until Full Knowledge Sync.
+// ---------------------------------------------------------------------------
+function updateKnowledgeMutation(id, patch, options){
+  const item = state.knowledge.find(entry => entry.id === id);
+  if (!item) return null;
+
+  const before = snapshot(item);
+  if (Object.hasOwn(patch, 'text')) {
+    const text = String(patch.text ?? '').trim();
+    if (!text) throw new Error('Текст не может быть пустым');
+    item.text = text;
+    item.title = text.split(/\r?\n/)[0].slice(0, 160);
+  }
+  if (Object.hasOwn(patch, 'title')) {
+    const title = String(patch.title ?? '').trim();
+    if (!title) throw new Error('Название не может быть пустым');
+    item.title = title.slice(0, 160);
+  }
+  if (Object.hasOwn(patch, 'projectId') || Object.hasOwn(patch, 'domainId')) {
+    // Full destination: project wins over domain; null + null = "без контекста".
+    const projectId = Object.hasOwn(patch, 'projectId') ? (patch.projectId ?? null) : null;
+    const domainId = Object.hasOwn(patch, 'domainId') ? (patch.domainId ?? null) : null;
+    if (domainId && !state.domains.some(domain => domain.id === domainId)) {
+      throw new Error(`Unknown target domain: ${domainId}`);
+    }
+    applyTaskPlacement(item, { projectId, domainId });
+  }
+
+  const changed =
+    item.text !== before.text ||
+    item.title !== before.title ||
+    (item.projectId ?? null) !== (before.projectId ?? null) ||
+    (item.domainId ?? null) !== (before.domainId ?? null);
+  if (!changed) return { item, before, operation: null };
+
+  item.updatedAt = Math.max(options.now ?? Date.now(), before.updatedAt + 1);
+  const operation = appendOperation({
+    type: 'knowledge.update',
+    entityType: 'knowledge',
+    entityId: item.id,
+    baseVersion: before.updatedAt || null,
+    payload: { before, after: snapshot(item) },
+  }, { timestamp: item.updatedAt, deviceId: options.deviceId });
+  finish(options);
+  return { item, before, operation };
+}
+
+export function updateKnowledge(id, patch, options = {}){
+  return runAtomicCommand(() => updateKnowledgeMutation(id, patch, options));
+}
+
 /**
  * Reverts a routed result: deletes the linked Task only when it was created by
  * this processing operation AND has not been modified since (updatedAt ===

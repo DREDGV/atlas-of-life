@@ -429,6 +429,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(knowledge): edit/move materials in Inspector, library search + «Без контекста» (0.12.0-alpha.2)
 ### Added
 - Storage migrations and adapter layer.
 - Light/dark theme via CSS variables and toggle.

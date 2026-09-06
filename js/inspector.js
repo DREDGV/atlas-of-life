@@ -42,6 +42,7 @@ import {
   deleteTask,
   promoteTaskToProject,
   updateTask,
+  updateKnowledge,
   revertInboxRoute,
 } from "./core/commands.js";
 import { renderToday } from "./view_today.js";
@@ -139,19 +140,141 @@ export function openInspectorFor(obj) {
   const type = obj._type;
   if (type === 'knowledge-library') {
     ins.innerHTML = `${inspectorHeading('Материалы', 'Мысли и заметки', [])}<div class="hint">Мысли — идеи для развития. Заметки — сведения, к которым можно вернуться.</div>`;
-    appendMaterials(ins, null);
-    if (!state.knowledge.length) ins.insertAdjacentHTML('beforeend', '<p class="hint">Пока нет материалов. Сохраните мысль или заметку из Входящих, выбрав домен, проект или «Без контекста».</p>');
+    const tools = document.createElement('div');
+    tools.className = 'knowledge-library-tools';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Поиск по тексту…';
+    search.setAttribute('aria-label', 'Поиск по мыслям и заметкам');
+    const filters = document.createElement('div');
+    filters.className = 'knowledge-filter';
+    const list = document.createElement('div');
+    list.className = 'inspector-materials';
+    tools.append(search, filters);
+    ins.append(tools, list);
+
+    let activeFilter = 'all';
+    const filterDefs = [['all', 'Все'], ['thought', 'Мысли'], ['note', 'Заметки'], ['none', 'Без контекста']];
+    const filterButtons = new Map();
+    filterDefs.forEach(([value, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn' + (value === 'all' ? ' primary' : '');
+      button.textContent = label;
+      button.onclick = () => {
+        activeFilter = value;
+        filterButtons.forEach((btn, key) => btn.classList.toggle('primary', key === value));
+        renderList();
+      };
+      filterButtons.set(value, button);
+      filters.append(button);
+    });
+
+    const matches = item => {
+      const query = search.value.trim().toLowerCase();
+      if (query) {
+        const haystack = `${item.title}\n${item.text}\n${materialKind(item)}\n${materialLocation(item)}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      if (activeFilter === 'thought' && item.kind !== 'thought') return false;
+      if (activeFilter === 'note' && item.kind !== 'note') return false;
+      if (activeFilter === 'none' && (item.projectId || item.domainId)) return false;
+      return true;
+    };
+
+    const renderList = () => {
+      list.replaceChildren();
+      const items = state.knowledge.filter(matches);
+      const heading = document.createElement('h3');
+      heading.textContent = activeFilter === 'none'
+        ? `Без контекста · ${items.length}`
+        : `Найдено · ${items.length}`;
+      list.append(heading);
+      if (!items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'hint';
+        empty.textContent = state.knowledge.length
+          ? 'Ничего не найдено. Измените поиск или фильтр.'
+          : 'Пока нет материалов. Сохраните мысль или заметку из Входящих, выбрав домен, проект или «Без контекста».';
+        list.append(empty);
+        return;
+      }
+      items.forEach(item => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'card inspector-card-button';
+        button.dataset.knowledgeId = item.id;
+        button.innerHTML = `<div class="meta">${materialKind(item)} · ${escapeKnowledge(materialLocation(item))}</div><strong>${escapeKnowledge(item.title)}</strong>`;
+        button.onclick = () => openInspectorFor({ ...item, _type: 'knowledge' });
+        list.append(button);
+      });
+    };
+
+    search.addEventListener('input', renderList);
+    renderList();
     return;
   }
   if (type === "knowledge") {
     const item = state.knowledge.find(entry => entry.id === obj.id);
     if (!item) return openInspectorFor(null);
     const source = state.inbox.find(entry => entry.id === item.sourceInboxId);
+    const currentDomainId = item.projectId
+      ? (state.projects.find(entry => entry.id === item.projectId)?.domainId ?? null)
+      : (item.domainId ?? null);
+
     ins.innerHTML = `${inspectorHeading(materialKind(item), escapeKnowledge(item.title), [escapeKnowledge(materialLocation(item))])}
-      <div class="knowledge-text">${escapeKnowledge(item.text)}</div>
+      <div class="knowledge-edit">
+        <label for="knowledgeText">Текст</label>
+        <textarea id="knowledgeText" rows="8" aria-label="Текст материала"></textarea>
+        <label for="knowledgeDomain">Домен</label>
+        <select id="knowledgeDomain" aria-label="Домен материала"></select>
+        <label for="knowledgeProject">Проект</label>
+        <select id="knowledgeProject" aria-label="Проект материала"></select>
+        <div class="hint" id="knowledgeError" role="status"></div>
+        <button class="btn primary" type="button" id="saveKnowledge">Сохранить изменения</button>
+      </div>
       <div class="hint">Сохранено в Atlas · ${new Date(item.createdAt).toLocaleDateString("ru-RU")}</div>
       ${source ? `<details class="knowledge-source"><summary>Исходник из Inbox</summary><div class="knowledge-text">${escapeKnowledge(source.rawText)}</div></details>` : ""}
       <div class="btns"><button class="btn" id="materialContext">Открыть контекст</button>${source ? `<button class="btn" id="materialRevert">Вернуть в разбор</button>` : ""}</div>`;
+
+    const textInput = ins.querySelector("#knowledgeText");
+    const domainSelect = ins.querySelector("#knowledgeDomain");
+    const projectSelect = ins.querySelector("#knowledgeProject");
+    const errorHint = ins.querySelector("#knowledgeError");
+    textInput.value = item.text || "";
+
+    const fillDomainOptions = () => {
+      domainSelect.replaceChildren(new Option("Без контекста", ""));
+      state.domains.forEach(domain => domainSelect.appendChild(new Option(domain.title, domain.id)));
+      domainSelect.value = currentDomainId || "";
+    };
+    const fillProjectOptions = () => {
+      projectSelect.replaceChildren(new Option("Без проекта", ""));
+      const domainId = domainSelect.value;
+      state.projects.filter(project => project.domainId === domainId)
+        .forEach(project => projectSelect.appendChild(new Option(project.title, project.id)));
+      projectSelect.value = (item.projectId && state.projects.some(project => project.id === item.projectId && project.domainId === domainId)) ? item.projectId : "";
+    };
+    fillDomainOptions();
+    fillProjectOptions();
+    domainSelect.addEventListener("change", fillProjectOptions);
+
+    ins.querySelector("#saveKnowledge").onclick = () => {
+      try {
+        const text = textInput.value;
+        const projectId = projectSelect.value || null;
+        const domainId = projectId
+          ? (state.projects.find(project => project.id === projectId)?.domainId ?? null)
+          : (domainSelect.value || null);
+        const result = updateKnowledge(item.id, { text, projectId, domainId });
+        if (!result) return;
+        drawMap();
+        const updated = state.knowledge.find(entry => entry.id === item.id);
+        openInspectorFor({ ...updated, _type: "knowledge" });
+      } catch (error) {
+        errorHint.textContent = error?.message || "Не удалось сохранить";
+      }
+    };
     ins.querySelector("#materialContext").onclick = () => {
       const project = state.projects.find(entry => entry.id === item.projectId);
       const domain = state.domains.find(entry => entry.id === item.domainId);
