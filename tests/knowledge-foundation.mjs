@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { state } from '../js/state.js';
-import { captureInbox, updateInbox, routeInboxToKnowledge, revertInboxRoute, applyRemoteInboxUpdate, deleteInbox, deleteDomain } from '../js/core/commands.js';
+import { captureInbox, updateInbox, routeInboxToKnowledge, revertInboxRoute, applyRemoteInboxUpdate, deleteInbox, deleteDomain, updateKnowledge } from '../js/core/commands.js';
 import { saveState, loadState, importJsonV26 } from '../js/storage.js';
 import adapter from '../js/storageAdapter.js';
 import { listOutbox } from '../js/sync/outbox.js';
@@ -79,4 +79,46 @@ assert.deepEqual(state.knowledge, []);
 assert.equal(state.inbox[0].resultRef, undefined);
 assert.equal(JSON.parse(adapter.load()).schema, 6);
 assert.deepEqual(JSON.parse(adapter.load()).knowledge, []);
-console.log('Knowledge Foundation: routing, context, rawText, links, locks, revert, storage/import/migration, receipt and route/revert rollback passed.');
+// 0.12.0-alpha.2: editing and moving a material preserves identity.
+state.domains = [{ id:'d1', title:'Дом' }, { id:'d2', title:'Дача' }];
+state.projects = [{ id:'p1', domainId:'d1', title:'Ремонт' }];
+state.tasks = [];
+state.knowledge = [];
+state.inbox = [];
+{
+  const [eItem] = captureInbox('Мысль для правки\nВторая строка', { splitLines:false, itemType:'thought' });
+  const { material: mat } = routeInboxToKnowledge(eItem.id, { projectId:'p1' });
+  const id = mat.id, inboxId = mat.sourceInboxId, kind = mat.kind, created = mat.createdAt;
+  assert.equal(mat.projectId, 'p1');
+  const edited = updateKnowledge(mat.id, { text:'Новая мысль\nПодробности', projectId:null, domainId:'d2' });
+  assert.equal(edited.item.id, id);
+  assert.equal(edited.item.sourceInboxId, inboxId);
+  assert.equal(edited.item.kind, kind);
+  assert.equal(edited.item.createdAt, created);
+  assert.equal(edited.item.text, 'Новая мысль\nПодробности');
+  assert.equal(edited.item.title, 'Новая мысль');
+  assert.equal(edited.item.projectId, null);
+  assert.equal(edited.item.domainId, 'd2');
+  assert.ok(edited.item.updatedAt > edited.before.updatedAt);
+  assert.throws(() => updateKnowledge(mat.id, { text:'' }));
+  assert.throws(() => updateKnowledge(mat.id, { projectId:'missing' }));
+  assert.throws(() => updateKnowledge(mat.id, { domainId:'missing' }));
+  const beforeTs = edited.item.updatedAt;
+  const noop = updateKnowledge(mat.id, { text:'Новая мысль\nПодробности', projectId:null, domainId:'d2' });
+  assert.equal(noop.operation, null);
+  assert.equal(noop.item.updatedAt, beforeTs);
+  const none = updateKnowledge(mat.id, { projectId:null, domainId:null });
+  assert.equal(none.item.projectId, null);
+  assert.equal(none.item.domainId, null);
+  // After an edit the material is no longer safe to auto-delete on revert.
+  assert.equal(revertInboxRoute(eItem.id).refused, true);
+  assert.equal(revertInboxRoute(eItem.id).reason, 'knowledge-modified');
+  saveState();
+  state.knowledge = [];
+  loadState();
+  const persisted = state.knowledge.find(entry => entry.id === id);
+  assert.ok(persisted);
+  assert.equal(persisted.text, 'Новая мысль\nПодробности');
+  assert.equal(persisted.sourceInboxId, inboxId);
+}
+console.log('Knowledge Foundation: routing, context, rawText, links, locks, revert, storage/import/migration, receipt, route/revert rollback and material edit/move identity passed.');
