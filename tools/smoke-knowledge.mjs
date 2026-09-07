@@ -56,7 +56,7 @@ try {
   // Persistence and rediscovery without returning to the processed Inbox.
   await page.reload();
   await page.locator('#btnKnowledge').click();
-  await page.locator('#inspector [data-knowledge-id]').click();
+  await page.locator('#viewKnowledge [data-knowledge-id]').click();
   await page.locator('#materialRevert').click();
   await page.getByRole('button', { name:'Сохранить как мысль', exact:true }).waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/state.js')).state.knowledge.length), 0);

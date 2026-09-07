@@ -561,6 +561,7 @@ function revertKnowledgeRoute(item, options){
   if (index < 0) return { refused: true, reason: 'knowledge-remote' };
   const material = state.knowledge[index];
   if (material.sourceInboxId !== item.id) throw new Error('Material source mismatch');
+  if (state.tasks.some(task => task.sourceKnowledgeId === material.id)) return { refused:true, reason:'knowledge-has-tasks' };
   if (material.updatedAt !== material.createdAt) return { refused: true, reason: 'knowledge-modified' };
   const before = snapshot(item);
   state.knowledge.splice(index, 1);
@@ -589,6 +590,9 @@ function revertKnowledgeRoute(item, options){
 function updateKnowledgeMutation(id, patch, options){
   const item = state.knowledge.find(entry => entry.id === id);
   if (!item) return null;
+  if (options.expectedUpdatedAt !== undefined && options.expectedUpdatedAt !== item.updatedAt) {
+    throw new Error('Материал изменился после начала правки. Скопируйте свой текст и откройте актуальную версию через «Отменить правки».');
+  }
 
   const before = snapshot(item);
   if (Object.hasOwn(patch, 'text')) {
@@ -1258,6 +1262,7 @@ function createTaskMutation(input, options){
   const now = options.now ?? Date.now();
   const title = String(input.title || '').trim();
   if (!title) throw new Error('Task title cannot be empty');
+  if (input.sourceKnowledgeId && !state.knowledge.some(item => item.id === input.sourceKnowledgeId)) throw new Error('Материал-источник не найден');
   const projectId = input.projectId ?? null;
   const domainId = projectId
     ? null
@@ -1279,6 +1284,7 @@ function createTaskMutation(input, options){
     updatedAt: input.updatedAt || now,
   };
   applyTaskPlacement(task, { projectId, domainId });
+  if (input.sourceKnowledgeId) task.sourceKnowledgeId = input.sourceKnowledgeId;
   state.tasks.push(task);
   appendOperation({
     type: 'task.create',
@@ -1292,6 +1298,20 @@ function createTaskMutation(input, options){
 
 export function createTask(input, options = {}){
   return runAtomicCommand(() => createTaskMutation(input, options));
+}
+
+// A material can lead to multiple actions without being converted or re-routed.
+// The task owns one source link; the material's action list is derived from Tasks.
+export function createTaskFromKnowledge(id, input = {}, options = {}){
+  return runAtomicCommand(() => {
+    const material = state.knowledge.find(item => item.id === id);
+    if (!material) throw new Error('Материал-источник не найден');
+    const projectId = Object.hasOwn(input, 'projectId') ? input.projectId : material.projectId;
+    const domainId = Object.hasOwn(input, 'domainId') ? input.domainId : material.domainId;
+    if (!projectId && !domainId) throw new Error('Выберите домен для задачи');
+    return createTaskMutation({ ...input, title:input.title ?? material.title,
+      projectId, domainId, sourceKnowledgeId:material.id }, options);
+  });
 }
 
 function updateTaskMutation(taskId, patch, options){

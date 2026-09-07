@@ -14,6 +14,7 @@ import {
   undoLastMove,
 } from "./view_map.js";
 import { renderToday } from "./view_today.js";
+import { renderKnowledge } from './features/knowledge/view.js';
 import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
@@ -572,6 +573,7 @@ function setupHeader() {
       state.view = ch.dataset.view;
       $("#canvas").style.display = state.view === "map" ? "block" : "none";
       $("#viewToday").style.display = state.view === "today" ? "block" : "none";
+      renderKnowledge();
       if (state.view === "map") {
         drawMap();
       } else {
@@ -1002,7 +1004,7 @@ function submitQuick(text) {
 
 async function init() {
   document.getElementById('btnKnowledge').onclick = () => {
-    document.querySelector('.chip[data-view="map"]')?.click();
+    document.querySelector('.chip[data-view="knowledge"]')?.click();
     openInspectorFor({ _type: 'knowledge-library' });
   };
   const ok = loadState();
@@ -1056,10 +1058,12 @@ async function init() {
     });
     $("#canvas").style.display = state.view === "map" ? "block" : "none";
     $("#viewToday").style.display = state.view === "today" ? "block" : "none";
+    renderKnowledge();
   } catch (_) {}
   // hotkeys: C/F/P/R, FPS toggle. N is owned by Inbox.
   window.addEventListener("keydown", (e) => {
     if (e.defaultPrevented) return;
+    if (e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     // Ctrl+Z -> undo last move
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -1101,3 +1105,4 @@ init();
 // expose renderers for external refresh (storage, addons)
 try { window.renderSidebar = renderSidebar; } catch(_) {}
 try { window.renderToday = renderToday; } catch(_) {}
+try { window.renderKnowledge = renderKnowledge; } catch(_) {}

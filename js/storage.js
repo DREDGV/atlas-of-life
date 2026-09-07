@@ -4,7 +4,7 @@ import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
@@ -139,6 +139,8 @@ const MIGRATIONS = [
   // 5 -> 6: explicit materials; legacy processed Inbox stays untouched.
   data => ({ ...data, knowledge: normalizeKnowledge(data?.knowledge) }),
   data => ({ ...data, pendingSyncOperations: [] }),
+  // 7 -> 8: material action provenance; older writers must not remove its source.
+  data => ({ ...data }),
 ];
 
 function normalizeEntities(entities, options = {}){
@@ -170,6 +172,10 @@ export function prepareState(raw){
   for (const key of ['inbox', 'knowledge', 'operationLog', 'taskProjections', 'inboxTombstones', 'pendingSyncOperations']) {
     if (data[key] !== undefined && !Array.isArray(data[key])) throw new Error(`Повреждён раздел ${key}`);
   }
+  const materialIds = new Set((data.knowledge || []).map(item => item?.id));
+  if (data.tasks.some(task => task.sourceKnowledgeId && !materialIds.has(task.sourceKnowledgeId))) {
+    throw new Error('У связанной задачи отсутствует материал-источник. Исходник сохранён.');
+  }
   if (data.pendingSyncOperations?.some(operation => !operation || typeof operation.id !== 'string' || typeof operation.type !== 'string')) {
     throw new Error('Повреждены сохранённые операции Sync. Исходник сохранён.');
   }
@@ -196,7 +202,7 @@ export function prepareState(raw){
     showLinks: data.showLinks ?? true,
     showAging: data.showAging ?? true,
     showGlow: data.showGlow ?? true,
-    view: data.view === 'today' ? 'today' : 'map',
+    view: ['today','knowledge'].includes(data.view) ? data.view : 'map',
     settings: data.settings && typeof data.settings === 'object' ? data.settings : { layoutMode:'auto' },
   };
 }
@@ -260,6 +266,7 @@ export function saveState(options = {}){
       if (options.notify !== false && typeof window !== 'undefined') {
         window.mapApi?.layoutMap?.(); window.mapApi?.drawMap?.();
         window.renderSidebar?.(); window.renderToday?.();
+        window.renderKnowledge?.();
       }
     } catch (_) {}
     return true;
