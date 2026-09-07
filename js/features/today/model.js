@@ -13,7 +13,7 @@ export function todayGroups(tasks, now = new Date()){
   return {
     planned: active.filter(task => ['today','doing'].includes(task.status)),
     deadlines: active.filter(task => dueDay(task) && dueDay(task) <= day && !['today','doing'].includes(task.status))
-      .sort((a,b) => dueDay(a).localeCompare(dueDay(b)) || (b.priority || 2) - (a.priority || 2)),
+      .sort((a,b) => dueDay(a).localeCompare(dueDay(b)) || (a.priority || 2) - (b.priority || 2)),
     completed: tasks.filter(task => task.status === 'done' && task.completedAt && localDay(task.completedAt) === day),
   };
 }

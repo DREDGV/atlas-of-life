@@ -51,6 +51,14 @@ try {
   createTask({ id:'deadline', title:'Due', domainId:'d1', due:{date:'2026-09-06',time:null} });
   const groups = todayGroups(state.tasks,new Date(2026,8,6));
   assert.equal(groups.planned[0].id,'planned'); assert.equal(groups.deadlines[0].id,'deadline');
+  // Same due date: priorities sort ascending P1 → P2 → P3 (P1 is the highest).
+  createTask({ id:'p3', title:'P3', domainId:'d1', priority:3, due:{date:'2026-09-05',time:null} });
+  createTask({ id:'p1', title:'P1', domainId:'d1', priority:1, due:{date:'2026-09-05',time:null} });
+  createTask({ id:'p2', title:'P2', domainId:'d1', priority:2, due:{date:'2026-09-05',time:null} });
+  const sameDuePriorities = todayGroups(state.tasks,new Date(2026,8,6)).deadlines
+    .filter(task => task.due?.date === '2026-09-05')
+    .map(task => task.priority);
+  assert.deepEqual(sameDuePriorities,[1,2,3]);
   assert.throws(() => updateTask('planned',{projectId:'missing'}));
   const [inbox] = captureInbox('Routed',{itemType:'task'});
   routeInboxToTask(inbox.id,{domainId:'d1'});
