@@ -1,5 +1,6 @@
+import { showStorageRecovery } from '../ui/storage-recovery.js';
 import { state } from '../state.js';
-import { loadState } from '../storage.js';
+import { loadState, getStorageStatus } from '../storage.js';
 import adapter from '../storageAdapter.js';
 import { captureInbox, deleteInbox, undoDeleteInbox } from '../core/commands.js';
 import { getInboxItems } from '../features/inbox/model.js';
@@ -687,32 +688,8 @@ function restoreDraft() {
 }
 
 function init() {
-  let raw = null;
-  try {
-    raw = localStorage.getItem(adapter.key);
-  } catch (e) {
-    storageOk = false;
-    updateStatus('Локальное хранилище недоступно');
-    showToast('Новые записи временно не сохраняются.', 8000);
-    document.getElementById('btnSave').disabled = true;
-  }
-
-  if (raw && storageOk) {
-    try {
-      const ok = loadState();
-      if (!ok) {
-        storageOk = false;
-        updateStatus('Локальные данные Atlas не удалось прочитать');
-        showToast('Запись сохранена только как черновик.', 8000);
-        document.getElementById('btnSave').disabled = true;
-      }
-    } catch (e) {
-      storageOk = false;
-      updateStatus('Локальные данные Atlas не удалось прочитать');
-      showToast('Запись сохранена только как черновик.', 8000);
-      document.getElementById('btnSave').disabled = true;
-    }
-  }
+  loadState();
+  if (getStorageStatus().status === 'error') { showStorageRecovery(); return; }
 
   safeSetText(document.getElementById('version'), APP_VERSION);
   updateCounter();

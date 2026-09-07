@@ -77,7 +77,7 @@ adapter.save(JSON.stringify({ schema:5, domains:[], projects:[], tasks:[], inbox
 loadState();
 assert.deepEqual(state.knowledge, []);
 assert.equal(state.inbox[0].resultRef, undefined);
-assert.equal(JSON.parse(adapter.load()).schema, 6);
+assert.equal(JSON.parse(adapter.load()).schema, 7);
 assert.deepEqual(JSON.parse(adapter.load()).knowledge, []);
 // 0.12.0-alpha.2: editing and moving a material preserves identity.
 state.domains = [{ id:'d1', title:'Дом' }, { id:'d2', title:'Дача' }];

@@ -1,6 +1,7 @@
+import { showStorageRecovery } from './ui/storage-recovery.js';
 // js/app.js
-import { state, $, $$, initDemoData, normalizeTags } from "./state.js";
-import { loadState, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
+import { state, $, $$, normalizeTags } from "./state.js";
+import { loadState, getStorageStatus, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
   layoutMap,
@@ -394,158 +395,6 @@ function closeDomainMenu() {
 function onDocClick(e) {
   if (currentMenu && !currentMenu.contains(e.target)) closeDomainMenu();
 }
-/* legacy, unused */ function openDomainMenu_old(id, rowEl) {
-  closeDomainMenu();
-  const d = state.domains.find((x) => x.id === id);
-  const menu = document.createElement("div");
-  menu.className = "domenu";
-  menu.innerHTML = `
-    <div class="item" data-act="focus">Фокус</div>
-    <div class="item" data-act="rename">Переименовать</div>
-    <div class="item" data-act="color">Цвет</div>
-    <div class="palette" style="display:none">${palette
-      .map(
-        (c) => `<div class="dot" data-col="${c}" style="background:${c}"></div>`
-      )
-      .join("")}</div>
-    <div class="item" data-act="merge">Слить с…</div>
-    <div class="sep"></div>
-    <div class="item" data-act="delete" style="color:#ffd1d1">Удалить</div>
-  `;
-  rowEl.insertAdjacentElement("afterend", menu);
-  currentMenu = menu;
-  document.addEventListener("click", onDocClick, true);
-  menu.querySelectorAll(".item").forEach((it) => {
-    it.onclick = (e) => {
-      const act = it.dataset.act;
-      if (act === "focus") {
-        state.activeDomain = id;
-        layoutMap();
-        drawMap();
-        fitActiveDomain();
-        closeDomainMenu();
-        return;
-      }
-      if (act === "rename") {
-        const name = prompt("Новое имя домена:", d.title) || "";
-        const trimmed = name.trim();
-        if (!trimmed) return;
-        if (
-          state.domains.some(
-            (x) =>
-              x.id !== id && x.title.toLowerCase() === trimmed.toLowerCase()
-          )
-        ) {
-          alert("Такой домен уже есть");
-          return;
-        }
-        updateDomain(id, { title: trimmed }); // C3/W3: Core command + projection re-emit
-        requestSyncNow(); // C3: refreshed projections reach the phone immediately
-        renderSidebar();
-        layoutMap();
-        drawMap();
-        closeDomainMenu();
-        return;
-      }
-      if (act === "color") {
-        const pal = menu.querySelector(".palette");
-        pal.style.display = pal.style.display === "none" ? "flex" : "none";
-        pal.querySelectorAll(".dot").forEach((dot) => {
-          dot.onclick = () => {
-            d.color = dot.dataset.col;
-            d.updatedAt = Date.now();
-            saveState();
-            renderSidebar();
-            layoutMap();
-            drawMap();
-            closeDomainMenu();
-          };
-        });
-        return;
-      }
-      if (act === "merge") {
-        const others = state.domains.filter((x) => x.id !== id);
-        if (others.length === 0) {
-          alert("Нет других доменов для слияния");
-          return;
-        }
-        const body = `<label>Перенести проекты в:</label> <select id="selDom">${others
-          .map((o) => `<option value="${o.id}">${o.title}</option>`)
-          .join("")}</select>`;
-        openModal({
-          title: `Слить домен "${d.title}"`,
-          bodyHTML: body,
-          confirmText: "Слить",
-          onConfirm: (bodyEl) => {
-            const targetId = bodyEl.querySelector("#selDom").value;
-            const target = state.domains.find((x) => x.id === targetId);
-            if (!target || target.id === id) return;
-            state.projects.forEach((p) => {
-              if (p.domainId === id) p.domainId = target.id;
-            });
-            state.domains = state.domains.filter((x) => x.id !== id);
-            state.activeDomain = target.id;
-            saveState();
-            renderSidebar();
-            layoutMap();
-            drawMap();
-            fitActiveDomain();
-            closeDomainMenu();
-          },
-        });
-        return;
-      }
-      if (act === "delete") {
-        if (state.domains.length <= 1) {
-          alert("Нельзя удалить последний домен");
-          return;
-        }
-        const others = state.domains.filter((x) => x.id !== id);
-        const body = `
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <label><input type="radio" name="mode" value="move" checked/> Перенести проекты в:</label>
-            <select id="selDom">${others
-              .map((o) => `<option value="${o.id}">${o.title}</option>`)
-              .join("")}</select>
-            <label><input type="radio" name="mode" value="delete"/> Удалить вместе с проектами и задачами</label>
-          </div>`;
-        openModal({
-          title: `Удалить домен "${d.title}"?`,
-          bodyHTML: body,
-          confirmText: "Удалить",
-          onConfirm: (bodyEl) => {
-            const mode = bodyEl.querySelector(
-              'input[name="mode"]:checked'
-            ).value;
-            if (mode === "move") {
-              const targetId = bodyEl.querySelector("#selDom").value;
-              state.projects.forEach((p) => {
-                if (p.domainId === id) p.domainId = targetId;
-              });
-            } else {
-              const projIds = state.projects
-                .filter((p) => p.domainId === id)
-                .map((p) => p.id);
-              state.tasks = state.tasks.filter(
-                (t) => !projIds.includes(t.projectId)
-              );
-              state.projects = state.projects.filter((p) => p.domainId !== id);
-            }
-            state.domains = state.domains.filter((x) => x.id !== id);
-            state.activeDomain = state.domains[0]?.id || null;
-            saveState();
-            renderSidebar();
-            layoutMap();
-            drawMap();
-            closeDomainMenu();
-          },
-        });
-      }
-    };
-  });
-}
-
-// Enhanced menu with friendly flows + toasts
 function openDomainMenuX(id, rowEl) {
   closeDomainMenu();
   const d = state.domains.find((x) => x.id === id);
@@ -792,6 +641,7 @@ function setupHeader() {
 
   // export/import
   $("#btnExport").onclick = () => exportJson();
+  $("#btnRecovery").onclick = () => showStorageRecovery({ maintenance:true });
   const fileInput = $("#fileImport");
   fileInput.onchange = async (e) => {
     if (!e.target.files || !e.target.files[0]) return;
@@ -1156,7 +1006,7 @@ async function init() {
     openInspectorFor({ _type: 'knowledge-library' });
   };
   const ok = loadState();
-  if (!ok) initDemoData();
+  if (!ok && getStorageStatus().status === 'error') { showStorageRecovery(); return; }
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
   if (brandEl) brandEl.textContent = APP_LABEL;

@@ -5,7 +5,7 @@ const KEY = 'atlas_v2_data';
 
 const localStorageAdapter = {
   load(){
-    try{ return localStorage.getItem(KEY); }catch(_){ return null }
+    return localStorage.getItem(KEY);
   },
   save(text){
     localStorage.setItem(KEY, text);
