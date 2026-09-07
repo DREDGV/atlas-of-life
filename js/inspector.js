@@ -47,6 +47,7 @@ import {
 } from "./core/commands.js";
 import { renderToday } from "./view_today.js";
 import { getVisibleDomainIds } from "./ui/map-session.js";
+import { appendKnowledgeActions } from './features/knowledge/actions.js';
 
 function forInspector(obj, type) {
   return obj ? { ...obj, _type: type } : null;
@@ -71,6 +72,10 @@ function inspectorHeading(kind, title, path) {
 
 const escapeKnowledge = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
 const materialKind = item => item.kind === 'thought' ? 'Мысль' : 'Заметка';
+const materialDrafts = new Map();
+if (typeof window !== 'undefined') window.addEventListener('beforeunload', event => {
+  if (materialDrafts.size) { event.preventDefault(); event.returnValue=''; }
+});
 function materialLocation(item){
   const project = state.projects.find(entry => entry.id === item.projectId);
   const domain = state.domains.find(entry => entry.id === (project?.domainId || item.domainId));
@@ -139,79 +144,8 @@ export function openInspectorFor(obj) {
   }
   const type = obj._type;
   if (type === 'knowledge-library') {
-    ins.innerHTML = `${inspectorHeading('Материалы', 'Мысли и заметки', [])}<div class="hint">Мысли — идеи для развития. Заметки — сведения, к которым можно вернуться.</div>`;
-    const tools = document.createElement('div');
-    tools.className = 'knowledge-library-tools';
-    const search = document.createElement('input');
-    search.type = 'search';
-    search.placeholder = 'Поиск по тексту…';
-    search.setAttribute('aria-label', 'Поиск по мыслям и заметкам');
-    const filters = document.createElement('div');
-    filters.className = 'knowledge-filter';
-    const list = document.createElement('div');
-    list.className = 'inspector-materials';
-    tools.append(search, filters);
-    ins.append(tools, list);
-
-    let activeFilter = 'all';
-    const filterDefs = [['all', 'Все'], ['thought', 'Мысли'], ['note', 'Заметки'], ['none', 'Без контекста']];
-    const filterButtons = new Map();
-    filterDefs.forEach(([value, label]) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn' + (value === 'all' ? ' primary' : '');
-      button.textContent = label;
-      button.onclick = () => {
-        activeFilter = value;
-        filterButtons.forEach((btn, key) => btn.classList.toggle('primary', key === value));
-        renderList();
-      };
-      filterButtons.set(value, button);
-      filters.append(button);
-    });
-
-    const matches = item => {
-      const query = search.value.trim().toLowerCase();
-      if (query) {
-        const haystack = `${item.title}\n${item.text}\n${materialKind(item)}\n${materialLocation(item)}`.toLowerCase();
-        if (!haystack.includes(query)) return false;
-      }
-      if (activeFilter === 'thought' && item.kind !== 'thought') return false;
-      if (activeFilter === 'note' && item.kind !== 'note') return false;
-      if (activeFilter === 'none' && (item.projectId || item.domainId)) return false;
-      return true;
-    };
-
-    const renderList = () => {
-      list.replaceChildren();
-      const items = state.knowledge.filter(matches);
-      const heading = document.createElement('h3');
-      heading.textContent = activeFilter === 'none'
-        ? `Без контекста · ${items.length}`
-        : `Найдено · ${items.length}`;
-      list.append(heading);
-      if (!items.length) {
-        const empty = document.createElement('p');
-        empty.className = 'hint';
-        empty.textContent = state.knowledge.length
-          ? 'Ничего не найдено. Измените поиск или фильтр.'
-          : 'Пока нет материалов. Сохраните мысль или заметку из Входящих, выбрав домен, проект или «Без контекста».';
-        list.append(empty);
-        return;
-      }
-      items.forEach(item => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'card inspector-card-button';
-        button.dataset.knowledgeId = item.id;
-        button.innerHTML = `<div class="meta">${materialKind(item)} · ${escapeKnowledge(materialLocation(item))}</div><strong>${escapeKnowledge(item.title)}</strong>`;
-        button.onclick = () => openInspectorFor({ ...item, _type: 'knowledge' });
-        list.append(button);
-      });
-    };
-
-    search.addEventListener('input', renderList);
-    renderList();
+    if (state.view !== 'knowledge') document.querySelector('.chip[data-view="knowledge"]')?.click();
+    ins.innerHTML = `${inspectorHeading('Библиотека', 'От идеи к действию', [])}<p class="hint">Выберите карточку, чтобы прочитать или изменить материал. Здесь же можно создать связанную задачу.</p><div class="knowledge-reading-note">Материал хранит смысл и контекст.<br>Задача — следующий конкретный шаг.</div>`;
     return;
   }
   if (type === "knowledge") {
@@ -241,23 +175,38 @@ export function openInspectorFor(obj) {
     const domainSelect = ins.querySelector("#knowledgeDomain");
     const projectSelect = ins.querySelector("#knowledgeProject");
     const errorHint = ins.querySelector("#knowledgeError");
-    textInput.value = item.text || "";
+    const draft = materialDrafts.get(item.id);
+    textInput.value = draft ? draft.text : item.text || "";
+    if (draft) errorHint.textContent = 'Есть несохранённые правки этой сессии';
 
     const fillDomainOptions = () => {
       domainSelect.replaceChildren(new Option("Без контекста", ""));
       state.domains.forEach(domain => domainSelect.appendChild(new Option(domain.title, domain.id)));
-      domainSelect.value = currentDomainId || "";
+      domainSelect.value = (draft ? draft.domainId : currentDomainId) || "";
     };
     const fillProjectOptions = () => {
       projectSelect.replaceChildren(new Option("Без проекта", ""));
       const domainId = domainSelect.value;
       state.projects.filter(project => project.domainId === domainId)
         .forEach(project => projectSelect.appendChild(new Option(project.title, project.id)));
-      projectSelect.value = (item.projectId && state.projects.some(project => project.id === item.projectId && project.domainId === domainId)) ? item.projectId : "";
+      const selectedProject = draft ? draft.projectId : item.projectId;
+      projectSelect.value = (selectedProject && state.projects.some(project => project.id === selectedProject && project.domainId === domainId)) ? selectedProject : "";
     };
     fillDomainOptions();
     fillProjectOptions();
     domainSelect.addEventListener("change", fillProjectOptions);
+    const rememberDraft = () => {
+      materialDrafts.set(item.id, { text:textInput.value, domainId:domainSelect.value || null,
+        projectId:projectSelect.value || null, baseVersion:draft?.baseVersion ?? item.updatedAt });
+      errorHint.textContent = 'Есть несохранённые правки этой сессии';
+    };
+    textInput.addEventListener('input', rememberDraft);
+    domainSelect.addEventListener('change', rememberDraft);
+    projectSelect.addEventListener('change', rememberDraft);
+    const discard = document.createElement('button'); discard.type='button'; discard.className='btn'; discard.textContent='Отменить правки';
+    discard.onclick=()=>{materialDrafts.delete(item.id);openInspectorFor({...state.knowledge.find(entry=>entry.id===item.id),_type:'knowledge'});};
+    ins.querySelector('#saveKnowledge').after(discard);
+    appendKnowledgeActions(ins, item, task => openInspectorFor({ ...task, _type:'task' }));
 
     ins.querySelector("#saveKnowledge").onclick = () => {
       try {
@@ -266,8 +215,9 @@ export function openInspectorFor(obj) {
         const domainId = projectId
           ? (state.projects.find(project => project.id === projectId)?.domainId ?? null)
           : (domainSelect.value || null);
-        const result = updateKnowledge(item.id, { text, projectId, domainId });
+        const result = updateKnowledge(item.id, { text, projectId, domainId }, { expectedUpdatedAt:materialDrafts.get(item.id)?.baseVersion ?? item.updatedAt });
         if (!result) return;
+        materialDrafts.delete(item.id);
         drawMap();
         const updated = state.knowledge.find(entry => entry.id === item.id);
         openInspectorFor({ ...updated, _type: "knowledge" });
@@ -282,8 +232,9 @@ export function openInspectorFor(obj) {
     };
     ins.querySelector("#materialRevert")?.addEventListener("click", async () => {
       try {
+        if (materialDrafts.has(item.id)) throw new Error('Сначала сохраните или отмените правки материала');
         const result = revertInboxRoute(source.id);
-        if (result?.refused) { window.showToast?.('Материал изменён — автоматический возврат небезопасен', 'warn'); return; }
+        if (result?.refused) { window.showToast?.(result.reason === 'knowledge-has-tasks' ? 'У материала есть связанные задачи — автоматический возврат небезопасен' : 'Материал изменён — автоматический возврат небезопасен', 'warn'); return; }
         requestSyncNow();
         openInspectorFor(null);
         const { openProcessingItem } = await import("./features/inbox/view.js");
@@ -470,15 +421,15 @@ export function openInspectorFor(obj) {
     const taskDomainId = obj.domainId || taskProject?.domainId;
     const taskDomain = taskDomainId ? byId(state.domains, taskDomainId) : null;
     ins.innerHTML = `
-      ${inspectorHeading("Задача", obj.title, [
-        taskDomain?.title || "Без домена",
-        taskProject?.title || "Без проекта",
-        obj.title,
+      ${inspectorHeading("Задача", escapeKnowledge(obj.title), [
+        escapeKnowledge(taskDomain?.title || "Без домена"),
+        escapeKnowledge(taskProject?.title || "Без проекта"),
+        escapeKnowledge(obj.title),
       ])}
-      <div class="kv">Проект: ${taskProject?.title || 'Без проекта'}</div>
-      <div class="kv">Домен: ${taskDomain?.title || (taskDomainId ? 'Неизвестный домен' : 'Без домена')}</div>
+      <div class="kv">Проект: ${escapeKnowledge(taskProject?.title || 'Без проекта')}</div>
+      <div class="kv">Домен: ${escapeKnowledge(taskDomain?.title || (taskDomainId ? 'Неизвестный домен' : 'Без домена'))}</div>
       ${obj.sourceInboxId ? `<div class="kv">Источник: Входящие</div>` : ''}
-      <div class="kv">Теги: #${normalizeTags(obj.tags).join(" #") || "-"}</div>
+      <div class="kv">Теги: #${escapeKnowledge(normalizeTags(obj.tags).join(" #") || "-")}</div>
       ${obj.due ? `<div class="kv">Срок: ${obj.due.date}${obj.due.time ? ` · ${obj.due.time}` : ""}</div>` : ""}
       <div class="kv">Статус: ${statusPill(obj.status)} · обновл.: ${daysSince(
       obj.updatedAt
@@ -582,4 +533,14 @@ export function openInspectorFor(obj) {
     }catch(_){ }
   }
   if (["domain", "project"].includes(type)) appendMaterials(ins, obj);
+  if (type === 'task' && obj.sourceKnowledgeId) {
+    const material = state.knowledge.find(item => item.id === obj.sourceKnowledgeId);
+    const section = document.createElement('section'); section.className='knowledge-actions';
+    const title = document.createElement('h3'); title.textContent='Материал-источник'; section.append(title);
+    if (material) {
+      const link = document.createElement('button'); link.type='button'; link.className='knowledge-task-link'; link.textContent=material.title;
+      link.onclick=()=>openInspectorFor({...material,_type:'knowledge'}); section.append(link);
+    } else { const hint=document.createElement('p'); hint.className='hint'; hint.textContent='Источник недоступен в этом Atlas'; section.append(hint); }
+    ins.append(section);
+  }
 }

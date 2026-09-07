@@ -59,8 +59,8 @@ try {
   // --- Library search finds the edited material. ---
   await page.locator('#btnKnowledge').click();
   await page.getByLabel('Поиск по мыслям и заметкам').fill('обновлена');
-  await waitFor(async () => (await page.locator('#inspector [data-knowledge-id]').count()) === 1, { label: 'search finds one material' });
-  await page.locator('#inspector [data-knowledge-id]').click();
+  await waitFor(async () => (await page.locator('#viewKnowledge [data-knowledge-id]').count()) === 1, { label: 'search finds one material' });
+  await page.locator('#viewKnowledge [data-knowledge-id]').click();
   assert.match(await page.locator('#inspector').innerText(), /Мысль про теплицу обновлена/);
 
   // --- Reload: the same object with the same id persists. ---
@@ -94,14 +94,14 @@ try {
   // --- "Без контекста": move the thought there, then the filter shows it. ---
   await page.locator('#btnKnowledge').click();
   await page.getByLabel('Поиск по мыслям и заметкам').fill('обновлена');
-  await waitFor(async () => (await page.locator('#inspector [data-knowledge-id]').count()) === 1, { label: 'search thought again' });
-  await page.locator('#inspector [data-knowledge-id]').click();
+  await waitFor(async () => (await page.locator('#viewKnowledge [data-knowledge-id]').count()) === 1, { label: 'search thought again' });
+  await page.locator('#viewKnowledge [data-knowledge-id]').click();
   await page.locator('#knowledgeDomain').selectOption('');
   await page.locator('#saveKnowledge').click();
   await page.locator('#btnKnowledge').click();
   await page.getByRole('button', { name: 'Без контекста', exact: true }).click();
-  await waitFor(async () => (await page.locator('#inspector [data-knowledge-id]').count()) === 1, { label: 'no-context filter shows one' });
-  assert.match(await page.locator('#inspector').innerText(), /Без контекста · 1/);
+  await waitFor(async () => (await page.locator('#viewKnowledge [data-knowledge-id]').count()) === 1, { label: 'no-context filter shows one' });
+  assert.equal(await page.locator('#viewKnowledge [data-knowledge-id]').getAttribute('data-knowledge-id'), thought.id);
 
   assert.deepEqual(errors, []);
   await page.screenshot({ path: 'output/playwright/knowledge-usability.png' });

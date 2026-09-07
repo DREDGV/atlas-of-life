@@ -496,6 +496,7 @@ function buildLinkedResult(item, task){
         setDomainVisible(domainId, true, state.domains);
       }
       state.view = 'map';
+      window.renderKnowledge?.();
       const canvasEl = document.getElementById('canvas');
       const todayEl = document.getElementById('viewToday');
       if (canvasEl) canvasEl.style.display = 'block';
