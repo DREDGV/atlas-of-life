@@ -23,6 +23,10 @@ export const state = {
   maxEdges:300
 };
 
+// Day planning: the explicit Focus of a day holds at most this many tasks.
+// Independent from `wipLimit` (which caps the map's "doing" work-in-progress).
+export const FOCUS_LIMIT = 3;
+
 export const now = Date.now();
 export const days = d => now - d*24*3600*1000;
 

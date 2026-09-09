@@ -445,6 +445,7 @@ I18N/UX
 
 ## [Unreleased]
 
+- feat(today): day plan foundation — plannedDay, Focus ≤3, rollover остатка (0.13.0-alpha.1)
 - feat(knowledge): edit/move materials in Inspector, library search + «Без контекста» (0.12.0-alpha.2)
 ### Added
 - Storage migrations and adapter layer.
