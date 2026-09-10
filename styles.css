@@ -169,6 +169,25 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .todo .handle{opacity:.5;cursor:grab}
 .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel-2);border:1px solid var(--panel-2);padding:1px 6px;border-radius:6px;font-size:12px;color:var(--text)}
 .hint{color:var(--muted);font-size:12px}
+/* Deadline urgency reads the same in every surface: the map tooltip, the
+   Inspector and Today. Colour is never the only carrier — the text says
+   «Срок истёк» — and the Focus of the day has its own quiet mark. */
+.tooltip .hint.is-overdue,.kv-overdue{color:var(--danger)}
+.kv-overdue{font-weight:600}
+.tooltip .focus-mark{color:#67e8f9;font-size:11px;font-weight:600}
+/* «Вид карты» explains the orb vocabulary instead of leaving it to be guessed. */
+.map-orb-legend{display:grid;gap:5px;max-width:260px}
+.map-orb-legend>span{display:flex;align-items:center;gap:7px;min-height:16px}
+.map-orb-legend>span>.orb-mark{flex:0 0 16px}
+.orb-mark{position:relative;flex:0 0 auto;width:14px;height:14px;border-radius:50%}
+.orb-mark.orb-size{background:#9ca3af;width:11px;height:11px;box-shadow:7px 0 0 -3px #9ca3af}
+.orb-mark.orb-overdue{border:2px solid var(--danger);background:rgba(248,113,113,.25)}
+.orb-mark.orb-focus::before,.orb-mark.orb-focus::after{content:"";position:absolute;inset:50% auto auto 50%;background:#67e8f9;transform:translate(-50%,-50%)}
+.orb-mark.orb-focus::before{width:16px;height:1.5px}
+.orb-mark.orb-focus::after{width:1.5px;height:16px}
+.orb-mark.orb-focus{background:#9ca3af;width:8px;height:8px}
+.orb-mark.orb-doing{border:1.5px dashed var(--accent);background:#9ca3af}
+.orb-mark.orb-age{background:#9ca3af;box-shadow:0 -6px 0 -3px var(--ok)}
 .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:50}
 .modal .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.5)}
 .modal .box{position:relative;z-index:1;min-width:300px;max-width:90vw;background:var(--panel);border:1px solid var(--panel-2);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:12px}

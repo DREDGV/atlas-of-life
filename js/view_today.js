@@ -1,7 +1,8 @@
 import { state, FOCUS_LIMIT } from './state.js';
 import { updateTask } from './core/commands.js';
 import { requestSyncNow } from './sync/runtime.js';
-import { todayGroups, dueDay, localDay, plannedDayOf } from './features/today/model.js';
+import { todayGroups, localDay, plannedDayOf, dueLabel } from './features/today/model.js';
+import { formatDay } from './ui/status-language.js';
 
 export function renderToday(){
   const wrap = document.getElementById('viewToday');
@@ -29,12 +30,13 @@ export function renderToday(){
     const context = state.projects.find(project => project.id === task.projectId);
     const domain = state.domains.find(domain => domain.id === (context?.domainId || task.domainId));
     const meta = document.createElement('div'); meta.className = 'hint';
-    const due = dueDay(task);
+    const today = localDay();
     const parts = [domain?.title, context?.title];
     if (task.status === 'doing') parts.push('В работе');
-    if (kind === 'leftover') parts.push(`Было запланировано: ${plannedDayOf(task)}`);
-    if (due) parts.push(`${due < localDay() && task.status !== 'done' ? 'Срок истёк' : 'Срок'}: ${due}${task.due?.time ? ' ' + task.due.time : ''}`);
-    meta.textContent = parts.filter(Boolean).join(' · ') || 'Без срока';
+    if (kind === 'leftover') parts.push(`Было запланировано: ${formatDay(plannedDayOf(task), today) ?? plannedDayOf(task)}`);
+    const deadline = dueLabel(task, today);
+    if (deadline) parts.push(deadline);
+    meta.textContent = parts.filter(Boolean).join(' · ') || 'Без контекста и срока';
     content.append(open, meta); item.append(content);
     for (const [label, patch] of actions) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'btn'; button.textContent = label;

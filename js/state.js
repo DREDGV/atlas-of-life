@@ -1,4 +1,6 @@
 // js/state.js
+import { statusLabel } from './ui/status-language.js';
+
 export const state = {
   view:'map',
   showLinks:true, showAging:true, showGlow:true,
@@ -82,13 +84,19 @@ export function colorByAging(ts){
   if (d<=14) return '#f59e0b';
   return '#ff6b6b';
 }
+// Orb size is a first visual channel, so it must say something the other
+// channels do not: how much attention the task deserves (priority/impact) and
+// how big the piece of work is (estimate). A tiny low-priority task and a large
+// high-priority one used to differ by 4 px and read as identical dots.
 export function sizeByImportance(item){
-  const pr = (item.priority||2), impact = (item.impact||2);
-  const base = 6 + (pr-1)*2 + (impact-2);
-  return clamp(base,6,14);
+  const priority = Number(item?.priority) || 2;
+  const impact = Number(item?.impact) || 2;
+  const priorityPart = (clamp(priority, 1, 4) - 1) * 1.6;   // 0 .. 4.8
+  const impactPart = clamp((impact - 2) * 1.1, -1.1, 1.1);  // -1.1 .. 1.1
+  const estimatePart = Math.sqrt(clamp(Number(item?.estimateMin) || 0, 0, 240) / 240) * 3.6;
+  return clamp(6.2 + priorityPart + impactPart + estimatePart, 6, 14);
 }
 export function statusPill(s){
-  const map = {today:'Сегодня', doing:'В работе', done:'Готово', backlog:'Бэклог'};
   const cls = `status-pill ${s==='today'?'today': s==='doing'?'doing': s==='done'?'done':''}`;
-  return `<span class="${cls}">${map[s]||s}</span>`;
+  return `<span class="${cls}">${statusLabel(s)}</span>`;
 }

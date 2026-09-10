@@ -14,6 +14,7 @@ const PRECACHE_ASSETS = [
   '../js/capture/share-target.js',
   '../js/capture/voice.js',
   '../js/state.js',
+  '../js/ui/status-language.js',
   '../js/storage.js',
   '../js/ui/storage-recovery.js',
   '../js/storageAdapter.js',

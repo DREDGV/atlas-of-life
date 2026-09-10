@@ -1,5 +1,10 @@
 // A due date is a deadline, never an implicit decision to work on a task.
 // A planned day is the calendar day a task was explicitly selected for.
+//
+// Display language (statuses, day labels, deadline sentences) lives in
+// `js/ui/status-language.js`, shared with the map and the Inspector.
+import { deadlineLabel, deadlineState } from '../../ui/status-language.js';
+
 export function localDay(value = new Date()){
   const date = new Date(value);
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -15,6 +20,15 @@ export function isLeftover(task, day){
   const planned = plannedDayOf(task);
   return planned !== null && planned < day && task.status !== 'done';
 }
+
+// Today's screens keep their own vocabulary, but the wording is shared.
+export function dueState(task, today = localDay()){
+  return deadlineState(task, today);
+}
+export function dueLabel(task, today = localDay()){
+  return deadlineLabel(task, today);
+}
+
 const byPriority = (a,b) => (a.priority || 2) - (b.priority || 2);
 export function todayGroups(tasks, now = new Date()){
   const day = localDay(now);
