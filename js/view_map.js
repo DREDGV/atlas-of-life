@@ -234,10 +234,185 @@ let lowFrames = 0,
   highFrames = 0;
 let showFps = false;
 
+// Hit areas and keyboard focus.
+// An orb is drawn as small as 12 CSS px at 100% zoom, which is unclickable in
+// practice, so the pointer target has a floor in CSS pixels and grows with the
+// orb as the user zooms in. Keyboard focus is a separate index into the visible
+// tasks, because a canvas cannot expose its nodes through the DOM.
+const MIN_HIT_CSS = 26;
+let kbdIndex = -1;
+let kbdNodeId = null;
+let liveRegionEl = null;
+
+function hitSlop(node) {
+  const minWorld = (MIN_HIT_CSS * DPR) / Math.max(0.2, viewState.scale);
+  return node._type === "task" ? Math.max(minWorld, node.r * 0.6) : 0;
+}
+
+function announce(message) {
+  if (!liveRegionEl || !message) return;
+  liveRegionEl.textContent = message;
+}
+
+// Visible-world bounds, shared by the renderer and by keyboard navigation
+// (which must never walk into off-screen tasks).
+function viewportRect() {
+  const inv = 1 / Math.max(0.0001, viewState.scale);
+  const pad = 120 * inv;
+  return {
+    x0: -viewState.tx * inv - pad,
+    y0: -viewState.ty * inv - pad,
+    x1: (W - viewState.tx) * inv + pad,
+    y1: (H - viewState.ty) * inv + pad,
+  };
+}
+
+function nodeInView(x, y, r = 0) {
+  const view = viewportRect();
+  return x + r > view.x0 && x - r < view.x1 && y + r > view.y0 && y - r < view.y1;
+}
+
+// Order used by Tab / arrow navigation: the same order the eye reads the map
+// in, so keyboard movement stays predictable.
+function keyboardTasks() {
+  return nodes
+    .filter((n) => n._type === "task" && nodeInView(n.x, n.y, n.r + 24 * DPR))
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+function focusTaskNode(node, { reveal = true } = {}) {
+  if (!node) return;
+  let list = keyboardTasks();
+  if (!list.length) return;
+  kbdNodeId = node.id;
+  kbdIndex = Math.max(0, list.findIndex((n) => n.id === node.id));
+  const task = state.tasks.find((t) => t.id === node.id);
+  if (task) {
+    try { openInspectorFor({ ...task, _type: "task" }); } catch (_) {}
+    const deadline = dueLabel(task);
+    announce(
+      `${task.title}. ${statusLabel(task.status)}${deadline ? `. ${deadline}` : ""}. ` +
+      `Задача ${kbdIndex + 1} из ${list.length}.`
+    );
+  }
+  if (reveal) {
+    const x = node.x * viewState.scale + viewState.tx;
+    const y = node.y * viewState.scale + viewState.ty;
+    const margin = 70 * DPR;
+    if (x < margin || y < margin || x > W - margin || y > H - margin) {
+      try { fitTask(node.id); } catch (_) {}
+    }
+  }
+  requestDraw();
+}
+
+function moveKeyboardFocus(step) {
+  const list = keyboardTasks();
+  if (!list.length) {
+    announce("На карте нет задач");
+    return;
+  }
+  if (kbdNodeId) {
+    const current = list.findIndex((n) => n.id === kbdNodeId);
+    if (current >= 0) kbdIndex = current;
+  }
+  const next = (kbdIndex + step + list.length * 2) % list.length;
+  focusTaskNode(list[next], { reveal: false });
+  const node = list[next];
+  const x = node.x * viewState.scale + viewState.tx;
+  const y = node.y * viewState.scale + viewState.ty;
+  const margin = 70 * DPR;
+  if (x < margin || y < margin || x > W - margin || y > H - margin) {
+    try { fitTask(node.id); } catch (_) {}
+  }
+}
+
+function onKeyDown(e) {
+  const list = keyboardTasks();
+  if (!list.length) return;
+  switch (e.key) {
+    case "Tab": {
+      // Tab enters the map on the first task and leaves from the last one; the
+      // map never traps focus.
+      if (e.shiftKey) {
+        if (kbdNodeId && kbdIndex <= 0) {
+          kbdNodeId = null;
+          kbdIndex = -1;
+          requestDraw();
+          return; // let the browser move focus back out
+        }
+        e.preventDefault();
+        if (!kbdNodeId) { kbdIndex = list.length; }
+        moveKeyboardFocus(-1);
+      } else {
+        if (kbdNodeId && kbdIndex >= list.length - 1) {
+          kbdNodeId = null;
+          kbdIndex = -1;
+          requestDraw();
+          return;
+        }
+        e.preventDefault();
+        if (!kbdNodeId) { kbdIndex = -1; }
+        moveKeyboardFocus(1);
+      }
+      return;
+    }
+    case "ArrowDown":
+    case "ArrowRight":
+      e.preventDefault();
+      moveKeyboardFocus(1);
+      return;
+    case "ArrowUp":
+    case "ArrowLeft":
+      e.preventDefault();
+      moveKeyboardFocus(-1);
+      return;
+    case "Home":
+      e.preventDefault();
+      kbdIndex = -1;
+      moveKeyboardFocus(1);
+      return;
+    case "End":
+      e.preventDefault();
+      kbdIndex = list.length - 2;
+      moveKeyboardFocus(1);
+      return;
+    case "Enter":
+    case " ": {
+      const node = list.find((n) => n.id === kbdNodeId) || list[0];
+      if (!node) return;
+      e.preventDefault();
+      focusTaskNode(node);
+      return;
+    }
+    case "Escape":
+      kbdNodeId = null;
+      kbdIndex = -1;
+      announce("");
+      requestDraw();
+      return;
+    default:
+      return;
+  }
+}
+
 export function initMap(canvasEl, tooltipEl) {
   canvas = canvasEl;
   tooltip = tooltipEl;
   emptyStateEl = document.getElementById("mapEmpty");
+  // Keyboard and screen-reader access: the canvas itself cannot be read, so it
+  // is focusable, labelled, and announces the focused task through a live
+  // region while the Inspector shows the same object.
+  canvas.setAttribute("tabindex", "0");
+  canvas.setAttribute("role", "application");
+  canvas.setAttribute("aria-label", "Карта жизни: домены, проекты и задачи. Стрелки — перемещение по задачам, Enter — открыть в инспекторе.");
+  liveRegionEl = document.getElementById("mapLiveRegion");
+  canvas.addEventListener("keydown", onKeyDown);
+  canvas.addEventListener("blur", () => {
+    kbdNodeId = null;
+    kbdIndex = -1;
+    requestDraw();
+  });
   const emptyAddButton = document.getElementById("mapEmptyAddDomain");
   if (emptyAddButton) {
     emptyAddButton.onclick = () => {
@@ -1275,6 +1450,17 @@ export function drawMap() {
         ctx.stroke();
       }
     }
+    // Keyboard focus must be visible: the orb the arrows landed on gets a
+    // distinct ring, so the canvas never moves focus invisibly.
+    if (kbdNodeId === n.id) {
+      ctx.beginPath();
+      ctx.strokeStyle = "#a5f3fc";
+      ctx.lineWidth = css(2);
+      ctx.setLineDash([css(3), css(2.5)]);
+      ctx.arc(n.x, n.y, n.r + css(10), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     if (n.status === "done" && n.r * viewState.scale >= 7) {
       ctx.beginPath();
       ctx.strokeStyle = "rgba(255,255,255,0.92)";
@@ -1515,6 +1701,7 @@ export function getLayoutSnapshot() {
     scale: viewState.scale,
     tx: viewState.tx,
     ty: viewState.ty,
+    keyboardFocusId: kbdNodeId,
     size: { width: W || 0, height: H || 0, dpr: DPR || 1 },
   };
 }
@@ -1536,7 +1723,7 @@ function hit(x, y) {
       dy = y - n.y;
     const rr =
       n._type === "task"
-        ? n.r + 6 * DPR
+        ? n.r + hitSlop(n)
         : n._type === "project"
         ? n.r + 10 * DPR
         : n.r;
@@ -1556,7 +1743,7 @@ function hitExcluding(x, y, ignoreId) {
       dy = y - n.y;
     const rr =
       n._type === "task"
-        ? n.r + 6 * DPR
+        ? n.r + hitSlop(n)
         : n._type === "project"
         ? n.r + 10 * DPR
         : n.r;
@@ -2375,6 +2562,28 @@ function openMoveTaskModal(task, targetDomainId, dropPosition = null) {
   });
 }
 
+// Fit the camera around one packed group and its tasks. Shared by the group
+// click and the project double-click.
+function fitMembers(members) {
+  if (!members.length) return false;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  members.forEach((m) => {
+    minX = Math.min(minX, m.x - m.r);
+    minY = Math.min(minY, m.y - m.r);
+    maxX = Math.max(maxX, m.x + m.r);
+    maxY = Math.max(maxY, m.y + m.r);
+  });
+  fitToBBox({ minX, minY, maxX, maxY });
+  return true;
+}
+
+export function fitGroup(groupId) {
+  const group = nodes.find((n) => n._type === "unassigned" && n.id === groupId);
+  if (!group) return;
+  const members = [group, ...nodes.filter((n) => n._type === "task" && n.groupId === groupId)];
+  fitMembers(members);
+}
+
 function onDblClick(e) {
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
@@ -2391,20 +2600,11 @@ function onDblClick(e) {
         (x._type === "task" &&
           state.tasks.find((t) => t.id === x.id)?.projectId === pId)
     );
-    if (members.length) {
-      let minX = Infinity,
-        minY = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity;
-      members.forEach((m) => {
-        minX = Math.min(minX, m.x - m.r);
-        minY = Math.min(minY, m.y - m.r);
-        maxX = Math.max(maxX, m.x + m.r);
-        maxY = Math.max(maxY, m.y + m.r);
-      });
-      fitToBBox({ minX, minY, maxX, maxY });
-      return;
-    }
+    if (fitMembers(members)) return;
+  }
+  if (n._type === "unassigned") {
+    fitGroup(n.id);
+    return;
   }
   if (n._type === "domain") {
     state.activeDomain = n.id;
@@ -2433,7 +2633,10 @@ function onClick(e) {
     const obj = state.projects.find((p) => p.id === n.id);
     openInspectorFor({ ...obj, _type: "project" });
   } else if (n._type === "unassigned") {
+    // A packed group is a doorway, not a dead end: one click zooms into its
+    // members, which is the only way to reach a task hidden behind the counter.
     openInspectorFor({ ...n, _type: "unassigned" });
+    fitGroup(n.id);
   } else {
     const obj = state.domains.find((d) => d.id === n.id);
     state.activeDomain = n.id;
