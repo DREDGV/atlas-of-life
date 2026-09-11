@@ -79,6 +79,10 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .tag{font-size:12px;border:1px solid var(--panel-2);padding:3px 8px;border-radius:999px;color:var(--muted)}
 .tag.active{border-color:var(--accent);color:var(--text)}
 #canvasWrap{position:relative;background:radial-gradient(1200px 600px at 60% -100px, var(--gradient-1), var(--gradient-2) 60%, var(--gradient-3) 100%);height:100%}
+/* The map is reachable from the keyboard: the canvas is focusable, and the
+   focused orb gets a dashed ring (drawn in js/view_map.js) plus this outline. */
+#canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 canvas{display:block;width:100%;height:100%}
 .tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--panel-2);padding:6px 8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);color:var(--text);font-size:12px;opacity:0;transform:translate(-50%,-130%);white-space:nowrap}
 /* Empty map state: shown instead of a blank gradient when there are no domains */
@@ -169,6 +173,25 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .todo .handle{opacity:.5;cursor:grab}
 .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel-2);border:1px solid var(--panel-2);padding:1px 6px;border-radius:6px;font-size:12px;color:var(--text)}
 .hint{color:var(--muted);font-size:12px}
+/* Deadline urgency reads the same in every surface: the map tooltip, the
+   Inspector and Today. Colour is never the only carrier — the text says
+   «Срок истёк» — and the Focus of the day has its own quiet mark. */
+.tooltip .hint.is-overdue,.kv-overdue{color:var(--danger)}
+.kv-overdue{font-weight:600}
+.tooltip .focus-mark{color:#67e8f9;font-size:11px;font-weight:600}
+/* «Вид карты» explains the orb vocabulary instead of leaving it to be guessed. */
+.map-orb-legend{display:grid;gap:5px;max-width:260px}
+.map-orb-legend>span{display:flex;align-items:center;gap:7px;min-height:16px}
+.map-orb-legend>span>.orb-mark{flex:0 0 16px}
+.orb-mark{position:relative;flex:0 0 auto;width:14px;height:14px;border-radius:50%}
+.orb-mark.orb-size{background:#9ca3af;width:11px;height:11px;box-shadow:7px 0 0 -3px #9ca3af}
+.orb-mark.orb-overdue{border:2px solid var(--danger);background:rgba(248,113,113,.25)}
+.orb-mark.orb-focus::before,.orb-mark.orb-focus::after{content:"";position:absolute;inset:50% auto auto 50%;background:#67e8f9;transform:translate(-50%,-50%)}
+.orb-mark.orb-focus::before{width:16px;height:1.5px}
+.orb-mark.orb-focus::after{width:1.5px;height:16px}
+.orb-mark.orb-focus{background:#9ca3af;width:8px;height:8px}
+.orb-mark.orb-doing{border:1.5px dashed var(--accent);background:#9ca3af}
+.orb-mark.orb-age{background:#9ca3af;box-shadow:0 -6px 0 -3px var(--ok)}
 .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:50}
 .modal .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.5)}
 .modal .box{position:relative;z-index:1;min-width:300px;max-width:90vw;background:var(--panel);border:1px solid var(--panel-2);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:12px}

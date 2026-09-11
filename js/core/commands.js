@@ -1,4 +1,4 @@
-import { state, normalizeTags } from '../state.js';
+import { state, normalizeTags, FOCUS_LIMIT } from '../state.js';
 import { saveState, prepareState, replaceStoredState } from '../storage.js';
 import { appendOperation } from './operations.js';
 import { enqueueSyncOperation } from '../sync/outbox.js';
@@ -250,6 +250,21 @@ function normalizeTaskStatus(status){
   return normalized;
 }
 
+// Day planning (Today 2.0): `plannedDay` is the calendar day a task was
+// explicitly selected for. It is NOT `due` — the deadline stays independent
+// from the decision to work on a task today.
+function normalizePlannedDay(value){
+  if (value === null || value === undefined || value === '') return null;
+  const day = String(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('Неверный день планирования');
+  return day;
+}
+
+function plannedDayKey(now = Date.now()){
+  const date = new Date(now);
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
 // Priority is the existing 1..4 scale (1 = low … 4 = critical), matching the
 // quick-add parser `p1..p4` and `sizeByImportance`.
 function normalizePriority(value){
@@ -472,6 +487,9 @@ function routeInboxToTaskMutation(id, options){
     createdAt: now,
     updatedAt: now,
   };
+  // Day-plan invariant: a routed task created as `today`/`doing` is planned
+  // for the current calendar day.
+  if (task.status === 'today' || task.status === 'doing') task.plannedDay = plannedDayKey(now);
 
   // Destination uses the existing placement rules: validate domain, then let
   // applyTaskPlacement validate the project and derive the domain from it.
@@ -1283,6 +1301,9 @@ function createTaskMutation(input, options){
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
   };
+  // Day-plan invariant: a task created as `today`/`doing` is planned for the
+  // current calendar day. `due` is independent and stays untouched.
+  if (task.status === 'today' || task.status === 'doing') task.plannedDay = plannedDayKey(now);
   applyTaskPlacement(task, { projectId, domainId });
   if (input.sourceKnowledgeId) task.sourceKnowledgeId = input.sourceKnowledgeId;
   state.tasks.push(task);
@@ -1333,17 +1354,51 @@ function updateTaskMutation(taskId, patch, options){
   if (patch.projectId && !state.projects.some(project => project.id === patch.projectId)) throw new Error('Unknown target project');
   if (Object.hasOwn(patch, 'projectId')) changes.projectId = patch.projectId ?? null;
   if (Object.hasOwn(patch, 'domainId')) changes.domainId = patch.domainId ?? null;
+  if (Object.hasOwn(patch, 'plannedDay')) changes.plannedDay = normalizePlannedDay(patch.plannedDay);
+  if (Object.hasOwn(patch, 'focus')) changes.focus = patch.focus ? true : false;
+
+  // Day-plan invariant: the calendar day follows the work state unless the
+  // caller sets it explicitly (rollover carry sets plannedDay directly).
+  // `due` is never derived from or written by day-planning.
+  if (changes.status === 'today' || changes.status === 'doing') {
+    if (task.plannedDay == null && !Object.hasOwn(changes, 'plannedDay')) {
+      changes.plannedDay = plannedDayKey(options.now ?? Date.now());
+    }
+  }
+  if (changes.status === 'backlog') {
+    if (!Object.hasOwn(changes, 'plannedDay')) changes.plannedDay = null;
+    if (!Object.hasOwn(changes, 'focus')) changes.focus = false;
+  }
+  if (changes.status === 'done') {
+    if (!Object.hasOwn(changes, 'focus')) changes.focus = false;
+  }
 
   const comparable = Object.entries(changes).some(([key, value]) =>
     JSON.stringify(task[key] ?? null) !== JSON.stringify(value ?? null)
   );
   if (!comparable) return { task, before: snapshot(task), operation: null };
 
+  // Focus rules, validated before any mutation.
+  if (changes.focus === true && !task.focus) {
+    const day = changes.plannedDay ?? task.plannedDay ?? plannedDayKey(options.now ?? Date.now());
+    if (day !== plannedDayKey(options.now ?? Date.now())) {
+      throw new Error('В фокус можно взять только задачу, выбранную на сегодня');
+    }
+    const occupied = state.tasks.filter(item =>
+      item.focus === true && item.id !== task.id && (item.plannedDay ?? null) === day
+    ).length;
+    if (occupied >= FOCUS_LIMIT) {
+      throw new Error(`Фокус дня заполнен — максимум ${FOCUS_LIMIT} задачи`);
+    }
+  }
+
   const before = snapshot(task);
   Object.assign(task, changes);
   if (changes.status && changes.status !== before.status) {
     task.completedAt = changes.status === 'done' ? (options.now ?? Date.now()) : null;
   }
+  // Focus without a planned day is meaningless — drop it defensively.
+  if (task.focus === true && task.plannedDay == null) task.focus = false;
   if (Object.hasOwn(changes, 'projectId') && changes.projectId) {
     delete task.domainId;
   }

@@ -4,7 +4,7 @@ import adapter from './storageAdapter.js';
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
@@ -89,6 +89,12 @@ function normalizeKnowledge(entries){
     .map(({ _type, ...entry }) => ({ ...entry })) : [];
 }
 
+// Day planning migration helper: local calendar day of the migration moment.
+function plannedDayKey(now = Date.now()){
+  const date = new Date(now);
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
 const MIGRATIONS = [
   // 0 -> 1
   (data) => {
@@ -141,6 +147,21 @@ const MIGRATIONS = [
   data => ({ ...data, pendingSyncOperations: [] }),
   // 7 -> 8: material action provenance; older writers must not remove its source.
   data => ({ ...data }),
+  // 8 -> 9: day planning (Today 2.0). A legacy `today`/`doing` task is anchored
+  // to the migration day (the original day is unknowable); all other tasks are
+  // "not planned". Focus defaults to off. `due` is never touched.
+  data => ({
+    ...data,
+    tasks: Array.isArray(data.tasks)
+      ? data.tasks.map(task => ({
+          ...task,
+          plannedDay: typeof task.plannedDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(task.plannedDay)
+            ? task.plannedDay
+            : ((task.status === 'today' || task.status === 'doing') ? plannedDayKey() : null),
+          focus: task.focus === true,
+        }))
+      : data.tasks,
+  }),
 ];
 
 function normalizeEntities(entities, options = {}){

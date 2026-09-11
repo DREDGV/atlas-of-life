@@ -15,6 +15,129 @@ import { saveState } from "./storage.js";
 import { requestSyncNow } from "./sync/runtime.js";
 import { logEvent } from "./utils/analytics.js";
 import { getVisibleDomainIds, setDomainVisible } from "./ui/map-session.js";
+import { dueState, dueLabel } from "./features/today/model.js";
+import { statusLabel, plural } from "./ui/status-language.js";
+
+// A task orb carries its meaning explicitly instead of leaving the renderer to
+// re-derive it: status (filled/dashed/check), deadline urgency (red ring),
+// today's Focus (crosshair), priority and age. The map used to know only
+// `status` and `aging`, so an overdue task looked exactly like a backlog one.
+function taskNode(task, x, y, groupId = null) {
+  const due = dueState(task);
+  return {
+    _type: "task",
+    id: task.id,
+    title: task.title,
+    x,
+    y,
+    r: sizeByImportance(task) * DPR,
+    status: task.status,
+    aging: task.updatedAt,
+    groupId,
+    priority: Number(task.priority) || 2,
+    estimateMin: Number(task.estimateMin) || 0,
+    ageDays: daysSince(task.updatedAt),
+    focus: task.focus === true,
+    due: due.kind,
+    dueDay: due.day,
+    dueInDays: due.days,
+    progress: task.progress ?? null,
+  };
+}
+
+// Which tasks are worth showing when a packed group cannot show everything:
+// a missed deadline or today's Focus matters more than an old backlog item.
+// Deterministic, so the same state always draws the same picture.
+function taskDisplayOrder(a, b) {
+  const score = (task) => {
+    const due = dueState(task);
+    if (due.kind === 'overdue') return 0;
+    if (task.focus === true) return 1;
+    if (due.kind === 'today') return 2;
+    if (due.kind === 'soon') return 3;
+    if (task.status === 'doing') return 4;
+    if (task.status === 'today') return 5;
+    if (due.kind === 'later') return 6;
+    return 7;
+  };
+  return score(a) - score(b)
+    || (Number(a.priority) || 2) - (Number(b.priority) || 2)
+    || String(a.id).localeCompare(String(b.id));
+}
+
+// How many orbs may be drawn inside one packed group before density costs more
+// than it explains. The rest are reported as a count, honestly.
+const GROUP_ORB_LIMIT = 12;
+
+// The room a task label actually has: half the distance to the nearest other
+// orb on screen, never less than a readable stub and never more than a full
+// title width. This is what replaces the fixed 110 px crop that turned long
+// titles into meaningless fragments while short ones collided.
+function labelBudget(node, taskOrbs, view){
+  let nearest = Infinity;
+  for (const other of taskOrbs) {
+    if (other === node) continue;
+    const dx = (other.x - node.x) * view.scale;
+    const dy = (other.y - node.y) * view.scale;
+    const distance = Math.hypot(dx, dy);
+    if (distance < nearest) nearest = distance;
+  }
+  const room = Number.isFinite(nearest) ? nearest : 220;
+  return clamp(room - 12, 54, 200);
+}
+
+// Group packing with a minimum gap, so orbs of different sizes stop overlapping
+// and their labels have room. Deterministic: same input, same picture.
+export function separateGroup(nodeList, groupId, cx, cy, drawRadius, { maxRadius = drawRadius * 1.6 } = {}) {
+  const items = nodeList.filter((n) => n._type === "task" && n.groupId === groupId);
+  if (items.length < 2) return drawRadius;
+  const GAP = 5 * DPR;
+  let limit = drawRadius;
+  for (let pass = 0; pass < 30; pass++) {
+    let moved = 0;
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i];
+        const b = items[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let distance = Math.hypot(dx, dy);
+        const min = a.r + b.r + GAP;
+        if (distance >= min) continue;
+        if (distance < 0.001) {
+          // Coincident centres: break the tie deterministically by index.
+          dx = Math.cos(i * 2.4) * 0.6;
+          dy = Math.sin(i * 2.4) * 0.6;
+          distance = 0.6;
+        }
+        const push = (min - distance) / 2;
+        const ux = dx / distance;
+        const uy = dy / distance;
+        a.x -= ux * push;
+        a.y -= uy * push;
+        b.x += ux * push;
+        b.y += uy * push;
+        moved++;
+      }
+    }
+    // Keep the whole group inside its drawn territory.
+    for (const item of items) {
+      const dx = item.x - cx;
+      const dy = item.y - cy;
+      const distance = Math.hypot(dx, dy);
+      const max = Math.max(0, limit - item.r - 3 * DPR);
+      if (distance > max && distance > 0.001) {
+        item.x = cx + (dx / distance) * max;
+        item.y = cy + (dy / distance) * max;
+      }
+    }
+    if (!moved) break;
+    // The group could not be separated inside its territory: give it more room
+    // instead of drawing a smear of overlapping dots.
+    if (pass % 6 === 5 && limit < maxRadius) limit = Math.min(maxRadius, limit + 6 * DPR);
+  }
+  return limit;
+}
 
 let canvas,
   tooltip,
@@ -111,10 +234,185 @@ let lowFrames = 0,
   highFrames = 0;
 let showFps = false;
 
+// Hit areas and keyboard focus.
+// An orb is drawn as small as 12 CSS px at 100% zoom, which is unclickable in
+// practice, so the pointer target has a floor in CSS pixels and grows with the
+// orb as the user zooms in. Keyboard focus is a separate index into the visible
+// tasks, because a canvas cannot expose its nodes through the DOM.
+const MIN_HIT_CSS = 26;
+let kbdIndex = -1;
+let kbdNodeId = null;
+let liveRegionEl = null;
+
+function hitSlop(node) {
+  const minWorld = (MIN_HIT_CSS * DPR) / Math.max(0.2, viewState.scale);
+  return node._type === "task" ? Math.max(minWorld, node.r * 0.6) : 0;
+}
+
+function announce(message) {
+  if (!liveRegionEl || !message) return;
+  liveRegionEl.textContent = message;
+}
+
+// Visible-world bounds, shared by the renderer and by keyboard navigation
+// (which must never walk into off-screen tasks).
+function viewportRect() {
+  const inv = 1 / Math.max(0.0001, viewState.scale);
+  const pad = 120 * inv;
+  return {
+    x0: -viewState.tx * inv - pad,
+    y0: -viewState.ty * inv - pad,
+    x1: (W - viewState.tx) * inv + pad,
+    y1: (H - viewState.ty) * inv + pad,
+  };
+}
+
+function nodeInView(x, y, r = 0) {
+  const view = viewportRect();
+  return x + r > view.x0 && x - r < view.x1 && y + r > view.y0 && y - r < view.y1;
+}
+
+// Order used by Tab / arrow navigation: the same order the eye reads the map
+// in, so keyboard movement stays predictable.
+function keyboardTasks() {
+  return nodes
+    .filter((n) => n._type === "task" && nodeInView(n.x, n.y, n.r + 24 * DPR))
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+function focusTaskNode(node, { reveal = true } = {}) {
+  if (!node) return;
+  let list = keyboardTasks();
+  if (!list.length) return;
+  kbdNodeId = node.id;
+  kbdIndex = Math.max(0, list.findIndex((n) => n.id === node.id));
+  const task = state.tasks.find((t) => t.id === node.id);
+  if (task) {
+    try { openInspectorFor({ ...task, _type: "task" }); } catch (_) {}
+    const deadline = dueLabel(task);
+    announce(
+      `${task.title}. ${statusLabel(task.status)}${deadline ? `. ${deadline}` : ""}. ` +
+      `Задача ${kbdIndex + 1} из ${list.length}.`
+    );
+  }
+  if (reveal) {
+    const x = node.x * viewState.scale + viewState.tx;
+    const y = node.y * viewState.scale + viewState.ty;
+    const margin = 70 * DPR;
+    if (x < margin || y < margin || x > W - margin || y > H - margin) {
+      try { fitTask(node.id); } catch (_) {}
+    }
+  }
+  requestDraw();
+}
+
+function moveKeyboardFocus(step) {
+  const list = keyboardTasks();
+  if (!list.length) {
+    announce("На карте нет задач");
+    return;
+  }
+  if (kbdNodeId) {
+    const current = list.findIndex((n) => n.id === kbdNodeId);
+    if (current >= 0) kbdIndex = current;
+  }
+  const next = (kbdIndex + step + list.length * 2) % list.length;
+  focusTaskNode(list[next], { reveal: false });
+  const node = list[next];
+  const x = node.x * viewState.scale + viewState.tx;
+  const y = node.y * viewState.scale + viewState.ty;
+  const margin = 70 * DPR;
+  if (x < margin || y < margin || x > W - margin || y > H - margin) {
+    try { fitTask(node.id); } catch (_) {}
+  }
+}
+
+function onKeyDown(e) {
+  const list = keyboardTasks();
+  if (!list.length) return;
+  switch (e.key) {
+    case "Tab": {
+      // Tab enters the map on the first task and leaves from the last one; the
+      // map never traps focus.
+      if (e.shiftKey) {
+        if (kbdNodeId && kbdIndex <= 0) {
+          kbdNodeId = null;
+          kbdIndex = -1;
+          requestDraw();
+          return; // let the browser move focus back out
+        }
+        e.preventDefault();
+        if (!kbdNodeId) { kbdIndex = list.length; }
+        moveKeyboardFocus(-1);
+      } else {
+        if (kbdNodeId && kbdIndex >= list.length - 1) {
+          kbdNodeId = null;
+          kbdIndex = -1;
+          requestDraw();
+          return;
+        }
+        e.preventDefault();
+        if (!kbdNodeId) { kbdIndex = -1; }
+        moveKeyboardFocus(1);
+      }
+      return;
+    }
+    case "ArrowDown":
+    case "ArrowRight":
+      e.preventDefault();
+      moveKeyboardFocus(1);
+      return;
+    case "ArrowUp":
+    case "ArrowLeft":
+      e.preventDefault();
+      moveKeyboardFocus(-1);
+      return;
+    case "Home":
+      e.preventDefault();
+      kbdIndex = -1;
+      moveKeyboardFocus(1);
+      return;
+    case "End":
+      e.preventDefault();
+      kbdIndex = list.length - 2;
+      moveKeyboardFocus(1);
+      return;
+    case "Enter":
+    case " ": {
+      const node = list.find((n) => n.id === kbdNodeId) || list[0];
+      if (!node) return;
+      e.preventDefault();
+      focusTaskNode(node);
+      return;
+    }
+    case "Escape":
+      kbdNodeId = null;
+      kbdIndex = -1;
+      announce("");
+      requestDraw();
+      return;
+    default:
+      return;
+  }
+}
+
 export function initMap(canvasEl, tooltipEl) {
   canvas = canvasEl;
   tooltip = tooltipEl;
   emptyStateEl = document.getElementById("mapEmpty");
+  // Keyboard and screen-reader access: the canvas itself cannot be read, so it
+  // is focusable, labelled, and announces the focused task through a live
+  // region while the Inspector shows the same object.
+  canvas.setAttribute("tabindex", "0");
+  canvas.setAttribute("role", "application");
+  canvas.setAttribute("aria-label", "Карта жизни: домены, проекты и задачи. Стрелки — перемещение по задачам, Enter — открыть в инспекторе.");
+  liveRegionEl = document.getElementById("mapLiveRegion");
+  canvas.addEventListener("keydown", onKeyDown);
+  canvas.addEventListener("blur", () => {
+    kbdNodeId = null;
+    kbdIndex = -1;
+    requestDraw();
+  });
   const emptyAddButton = document.getElementById("mapEmptyAddDomain");
   if (emptyAddButton) {
     emptyAddButton.onclick = () => {
@@ -661,16 +959,7 @@ export function layoutMap() {
             const y = pNode.y + Math.sin(angle) * radius;
             const savedTask = t.pos || t._pos;
             const useSaved = state.settings?.layoutMode === "manual" && savedTask && typeof savedTask.x === "number" && typeof savedTask.y === "number";
-            nodes.push({
-              _type: "task",
-              id: t.id,
-              title: t.title,
-              x: useSaved ? savedTask.x : x,
-              y: useSaved ? savedTask.y : y,
-              r: sizeByImportance(t) * DPR,
-              status: t.status,
-              aging: t.updatedAt,
-            });
+            nodes.push(taskNode(t, useSaved ? savedTask.x : x, useSaved ? savedTask.y : y));
             found = true;
             break;
           }
@@ -703,52 +992,46 @@ export function layoutMap() {
       const total = list.length;
       if (!total) return;
       const slot = childSlots.get(`unassigned:${d.id}`);
-      const groupRadius = slot?.r || clamp(42 + Math.sqrt(total) * 10, 48, 82) * DPR;
+      // Reserve a little extra room for the «+N» counter drawn at the bottom of
+      // the group, so the chip never lands on top of an orb.
+      const groupRadius = (slot?.r || clamp(42 + Math.sqrt(total) * 10, 48, 82) * DPR) + 14 * DPR;
       const groupX = slot?.x ?? dNode.x;
       const groupY = slot?.y ?? dNode.y;
+      // A packed group of twenty dots explains nothing: draw the most
+      // decision-relevant ones and report the rest as a count.
+      const sorted = [...list].sort(taskDisplayOrder);
+      const shown = sorted.slice(0, GROUP_ORB_LIMIT);
+      const hiddenCount = total - shown.length;
       nodes.push({
         _type: "unassigned",
         id: `unassigned:${d.id}`,
         domainId: d.id,
         title: "Без проекта",
         count: total,
+        hidden: hiddenCount,
         x: groupX,
         y: groupY,
         r: groupRadius,
       });
-      list.forEach((t, idx) => {
+      shown.forEach((t, idx) => {
         const savedT = t.pos || t._pos;
         const useSaved = state.settings?.layoutMode === "manual" && savedT && typeof savedT.x === "number" && typeof savedT.y === "number";
         if (useSaved) {
           // Используем сохраненную позицию (куда перетащил пользователь)
-          nodes.push({
-            _type: "task",
-            id: t.id,
-            title: t.title,
-            x: savedT.x,
-            y: savedT.y,
-            r: sizeByImportance(t) * DPR,
-            status: t.status,
-            aging: t.updatedAt,
-          });
+          nodes.push(taskNode(t, savedT.x, savedT.y, `unassigned:${d.id}`));
         } else {
           const taskRadius = sizeByImportance(t) * DPR;
-          const orbit = total === 1 ? 0 : Math.sqrt((idx + 0.55) / total) * Math.max(0, groupRadius - taskRadius - 12 * DPR);
+          const orbit = shown.length === 1 ? 0 : Math.sqrt((idx + 0.55) / shown.length) * Math.max(0, groupRadius - taskRadius - 12 * DPR);
           const angle = idx * golden - Math.PI / 2;
           const x = groupX + Math.cos(angle) * orbit;
           const y = groupY + Math.sin(angle) * orbit;
-          nodes.push({
-            _type: "task",
-            id: t.id,
-            title: t.title,
-            x,
-            y,
-            r: sizeByImportance(t) * DPR,
-            status: t.status,
-            aging: t.updatedAt,
-          });
+          nodes.push(taskNode(t, x, y, `unassigned:${d.id}`));
         }
       });
+      // The golden-angle spiral packs tasks by angle only, so orbs of different
+      // radii end up overlapping and their labels collide. Separate them after
+      // placement, keeping every orb inside the group it belongs to.
+      separateGroup(nodes, `unassigned:${d.id}`, groupX, groupY, groupRadius);
     });
     
     // Полностью независимые задачи размещаем там, куда их перетащили
@@ -756,16 +1039,7 @@ export function layoutMap() {
       const savedT = t.pos || t._pos;
       if (savedT && typeof savedT.x === "number" && typeof savedT.y === "number") {
         // Используем сохраненную позицию (куда перетащил пользователь)
-        nodes.push({
-          _type: "task",
-          id: t.id,
-          title: t.title,
-          x: savedT.x,
-          y: savedT.y,
-          r: sizeByImportance(t) * DPR,
-          status: t.status,
-          aging: t.updatedAt,
-        });
+        nodes.push(taskNode(t, savedT.x, savedT.y));
       } else {
         // Только если нет сохраненной позиции - размещаем справа от всех доменов
         const maxDomainX = domains.length
@@ -778,16 +1052,7 @@ export function layoutMap() {
         const spacing = 80 * DPR;
         const x = startX + (idx % 3) * spacing;
         const y = H * 0.3 + Math.floor(idx / 3) * spacing;
-        nodes.push({
-          _type: "task",
-          id: t.id,
-          title: t.title,
-          x,
-          y,
-          r: sizeByImportance(t) * DPR,
-          status: t.status,
-          aging: t.updatedAt,
-        });
+        nodes.push(taskNode(t, x, y));
       }
     });
   } catch (_) {
@@ -1087,108 +1352,213 @@ export function drawMap() {
   }
 
   // tasks
-  nodes
-    .filter((n) => n._type === "task")
-    .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
-      const t = state.tasks.find((x) => x.id === n.id);
-      const baseColor =
-        n.status === "done"
-          ? "#6b7280"
-          : n.status === "today"
-          ? "#ffd166"
-          : n.status === "doing"
-          ? "#60a5fa"
-          : "#9ca3af";
-      if (state.showAging && selectedNodeId !== n.id) {
-        ctx.beginPath();
-        ctx.arc(
-          n.x,
-          n.y,
-          n.r + css(3),
-          -Math.PI * 0.72,
-          -Math.PI * 0.18
-        );
-        ctx.strokeStyle = colorByAging(n.aging);
-        ctx.lineWidth = css(2);
-        ctx.stroke();
-      }
+  // Every semantic channel of a task orb is decided here from the node's own
+  // fields: fill = status, colour = deadline urgency, ring = work/overdue,
+  // crosshair = today's Focus, arc = age, radius = importance + estimate.
+  // The map used to know only `status` and `aging`, so a missed deadline looked
+  // exactly like an old backlog item.
+  const overdueColor = "#f87171";
+  const taskColor = (n) =>
+    n.due === "overdue"
+      ? overdueColor
+      : n.status === "done"
+      ? "#6b7280"
+      : n.status === "today" || n.focus
+      ? "#ffd166"
+      : n.status === "doing"
+      ? "#60a5fa"
+      : "#9ca3af";
+  const taskOrbs = nodes.filter((n) => n._type === "task");
+  const placedLabels = [];
+
+  taskOrbs.forEach((n) => {
+    if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
+    const baseColor = taskColor(n);
+    if (state.showAging && selectedNodeId !== n.id) {
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      if (state.showGlow && allowGlow) {
-        ctx.shadowColor = baseColor;
-        ctx.shadowBlur = 12 * DPR;
-      } else {
-        ctx.shadowBlur = 0;
-      }
-      ctx.fillStyle = baseColor;
-      // done: dimmed fill + a check glyph, so status never relies on color alone
-      if (n.status === "done") ctx.globalAlpha = 0.55;
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.arc(
+        n.x,
+        n.y,
+        n.r + css(3),
+        -Math.PI * 0.72,
+        -Math.PI * 0.18
+      );
+      ctx.strokeStyle = colorByAging(n.aging);
+      ctx.lineWidth = css(2);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+    if (state.showGlow && allowGlow) {
+      ctx.shadowColor = baseColor;
+      ctx.shadowBlur = 12 * DPR;
+    } else {
       ctx.shadowBlur = 0;
-      if (hoverNodeId === n.id && selectedNodeId !== n.id) {
+    }
+    ctx.fillStyle = baseColor;
+    // done: dimmed fill + a check glyph, so status never relies on color alone
+    if (n.status === "done") ctx.globalAlpha = 0.55;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    if (hoverNodeId === n.id && selectedNodeId !== n.id) {
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(207,232,255,.92)";
+      ctx.lineWidth = css(1.4);
+      ctx.arc(n.x, n.y, n.r + css(6), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // The ring is reserved for work state — today / в работе / просрочено —
+    // never for the neutral case, so a red ring means exactly one thing.
+    if (n.due === "overdue") {
+      ctx.beginPath();
+      ctx.strokeStyle = overdueColor;
+      ctx.lineWidth = css(2);
+      ctx.arc(n.x, n.y, n.r + css(4.5), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(11,15,23,0.72)";
+      ctx.lineWidth = css(2.6);
+      ctx.arc(n.x, n.y, n.r + css(4.5), -Math.PI * 0.34, Math.PI * 0.34);
+      ctx.stroke();
+    } else if (n.status === "today") {
+      ctx.beginPath();
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = css(1.5);
+      ctx.arc(n.x, n.y, n.r + css(5), 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (n.status === "doing") {
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(147,197,253,0.9)";
+      ctx.lineWidth = css(1.5);
+      ctx.setLineDash([css(2.5), css(2.5)]);
+      ctx.arc(n.x, n.y, n.r + css(4.5), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (n.focus === true && n.status !== "done") {
+      // Focus of the day: never more than three, so a crosshair stays readable.
+      const radius = n.r + css(8.5);
+      ctx.strokeStyle = "#67e8f9";
+      ctx.lineWidth = css(1.4);
+      for (const angle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+        const px = n.x + Math.cos(angle) * (n.r + css(2.5));
+        const py = n.y + Math.sin(angle) * (n.r + css(2.5));
         ctx.beginPath();
-        ctx.strokeStyle = "rgba(207,232,255,.92)";
-        ctx.lineWidth = css(1.4);
-        ctx.arc(n.x, n.y, n.r + css(6), 0, Math.PI * 2);
+        ctx.moveTo(px, py);
+        ctx.lineTo(n.x + Math.cos(angle) * radius, n.y + Math.sin(angle) * radius);
         ctx.stroke();
       }
-      if (n.status === "today") {
-        ctx.beginPath();
-        ctx.strokeStyle = "#f59e0b";
-        ctx.lineWidth = css(1.5);
-        ctx.arc(n.x, n.y, n.r + css(5), 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (n.status === "doing") {
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(147,197,253,0.9)";
-        ctx.lineWidth = css(1.5);
-        ctx.setLineDash([css(2.5), css(2.5)]);
-        ctx.arc(n.x, n.y, n.r + css(4.5), 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
+    }
+    // Keyboard focus must be visible: the orb the arrows landed on gets a
+    // distinct ring, so the canvas never moves focus invisibly.
+    if (kbdNodeId === n.id) {
+      ctx.beginPath();
+      ctx.strokeStyle = "#a5f3fc";
+      ctx.lineWidth = css(2);
+      ctx.setLineDash([css(3), css(2.5)]);
+      ctx.arc(n.x, n.y, n.r + css(10), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (n.status === "done" && n.r * viewState.scale >= 7) {
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.lineWidth = css(1.4);
+      ctx.lineCap = "round";
+      const s = n.r * 0.5;
+      ctx.moveTo(n.x - s * 0.55, n.y + s * 0.05);
+      ctx.lineTo(n.x - s * 0.12, n.y + s * 0.4);
+      ctx.lineTo(n.x + s * 0.55, n.y - s * 0.42);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    }
+  });
+
+  // Labels are placed after all orbs, because the room a label has depends on
+  // where its neighbours ended up. A label is limited by the distance to the
+  // nearest other task and skipped when it would still collide, so long titles
+  // stop being cropped into meaningless stubs and stop overlapping each other.
+  if (viewState.scale >= 1.15) {
+    const labelOrder = [...taskOrbs].sort((a, b) => {
+      const rank = (n) =>
+        selectedNodeId === n.id ? 0
+        : hoverNodeId === n.id ? 1
+        : n.due === "overdue" ? 2
+        : n.focus ? 3
+        : n.due === "today" ? 4
+        : n.status === "today" ? 5
+        : n.status === "doing" ? 6
+        : 7;
+      return rank(a) - rank(b) || b.r - a.r || String(a.id).localeCompare(String(b.id));
+    });
+    for (const n of labelOrder) {
+      if (!inView(n.x, n.y, n.r + 40 * DPR)) continue;
+      const active = selectedNodeId === n.id || hoverNodeId === n.id;
+      // Progressive disclosure: outside a deliberate zoom only the active and
+      // decision-relevant tasks are named.
+      if (!active) {
+        const important =
+          n.due === "overdue" || n.focus === true || n.status === "today" || n.due === "today";
+        const roomy = viewState.scale >= 1.5 && n.r * viewState.scale >= 8;
+        if (!important && !roomy) continue;
       }
-      if (n.status === "done" && n.r * viewState.scale >= 7) {
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(255,255,255,0.92)";
-        ctx.lineWidth = css(1.4);
-        ctx.lineCap = "round";
-        const s = n.r * 0.5;
-        ctx.moveTo(n.x - s * 0.55, n.y + s * 0.05);
-        ctx.lineTo(n.x - s * 0.12, n.y + s * 0.4);
-        ctx.lineTo(n.x + s * 0.55, n.y - s * 0.42);
-        ctx.stroke();
-        ctx.lineCap = "butt";
-      }
-      // Progressive disclosure: the active/hovered task is always named;
-      // all task labels appear only once the user has deliberately zoomed in.
-      const showTaskLabel =
-        selectedNodeId === n.id ||
-        hoverNodeId === n.id ||
-        (viewState.scale >= 1.2 && n.r * viewState.scale >= 8);
-      if (showTaskLabel) {
-        ctx.font = `${selectedNodeId === n.id ? 600 : 400} ${css(10.5)}px system-ui`;
-        ctx.textAlign = "center";
-        const maxW = css(110);
-        const text = fitLabel(n.title, maxW);
-        let labelX = n.x;
-        let labelY = n.y + n.r + css(12);
-        if (selectedNodeId === n.id && viewState.scale < 0.82 && t?.projectId) {
-          const parentProject = nodes.find(
-            (item) => item._type === "project" && item.id === t.projectId
-          );
-          if (parentProject) {
-            labelX = parentProject.x;
-            labelY = parentProject.y + parentProject.r + css(30);
-          }
+      const text = String(n.title || "");
+      if (!text) continue;
+      ctx.font = `${active ? 600 : 400} ${css(10.5)}px system-ui`;
+      let labelX = n.x;
+      let labelY = n.y + n.r + css(13);
+      if (active && viewState.scale < 0.82) {
+        const t = state.tasks.find((x) => x.id === n.id);
+        const parentProject = t?.projectId
+          ? nodes.find((item) => item._type === "project" && item.id === t.projectId)
+          : null;
+        if (parentProject) {
+          labelX = parentProject.x;
+          labelY = parentProject.y + parentProject.r + css(30);
         }
-        ctx.lineWidth = css(2.5);
-        ctx.strokeStyle = "rgba(11,15,23,0.85)";
-        ctx.strokeText(text, labelX, labelY);
-        ctx.fillStyle = n.status === "done" ? "#8b98a9" : "#cfe0f5";
-        ctx.fillText(text, labelX, labelY);
       }
+      const screenX = (labelX * viewState.scale + viewState.tx) / DPR;
+      const screenY = (labelY * viewState.scale + viewState.ty) / DPR;
+      if (screenX < 4 || screenX > W / DPR - 4 || screenY < 4 || screenY > H / DPR - 4) continue;
+      const budget = labelBudget(n, taskOrbs, viewState) * (active ? 1.35 : 1);
+      const fitted = fitLabel(text, css(Math.max(28, budget)));
+      const width = ctx.measureText(fitted).width * viewState.scale / DPR;
+      const rect = { x0: screenX - width / 2, x1: screenX + width / 2, y0: screenY - 7, y1: screenY + 4 };
+      const collides = placedLabels.some(
+        (other) => rect.x0 < other.x1 + 3 && rect.x1 > other.x0 - 3 && rect.y0 < other.y1 && rect.y1 > other.y0
+      );
+      if (collides) continue;
+      placedLabels.push(rect);
+      ctx.textAlign = "center";
+      ctx.lineWidth = css(2.5);
+      ctx.strokeStyle = "rgba(11,15,23,0.85)";
+      ctx.strokeText(fitted, labelX, labelY);
+      ctx.fillStyle = n.due === "overdue" && n.status !== "done" ? "#fecaca" : n.status === "done" ? "#8b98a9" : "#cfe0f5";
+      ctx.fillText(fitted, labelX, labelY);
+    }
+  }
+
+  // A group that could not show everything says so instead of pretending that
+  // the drawn orbs are the whole story.
+  nodes
+    .filter((n) => n._type === "unassigned")
+    .forEach((n) => {
+      if (!n.hidden) return;
+      ctx.font = `600 ${css(10)}px system-ui`;
+      ctx.textAlign = "center";
+      const label = `+${n.hidden} ${n.hidden === 1 ? "задача" : n.hidden < 5 ? "задачи" : "задач"}`;
+      const width = ctx.measureText(label).width + css(14);
+      const y = n.y + n.r + css(26);
+      ctx.fillStyle = "rgba(86,204,242,.16)";
+      ctx.strokeStyle = "rgba(86,204,242,.5)";
+      ctx.lineWidth = css(1);
+      ctx.beginPath();
+      ctx.roundRect(n.x - width / 2, y - css(10), width, css(18), css(8));
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#9ee6ff";
+      ctx.fillText(label, n.x, y + css(3));
     });
 
   // Visualize pending attach (dashed connector + highlights)
@@ -1322,6 +1692,20 @@ function debugOverlay() {
   }
 }
 
+// Read-only view of the last layout: used by tests and diagnostics to check
+// that packed groups are actually separated and that each orb carries the
+// semantic channels the renderer draws.
+export function getLayoutSnapshot() {
+  return {
+    nodes: nodes.map((n) => ({ ...n })),
+    scale: viewState.scale,
+    tx: viewState.tx,
+    ty: viewState.ty,
+    keyboardFocusId: kbdNodeId,
+    size: { width: W || 0, height: H || 0, dpr: DPR || 1 },
+  };
+}
+
 function screenToWorld(x, y) {
   const dpr = window.devicePixelRatio || 1;
   const cx = x * dpr,
@@ -1339,7 +1723,7 @@ function hit(x, y) {
       dy = y - n.y;
     const rr =
       n._type === "task"
-        ? n.r + 6 * DPR
+        ? n.r + hitSlop(n)
         : n._type === "project"
         ? n.r + 10 * DPR
         : n.r;
@@ -1359,7 +1743,7 @@ function hitExcluding(x, y, ignoreId) {
       dy = y - n.y;
     const rr =
       n._type === "task"
-        ? n.r + 6 * DPR
+        ? n.r + hitSlop(n)
         : n._type === "project"
         ? n.r + 10 * DPR
         : n.r;
@@ -1451,20 +1835,37 @@ function onMouseMove(e) {
     const t = state.tasks.find((x) => x.id === n.id);
     const tags = (t.tags || []).map((s) => `#${s}`).join(" ");
     const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
-    tooltip.innerHTML = `🪐 <b>${t.title}</b> — ${
-      t.status
-    }${est}<br/><span class="hint">обновл. ${daysSince(
-      t.updatedAt
-    )} дн. ${tags}</span>`;
+    // The tooltip used to print raw model values (`backlog`, `doing`) in an
+    // otherwise Russian interface, and never showed a deadline at all.
+    const lines = [
+      `🪐 <b>${t.title}</b>`,
+      `<span class="hint">${statusLabel(t.status)}${est} · обновл. ${daysSince(t.updatedAt)} дн. ${tags}</span>`,
+    ];
+    if (t.focus === true) lines.push(`<span class="focus-mark">✦ Фокус дня</span>`);
+    const deadline = dueLabel(t);
+    if (deadline) {
+      const state = dueState(t);
+      lines.push(
+        `<span class="hint${state.kind === "overdue" ? " is-overdue" : ""}">${deadline}</span>`
+      );
+    }
+    tooltip.innerHTML = lines.join("<br/>");
   } else if (n._type === "project") {
     const p = state.projects.find((x) => x.id === n.id);
     const tags = (p.tags || []).map((s) => `#${s}`).join(" ");
-    tooltip.innerHTML = `🛰 Проект: <b>${p.title}</b>${
-      tags ? `<br/><span class="hint">${tags}</span>` : ""
-    }`;
+    const count = state.tasks.filter((t) => t.projectId === p.id).length;
+    const overdue = state.tasks.filter(
+      (t) => t.projectId === p.id && dueState(t).kind === "overdue"
+    ).length;
+    tooltip.innerHTML = `🛰 Проект: <b>${p.title}</b><br/><span class="hint">${count} ${plural(
+      count,
+      "задача",
+      "задачи",
+      "задач"
+    )}${overdue ? ` · просрочено ${overdue}` : ""}${tags ? ` · ${tags}` : ""}</span>`;
   } else if (n._type === "unassigned") {
     const domain = state.domains.find(item => item.id === n.domainId);
-    tooltip.innerHTML = `Без проекта: <b>${n.count} задач</b>${domain ? `<br/><span class="hint">${domain.title}</span>` : ""}`;
+    tooltip.innerHTML = `Без проекта: <b>${n.count} ${plural(n.count, "задача", "задачи", "задач")}</b>${n.hidden ? `<br/><span class="hint">на карте показано ${n.count - n.hidden}</span>` : ""}${domain ? `<br/><span class="hint">${domain.title}</span>` : ""}`;
   } else {
     const d = state.domains.find((x) => x.id === n.id);
     tooltip.innerHTML = `🌌 Домен: <b>${d.title}</b>`;
@@ -2161,6 +2562,28 @@ function openMoveTaskModal(task, targetDomainId, dropPosition = null) {
   });
 }
 
+// Fit the camera around one packed group and its tasks. Shared by the group
+// click and the project double-click.
+function fitMembers(members) {
+  if (!members.length) return false;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  members.forEach((m) => {
+    minX = Math.min(minX, m.x - m.r);
+    minY = Math.min(minY, m.y - m.r);
+    maxX = Math.max(maxX, m.x + m.r);
+    maxY = Math.max(maxY, m.y + m.r);
+  });
+  fitToBBox({ minX, minY, maxX, maxY });
+  return true;
+}
+
+export function fitGroup(groupId) {
+  const group = nodes.find((n) => n._type === "unassigned" && n.id === groupId);
+  if (!group) return;
+  const members = [group, ...nodes.filter((n) => n._type === "task" && n.groupId === groupId)];
+  fitMembers(members);
+}
+
 function onDblClick(e) {
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
@@ -2177,20 +2600,11 @@ function onDblClick(e) {
         (x._type === "task" &&
           state.tasks.find((t) => t.id === x.id)?.projectId === pId)
     );
-    if (members.length) {
-      let minX = Infinity,
-        minY = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity;
-      members.forEach((m) => {
-        minX = Math.min(minX, m.x - m.r);
-        minY = Math.min(minY, m.y - m.r);
-        maxX = Math.max(maxX, m.x + m.r);
-        maxY = Math.max(maxY, m.y + m.r);
-      });
-      fitToBBox({ minX, minY, maxX, maxY });
-      return;
-    }
+    if (fitMembers(members)) return;
+  }
+  if (n._type === "unassigned") {
+    fitGroup(n.id);
+    return;
   }
   if (n._type === "domain") {
     state.activeDomain = n.id;
@@ -2219,7 +2633,10 @@ function onClick(e) {
     const obj = state.projects.find((p) => p.id === n.id);
     openInspectorFor({ ...obj, _type: "project" });
   } else if (n._type === "unassigned") {
+    // A packed group is a doorway, not a dead end: one click zooms into its
+    // members, which is the only way to reach a task hidden behind the counter.
     openInspectorFor({ ...n, _type: "unassigned" });
+    fitGroup(n.id);
   } else {
     const obj = state.domains.find((d) => d.id === n.id);
     state.activeDomain = n.id;

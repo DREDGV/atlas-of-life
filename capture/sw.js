@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atlas-capture-0.12.0-alpha.4';
+const CACHE_NAME = 'atlas-capture-0.13.0-alpha.1';
 // Correction revision: changes the worker bytes without inventing alpha.6,
 // so installed alpha.5 PWAs discover the per-record delivery-marker update.
 const CACHE_REVISION = 'sync-record-delivery-markers-2';
@@ -14,6 +14,7 @@ const PRECACHE_ASSETS = [
   '../js/capture/share-target.js',
   '../js/capture/voice.js',
   '../js/state.js',
+  '../js/ui/status-language.js',
   '../js/storage.js',
   '../js/ui/storage-recovery.js',
   '../js/storageAdapter.js',

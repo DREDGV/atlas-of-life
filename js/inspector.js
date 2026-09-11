@@ -10,6 +10,7 @@ import {
   statusPill,
 } from "./state.js";
 import { requestSyncNow } from "./sync/runtime.js";
+import { dueLabel, dueState, localDay } from "./features/today/model.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
 function drawMap() {
   return window.mapApi && window.mapApi.drawMap && window.mapApi.drawMap();
@@ -430,7 +431,7 @@ export function openInspectorFor(obj) {
       <div class="kv">Домен: ${escapeKnowledge(taskDomain?.title || (taskDomainId ? 'Неизвестный домен' : 'Без домена'))}</div>
       ${obj.sourceInboxId ? `<div class="kv">Источник: Входящие</div>` : ''}
       <div class="kv">Теги: #${escapeKnowledge(normalizeTags(obj.tags).join(" #") || "-")}</div>
-      ${obj.due ? `<div class="kv">Срок: ${obj.due.date}${obj.due.time ? ` · ${obj.due.time}` : ""}</div>` : ""}
+      ${obj.due ? `<div class="kv${dueState(obj).kind === 'overdue' ? ' kv-overdue' : ''}">${escapeKnowledge(dueLabel(obj))}</div>` : ""}
       <div class="kv">Статус: ${statusPill(obj.status)} · обновл.: ${daysSince(
       obj.updatedAt
     )} дн.</div>
