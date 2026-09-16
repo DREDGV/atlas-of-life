@@ -1,6 +1,7 @@
 // 0.13.0-alpha.1 — Today 2.0 / Day Plan Foundation focused regressions:
 // due ≠ plannedDay, rollover, Focus limit, completion/reopen, persistence,
-// and the legacy schema-8 migration.
+// and the legacy schema-8 migration. Forward planning lives in
+// `tests/today-forward-plan.mjs`.
 import assert from 'node:assert/strict';
 import { state, FOCUS_LIMIT } from '../js/state.js';
 import adapter from '../js/storageAdapter.js';
@@ -104,7 +105,7 @@ reset();
   const task = createTask({ id:'t-persist', title:'Сохранить', domainId:'d1', status:'today' });
   updateTask(task.id, { focus:true });
   saveState();
-  assert.equal(JSON.parse(memory.get(adapter.key)).schema, 9);
+  assert.equal(JSON.parse(memory.get(adapter.key)).schema, 10);
   state.tasks = [];
   assert.equal(loadState(), true);
   const restored = state.tasks.find(t => t.id === task.id);

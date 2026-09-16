@@ -1,19 +1,18 @@
-// 0.13.0-alpha.1 — Today 2.0 / Day Plan Foundation vertical slice.
+// 0.13.0-alpha.1/alpha.2 — Today 2.0 / day plan foundation and planning ahead.
 // Real browser, fresh profile, loopback static server, Core-seeded test data.
 // DoD: backlog → select today → focus → complete another → reload →
-// next-day rollover (leftover, not auto-today) → carry → due unchanged.
+// next-day rollover (leftover, not auto-today) → carry → due unchanged,
+// then forward planning: plan for tomorrow → it waits as a plan →
+// tomorrow shows it as its own plan → capacity follows the selected day.
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { startStaticServer } from './smoke-shared.mjs';
-import { localDay } from '../js/features/today/model.js';
+import { localDay, shiftDay } from '../js/features/today/model.js';
 
-const dayOffset = (offset = 0) => {
-  const date = new Date();
-  date.setDate(date.getDate() + offset);
-  return localDay(date);
-};
+const dayOffset = (offset = 0) => shiftDay(localDay(), offset);
 const today = dayOffset(0);
 const yesterday = dayOffset(-1);
+const tomorrow = dayOffset(1);
 
 const server = await startStaticServer();
 let browser;
@@ -86,9 +85,78 @@ try {
   });
   assert.equal(dueAfter, yesterday, 'due unchanged through the whole flow');
 
+  // --- Forward planning (0.13.0-alpha.2) -----------------------------------
+  const carriedCapacity = await page.evaluate(async () => {
+    const { state } = await import('/js/state.js');
+    const { dayCapacity, localDay } = await import('/js/features/today/model.js');
+    return dayCapacity(state.tasks, localDay());
+  });
+  assert.equal(carriedCapacity.count, 1, 'today capacity counts the plan for the selected day');
+
+  // Plan a task for tomorrow from the Inspector: it waits as a plan.
+  const targets = await page.evaluate(async () => {
+    const { state } = await import('/js/state.js');
+    const { dayView, localDay } = await import('/js/features/today/model.js');
+    return dayView(state.tasks, localDay()).planned.map(task => task.id);
+  });
+  assert.equal(targets.length, 1, 'one task is planned for today before planning ahead');
+  await page.evaluate(async (id) => {
+    const { state } = await import('/js/state.js');
+    const { openInspectorFor } = await import('/js/inspector.js');
+    openInspectorFor({ ...state.tasks.find(task => task.id === id), _type: 'task' });
+  }, targets[0]);
+  await page.locator('#inspector #planTomorrow').click();
+  const plannedTomorrow = await page.evaluate(async (id) => {
+    const { state } = await import('/js/state.js');
+    const task = state.tasks.find(item => item.id === id);
+    return { plannedDay: task.plannedDay, status: task.status, focus: task.focus, due: task.due?.date ?? null };
+  }, targets[0]);
+  assert.equal(plannedTomorrow.plannedDay, tomorrow, 'Inspector plans a task for tomorrow');
+  assert.equal(plannedTomorrow.status, 'backlog', 'a plan for tomorrow is not today work');
+  assert.equal(plannedTomorrow.focus, false, 'a future plan never holds the focus');
+  assert.equal(plannedTomorrow.due, yesterday, 'planning ahead leaves the deadline exactly where it was');
+
+  // Today sees it as a future plan, not as today's plan.
+  await page.locator('.chip[data-view="map"]').click();
+  await page.locator('.chip[data-view="today"]').click();
+  assert.equal(await page.locator('[data-today-group="planned"] .todo').count(), 0,
+    'the plan moved to tomorrow is no longer today plan');
+  assert.equal(await page.locator('[data-today-group="ahead"] .todo').count(), 1,
+    'today shows what is planned for the following days');
+  const todayCapacity = await page.evaluate(async () => {
+    const { state } = await import('/js/state.js');
+    const { dayCapacity, localDay } = await import('/js/features/today/model.js');
+    return dayCapacity(state.tasks, localDay());
+  });
+  assert.equal(todayCapacity.count, 0, 'moving the plan forward frees today capacity');
+
+  // Tomorrow: the same task is that day's own plan, and focus is not offered.
+  await page.locator('.today-nav button[aria-label="Следующий день"]').click();
+  assert.equal(await page.locator('.today-day').getAttribute('data-today-day'), tomorrow);
+  assert.equal(await page.locator('[data-today-group="planned"] .todo').count(), 1,
+    'tomorrow shows the task planned for tomorrow');
+  assert.equal(await page.locator('[data-today-group="focus"]').count(), 0,
+    'a day that has not arrived has no focus group');
+  assert.equal(await page.locator('.today-capacity').getAttribute('data-over'), 'false');
+
+  // Plan for today from tomorrow's screen, and come back.
+  await page.locator('[data-today-group="planned"] .todo').getByRole('button', { name: 'На сегодня' }).click();
+  assert.equal(await page.locator('[data-today-group="planned"] .todo').count(), 0);
+  await page.locator('.today-nav button[aria-label="Предыдущий день"]').click();
+  assert.equal(await page.locator('.today-day').getAttribute('data-today-day'), today);
+  assert.equal(await page.locator('[data-today-group="planned"] .todo').count(), 1,
+    'the task planned back for today appears in today plan');
+  assert.equal(await page.locator('[data-today-group="ahead"] .todo').count(), 0);
+
+  // Capacity reflects the sizes that are actually known.
+  const capacityLine = await page.locator('.today-capacity').textContent();
+  assert.match(capacityLine, /В плане: 1 задача/, 'capacity line states the size of the plan');
+
   assert.deepEqual(errors, []);
   await page.screenshot({ path: 'output/playwright/today-plan.png' });
-  console.log('Browser PASS: backlog → today → focus → complete → reload → rollover leftover → carry, due unchanged.');
+  await page.locator('.today-nav button[aria-label="Следующий день"]').click();
+  await page.screenshot({ path: 'output/playwright/today-forward-plan.png' });
+  console.log('Browser PASS: backlog → today → focus → complete → reload → rollover leftover → carry, due unchanged; plan for tomorrow waits as a plan, tomorrow shows it as its own plan, capacity follows the day.');
 } finally {
   await browser?.close();
   server.server.close();

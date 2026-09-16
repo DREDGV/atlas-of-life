@@ -13,7 +13,7 @@ import {
   setShowFps,
   undoLastMove,
 } from "./view_map.js";
-import { renderToday } from "./view_today.js";
+import { renderToday, setTodayDay } from "./view_today.js";
 import { renderKnowledge } from './features/knowledge/view.js';
 import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
@@ -577,6 +577,9 @@ function setupHeader() {
       if (state.view === "map") {
         drawMap();
       } else {
+        // Opening Today means today: the day being viewed is session state and
+        // must not survive a trip to the map.
+        setTodayDay();
         renderToday();
       }
     };
@@ -1058,6 +1061,12 @@ async function init() {
     });
     $("#canvas").style.display = state.view === "map" ? "block" : "none";
     $("#viewToday").style.display = state.view === "today" ? "block" : "none";
+    // A session that was left on Today must also draw it: showing the empty
+    // container would look like the app failed to start.
+    if (state.view === "today") {
+      setTodayDay();
+      renderToday();
+    }
     renderKnowledge();
   } catch (_) {}
   // hotkeys: C/F/P/R, FPS toggle. N is owned by Inbox.

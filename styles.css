@@ -109,6 +109,14 @@ canvas{display:block;width:100%;height:100%}
 .inspector-form label{font-size:11px;color:var(--muted)}
 .inspector-form input{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--panel-2);border-radius:8px;color:var(--text);padding:7px 8px;outline:none}
 .inspector-form input:focus{border-color:var(--accent)}
+/* Day plan in the Inspector: one control for the day, one for today's focus. */
+.inspector-plan{display:grid;gap:8px;margin:10px 0;padding:10px;border:1px solid var(--panel-2);border-radius:10px;background:color-mix(in srgb,var(--panel-2) 70%,transparent)}
+.inspector-plan label{font-size:11px;color:var(--muted)}
+.inspector-plan .btns{margin:0}
+.inspector-plan input[type="date"]{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--panel-2);border-radius:8px;color:var(--text);padding:7px 8px;outline:none}
+.inspector-plan input[type="date"]:focus{border-color:var(--accent)}
+.inspector-plan-focus{display:flex;align-items:center;gap:7px}
+.inspector-plan-focus input{width:auto;margin:0}
 .inspector-card-button{display:block;width:100%;color:var(--text);text-align:left;font:inherit;cursor:pointer}
 .inspector-card-button:hover,.inspector-card-button:focus-visible{border-color:var(--accent);outline:none}
 .inspector-overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:12px 0}
@@ -572,6 +580,13 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .today-task-title { background: none; border: none; color: inherit; text-align: left; cursor: pointer; font: inherit; padding: 0 0 6px; overflow-wrap: anywhere; }
 .today-task-title:hover { text-decoration: underline; }
 .today-error { color: #ffb7ad; }
+/* Day navigation: Today is one day of the plan, and the day is choosable. */
+.today-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 10px; }
+.today-nav .btn { min-width: 40px; padding: 8px 12px; }
+.today-day { font-size: 18px; font-weight: 600; letter-spacing: -.01em; text-transform: capitalize; }
+.today-day-picker { padding: 7px 9px; border: 1px solid var(--panel-2); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
+.today-capacity { color: var(--muted, #a8bbd3); font-size: 13px; margin: 0 0 4px; }
+.today-capacity[data-over="true"] { color: #f3c98b; }
 
 /* Material workspace: context-colored reading cards and a quiet action rail. */
 #viewKnowledge { position:absolute; inset:0; overflow:auto; padding:32px 28px 48px; background:var(--bg); }
