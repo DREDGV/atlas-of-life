@@ -314,6 +314,53 @@ function hitSlop(node) {
   return node._type === "task" ? Math.max(minWorld, node.r * 0.6) : 0;
 }
 
+// The pointer target radius of a node, in world units. A task gets a floor in
+// CSS pixels (see MIN_HIT_CSS) so a tiny orb stays clickable; every canvas-click
+// decision goes through this one function, so the target cannot drift between
+// hover, click and drag.
+function hitRadius(node) {
+  if (node._type === "task") return node.r + hitSlop(node);
+  if (node._type === "project") return node.r + 10 * DPR;
+  return node.r;
+}
+
+// Which object a click at this world point belongs to.
+//
+// The map is a hierarchy of nested territories: a task lives inside a Project,
+// a Project inside a Domain, and a task without a Project lives inside the
+// "Без проекта" group. Choosing by array position (the previous `hit`) meant the
+// answer depended on the order nodes happened to be built in, not on what the
+// user sees. Two rules make the target match the picture instead:
+//   * the smallest territory wins — the more specific object is what was clicked;
+//   * when two candidates are equally specific, the one drawn on top wins.
+// A task therefore always beats the Project and the Domain it sits in, and an
+// empty patch of a Project still belongs to that Project.
+function hitRank(node) {
+  if (node._type === "task") return 0;
+  if (node._type === "project") return 1;
+  if (node._type === "unassigned") return 2;
+  return 3;
+}
+
+function bestHit(x, y, ignoreId = null) {
+  let best = null;
+  let bestRadius = 0;
+  let bestRank = 0;
+  for (const node of nodes) {
+    if (ignoreId !== null && node.id === ignoreId) continue;
+    const dx = x - node.x;
+    const dy = y - node.y;
+    const radius = hitRadius(node);
+    if (dx * dx + dy * dy > radius * radius) continue;
+    const rank = hitRank(node);
+    if (best && (radius > bestRadius || (radius === bestRadius && rank >= bestRank))) continue;
+    best = node;
+    bestRadius = radius;
+    bestRank = rank;
+  }
+  return best;
+}
+
 function announce(message) {
   if (!liveRegionEl || !message) return;
   liveRegionEl.textContent = message;
@@ -1865,6 +1912,15 @@ export function getLayoutSnapshot() {
   };
 }
 
+// Which object owns a point in world coordinates. Exposed so a regression can
+// check the hierarchy (task before its Project before its Domain) without
+// synthesising mouse events, and so diagnostics can ask the map the same
+// question the user's click will ask.
+export function resolveHit(x, y) {
+  const node = bestHit(x, y);
+  return node ? { id: node.id, type: node._type, title: node.title || null, groupId: node.groupId || null } : null;
+}
+
 function screenToWorld(x, y) {
   const dpr = window.devicePixelRatio || 1;
   const cx = x * dpr,
@@ -1875,42 +1931,15 @@ function screenToWorld(x, y) {
     y: (cy - viewState.ty) * invScale,
   };
 }
+// Hover, click and drag all resolve the pointer target the same way (bestHit),
+// so what the tooltip describes is always what a click would open.
 function hit(x, y) {
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i];
-    const dx = x - n.x,
-      dy = y - n.y;
-    const rr =
-      n._type === "task"
-        ? n.r + hitSlop(n)
-        : n._type === "project"
-        ? n.r + 10 * DPR
-        : n.r;
-    if (dx * dx + dy * dy <= rr * rr) {
-      return n;
-    }
-  }
-  return null;
+  return bestHit(x, y);
 }
 
 // hit test that ignores a specific node id (useful while dragging)
 function hitExcluding(x, y, ignoreId) {
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i];
-    if (n.id === ignoreId) continue;
-    const dx = x - n.x,
-      dy = y - n.y;
-    const rr =
-      n._type === "task"
-        ? n.r + hitSlop(n)
-        : n._type === "project"
-        ? n.r + 10 * DPR
-        : n.r;
-    if (dx * dx + dy * dy <= rr * rr) {
-      return n;
-    }
-  }
-  return null;
+  return bestHit(x, y, ignoreId);
 }
 
 function onMouseMove(e) {
