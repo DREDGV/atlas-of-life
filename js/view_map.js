@@ -110,6 +110,37 @@ function taskNode(task, x, y, groupId = null) {
   };
 }
 
+// Which map context owns a material (Thought/Note).
+//
+// Materials exist once in `state.knowledge` and belong to a Project, to a Domain,
+// or to nothing at all. A Project is the more specific context and wins when both
+// are set; a material with a Domain and no Project belongs to that Domain. The
+// previous check required `!item.projectId && item.domainId === id` for a Domain
+// but was asked with a Project id as well, so a Domain's own materials were
+// counted by nothing: they were visible in the library and absent from the map.
+// Materials without any context have no place on the map on purpose — they are
+// reachable through «Мысли и заметки».
+function knowledgeOwner(item) {
+  if (item?.projectId) return { type: 'project', id: item.projectId };
+  if (item?.domainId) return { type: 'domain', id: item.domainId };
+  return null;
+}
+
+export function knowledgeCountFor(nodesList, knowledge) {
+  const counts = new Map();
+  for (const item of knowledge || []) {
+    const owner = knowledgeOwner(item);
+    if (!owner) continue;
+    const key = `${owner.type}:${owner.id}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const result = {};
+  for (const node of nodesList || []) {
+    if (node._type !== 'domain' && node._type !== 'project') continue;
+    result[`${node._type}:${node.id}`] = counts.get(`${node._type}:${node.id}`) || 0;
+  }
+  return result;
+}
 // Which tasks are worth showing when a packed group cannot show everything:
 // a missed deadline or today's Focus matters more than an old backlog item.
 // Deterministic, so the same state always draws the same picture.
@@ -1454,14 +1485,21 @@ export function drawMap() {
     });
 
   // Materials remain in their context: one count badge, never one orb per note.
+  // The owner rule lives in knowledgeCountFor, so the badge and the library agree
+  // on where a Thought/Note belongs. A Domain badge sits under the Domain border,
+  // not under its centre: the centre is occupied by the Domain's children, and a
+  // badge there landed on top of the child's own badge.
+  const knowledgeCounts = knowledgeCountFor(nodes, state.knowledge);
   nodes.filter(n => n._type === 'domain' || n._type === 'project').forEach(n => {
-    const count = state.knowledge.filter(item => n._type === 'project' ? item.projectId === n.id :
-      (!item.projectId && item.domainId === n.id)).length;
+    const count = knowledgeCounts[`${n._type}:${n.id}`] || 0;
     if (!count) return;
     ctx.font = `600 ${css(11)}px system-ui`;
     ctx.textAlign = 'center';
     ctx.fillStyle = P.counterLabel;
-    ctx.fillText(`Мысли и заметки · ${count}`, n.x, n.y + n.r + css(22));
+    const badgeY = n._type === 'domain'
+      ? n.y + n.r + css(18)
+      : n.y + n.r + css(22);
+    ctx.fillText(`Мысли и заметки · ${count}`, n.x, badgeY);
   });
 
   // View-only home for tasks that belong to a Domain but not to a Project.
