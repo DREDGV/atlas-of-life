@@ -11,9 +11,12 @@
   --home:#2dd4bf; --dacha:#f59e0b;
   --gradient-1:#10162a; --gradient-2:#0c1322; --gradient-3:#0b0f17;
 }
-/* Light theme overrides */
+/* Light theme overrides.
+   --muted is one step deeper than the original #6b7a90: on the light panel that
+   value measured 4.36:1 and 4.02:1 on panel-2, i.e. below the 4.5:1 AA floor for
+   body-size text (measured, see .agents/skills/atlas-visual-verification). */
 [data-theme="light"]{
-  --bg:#f7fafc; --panel:#ffffff; --panel-2:#f2f6fb; --text:#0b1220; --muted:#6b7a90;
+  --bg:#f7fafc; --panel:#ffffff; --panel-2:#f2f6fb; --text:#0b1220; --muted:#5f6f86;
   --accent:#2563eb; --warn:#b7791f; --danger:#d14343; --ok:#059669; --link:#3b82f6;
   --gradient-1:#f7fafc; --gradient-2:#f2f6fb; --gradient-3:#e2e8f0;
 }
@@ -587,6 +590,9 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .today-day-picker { padding: 7px 9px; border: 1px solid var(--panel-2); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
 .today-capacity { color: var(--muted, #a8bbd3); font-size: 13px; margin: 0 0 4px; }
 .today-capacity[data-over="true"] { color: #f3c98b; }
+/* The day's feedback: what the plan produced, not another parameter. */
+.today-outcome { color: var(--muted, #a8bbd3); font-size: 13px; margin: 0 0 4px; }
+.today-carry-all { margin: 0 0 10px; }
 
 /* Material workspace: context-colored reading cards and a quiet action rail. */
 #viewKnowledge { position:absolute; inset:0; overflow:auto; padding:32px 28px 48px; background:var(--bg); }

@@ -22,6 +22,71 @@ import { statusLabel, plural } from "./ui/status-language.js";
 // re-derive it: status (filled/dashed/check), deadline urgency (red ring),
 // today's Focus (crosshair), priority and age. The map used to know only
 // `status` and `aging`, so an overdue task looked exactly like a backlog one.
+//
+// The canvas also has to respect the interface theme. Its labels used to be
+// light-on-dark constants (`#cfe8ff`, `#cde1ff`, `#9dbde0`), which measured
+// 1.26–1.95:1 against the light panel — that is, in the light theme the map had
+// effectively no readable text. Colours that carry text or structure are read
+// from here, and every pair below is checked with
+// .agents/skills/atlas-visual-verification.
+function mapThemeIsLight() {
+  return typeof document !== "undefined"
+    && document.documentElement.getAttribute("data-theme") === "light";
+}
+
+const MAP_PALETTE = {
+  dark: {
+    domainLabel: "#cfe8ff",
+    projectLabel: "#cde1ff",
+    groupLabel: "#9dbde0",
+    counterLabel: "#b9cbe4",
+    chipLabel: "#9ee6ff",
+    chipFill: "rgba(86,204,242,.16)",
+    chipStroke: "rgba(86,204,242,.5)",
+    hub: "#8ab4ff",
+    domainStrokeAlpha: "88",
+    labelHalo: "rgba(11,15,23,0.85)",
+    labelText: "#cfe0f5",
+    labelTextDone: "#8b98a9",
+    labelTextOverdue: "#fecaca",
+    hoverRing: "rgba(207,232,255,.92)",
+    groupStrokeHover: "rgba(147,197,253,.82)",
+    groupStroke: "rgba(147,197,253,.3)",
+    groupFillHover: "rgba(86,204,242,.09)",
+    groupFill: "rgba(86,204,242,.045)",
+    domainHoverRing: "rgba(207,232,255,.8)",
+    starFill: "#0f1627",
+    starAlpha: 0.3,
+  },
+  light: {
+    domainLabel: "#1f3a5f",
+    projectLabel: "#24405f",
+    groupLabel: "#3d5675",
+    counterLabel: "#41597a",
+    chipLabel: "#0d5c78",
+    chipFill: "rgba(13,92,120,.10)",
+    chipStroke: "rgba(13,92,120,.45)",
+    hub: "#2f6fd0",
+    domainStrokeAlpha: "aa",
+    labelHalo: "rgba(255,255,255,0.9)",
+    labelText: "#12283f",
+    labelTextDone: "#5c6b7e",
+    labelTextOverdue: "#9f1d1d",
+    hoverRing: "rgba(31,58,95,.85)",
+    groupStrokeHover: "rgba(37,99,235,.75)",
+    groupStroke: "rgba(37,99,235,.35)",
+    groupFillHover: "rgba(37,99,235,.08)",
+    groupFill: "rgba(37,99,235,.04)",
+    domainHoverRing: "rgba(31,58,95,.6)",
+    starFill: "#c8d6e6",
+    starAlpha: 0.55,
+  },
+};
+
+function mapPalette() {
+  return mapThemeIsLight() ? MAP_PALETTE.light : MAP_PALETTE.dark;
+}
+
 function taskNode(task, x, y, groupId = null) {
   const due = dueState(task);
   return {
@@ -723,6 +788,88 @@ function calculateProjectRadius(tasks) {
   // Возвращаем максимальное значение между базовым радиусом и вычисленным
   return Math.max(baseRadius, radiusFromArea);
 }
+
+// Geometry of one Domain and its children (visible Projects and the virtual
+// "Без проекта" group).
+//
+// A child territory is the circle drawn around it: a Project is drawn with a
+// halo of PROJECT_HALO beyond its radius, the group and its orbs stay inside
+// its own radius. Two rules make the picture honest, because the previous
+// version placed an only child exactly on the Domain centre and let sibling
+// territories overlap:
+//   * CHILD_MARGIN — every child territory fits inside the Domain border;
+//   * CHILD_GAP — two sibling territories never touch.
+// Both are pure functions of the declared radii, so the Domain can be sized and
+// its children placed from the same numbers. They are read through functions
+// because DPR is only known after the canvas has been measured.
+const CHILD_MARGIN = () => 24 * DPR;
+const CHILD_GAP = () => 10 * DPR;
+const PROJECT_HALO = () => 18 * DPR;
+
+// Distance from the Domain centre to the centre of each child.
+function ringOrbit(childRadii, domainRadius = Infinity) {
+  if (!childRadii.length) return 0;
+  const count = childRadii.length;
+  const maxChildRadius = Math.max(...childRadii);
+  // sin(π/n) turns "keep neighbours apart" into a radius. With one child there
+  // is no neighbour, so it only has to stay off the Domain centre.
+  const spread = maxChildRadius + (count > 1 ? CHILD_GAP() : 0);
+  const required = count > 1
+    ? spread / Math.max(0.35, Math.sin(Math.PI / count))
+    : maxChildRadius + CHILD_GAP();
+  // A Domain too small for its children collapses the ring instead of letting
+  // them spill across its own border.
+  const available = Math.max(0, domainRadius - maxChildRadius - CHILD_MARGIN());
+  return Math.min(required, available);
+}
+
+// Radius of the smallest Domain that contains that ring with a margin.
+function ringOuterRadius(childRadii) {
+  if (!childRadii.length) return 112 * DPR;
+  const maxChildRadius = Math.max(...childRadii);
+  return ringOrbit(childRadii) + maxChildRadius + CHILD_MARGIN();
+}
+
+// The largest Domain worth drawing. Beyond this the map stops being readable,
+// so an overfull Domain shrinks its children instead of growing further.
+const MAX_DOMAIN_RADIUS = () => 360 * DPR;
+const MIN_DOMAIN_RADIUS = () => 112 * DPR;
+
+// Fit a Domain and its children together, in this order of preference:
+//   1. grow the Domain to the room its children need (normal case);
+//   2. if that would exceed the largest sensible Domain, reduce the children
+//      proportionally so they still fit with a margin.
+// Scaling children down is the last resort, because a Domain is a container:
+// shrinking the container is less destructive than swallowing its contents.
+function fitDomainChildren(childRadii) {
+  const radii = [...childRadii];
+  if (!radii.length) return { radii, orbit: 0, radius: MIN_DOMAIN_RADIUS(), scaled: false };
+  const natural = Math.max(MIN_DOMAIN_RADIUS(), ringOuterRadius(radii));
+  if (natural <= MAX_DOMAIN_RADIUS()) {
+    return { radii, orbit: ringOrbit(radii, natural), radius: natural, scaled: false };
+  }
+  const maxChildRadius = Math.max(...radii);
+  const maxOrbit = Math.max(0, MAX_DOMAIN_RADIUS() - maxChildRadius - CHILD_MARGIN());
+  // Ring distance is proportional to the scaled radius (plus the fixed gap), so
+  // the factor that lands the ring exactly on maxOrbit follows from the ratio.
+  const current = ringOrbit(radii);
+  const factor = Math.max(0.2, Math.min(1, (maxOrbit + CHILD_GAP()) / Math.max(1, current + CHILD_GAP())));
+  const scaled = radii.map(r => r * factor);
+  const maxScaled = Math.max(...scaled);
+  return {
+    radii: scaled,
+    radius: MAX_DOMAIN_RADIUS(),
+    orbit: Math.max(0, Math.min(ringOrbit(scaled, MAX_DOMAIN_RADIUS()), MAX_DOMAIN_RADIUS() - maxScaled - CHILD_MARGIN())),
+    scaled: true,
+  };
+}
+
+// The radius used to draw a child. Projects carry a halo (see the project
+// renderer), so they take a little more room than the group.
+function childDrawRadius(child) {
+  return child.type === "project" ? child.r + PROJECT_HALO() : child.r;
+}
+
 export function layoutMap() {
   nodes = [];
   edges = [];
@@ -779,22 +926,19 @@ export function layoutMap() {
         r: groupRadius,
       });
     }
-    const maxChildRadius = children.length
-      ? Math.max(...children.map(child => child.r))
-      : 0;
-    const orbit = children.length > 1
-      ? (maxChildRadius + 14 * DPR) / Math.max(0.35, Math.sin(Math.PI / children.length))
-      : 0;
-    const requiredRadius = children.length
-      ? orbit + maxChildRadius + 30 * DPR
-      : 112 * DPR;
+    // Sizing and placement come from one decision (fitDomainChildren), so the
+    // Domain, its ring and the radius each child is drawn with cannot disagree.
+    // Sizing the Domain around the children's centres (the previous formula) left
+    // a single child sitting exactly on the Domain centre, covering all of it.
+    const fit = fitDomainChildren(children.map(childDrawRadius));
     const meta = {
       domain,
       projects,
       independentTasks,
       children,
       groupRadius,
-      r: clamp(requiredRadius / DPR, 112, 260) * DPR,
+      orbit: fit.orbit,
+      r: fit.radius,
     };
     domainMeta.set(domain.id, meta);
     return meta;
@@ -865,23 +1009,24 @@ export function layoutMap() {
     });
   });
 
+  // Place each Domain's children on the ring that fitDomainChildren decided.
+  // Positioning and sizing are one decision, so a child territory can no longer
+  // end up outside the Domain it belongs to. An only child sits off centre
+  // instead of exactly on it: its territory used to cover the whole Domain.
+  const childRadii = new Map();
   const childSlots = new Map();
   domainLayout.forEach((meta) => {
     const dNode = nodes.find(node => node._type === "domain" && node.id === meta.domain.id);
     if (!dNode || !meta.children.length) return;
-    const effectiveRadii = meta.children.map(child =>
-      Math.min(child.r, Math.max(24 * DPR, dNode.r - 32 * DPR))
-    );
-    const maxChildRadius = Math.max(...effectiveRadii);
-    const orbit = meta.children.length === 1
-      ? 0
-      : Math.max(0, dNode.r - maxChildRadius - 26 * DPR);
+    const drawRadii = meta.children.map(childDrawRadius);
+    const orbit = Math.max(0, Math.min(meta.orbit, dNode.r - Math.max(...drawRadii) - CHILD_MARGIN()));
     meta.children.forEach((child, index) => {
       const angle = -Math.PI / 2 + (index / meta.children.length) * Math.PI * 2;
+      childRadii.set(child.key, drawRadii[index]);
       childSlots.set(child.key, {
         x: dNode.x + Math.cos(angle) * orbit,
         y: dNode.y + Math.sin(angle) * orbit,
-        r: effectiveRadii[index],
+        r: child.r,
       });
     });
   });
@@ -993,10 +1138,14 @@ export function layoutMap() {
       if (!total) return;
       const slot = childSlots.get(`unassigned:${d.id}`);
       // Reserve a little extra room for the «+N» counter drawn at the bottom of
-      // the group, so the chip never lands on top of an orb.
+      // the group, so the chip never lands on top of an orb. The base radius is
+      // the one the Domain was sized around; only the counter allowance is added
+      // here, so the group cannot grow past the territory it was given.
       const groupRadius = (slot?.r || clamp(42 + Math.sqrt(total) * 10, 48, 82) * DPR) + 14 * DPR;
       const groupX = slot?.x ?? dNode.x;
       const groupY = slot?.y ?? dNode.y;
+      // The radius used to size the Domain (without the counter allowance).
+      const fittedRadius = childRadii.get(`unassigned:${d.id}`) ?? slot?.r ?? 0;
       // A packed group of twenty dots explains nothing: draw the most
       // decision-relevant ones and report the rest as a count.
       const sorted = [...list].sort(taskDisplayOrder);
@@ -1021,7 +1170,10 @@ export function layoutMap() {
           nodes.push(taskNode(t, savedT.x, savedT.y, `unassigned:${d.id}`));
         } else {
           const taskRadius = sizeByImportance(t) * DPR;
-          const orbit = shown.length === 1 ? 0 : Math.sqrt((idx + 0.55) / shown.length) * Math.max(0, groupRadius - taskRadius - 12 * DPR);
+          // Orbs are packed inside the radius the group was fitted with, not the
+          // one enlarged for the «+N» chip: that allowance is not orb space.
+          const packedRadius = Math.max(0, fittedRadius || groupRadius);
+          const orbit = shown.length === 1 ? 0 : Math.sqrt((idx + 0.55) / shown.length) * Math.max(0, packedRadius - taskRadius - 12 * DPR);
           const angle = idx * golden - Math.PI / 2;
           const x = groupX + Math.cos(angle) * orbit;
           const y = groupY + Math.sin(angle) * orbit;
@@ -1031,7 +1183,7 @@ export function layoutMap() {
       // The golden-angle spiral packs tasks by angle only, so orbs of different
       // radii end up overlapping and their labels collide. Separate them after
       // placement, keeping every orb inside the group it belongs to.
-      separateGroup(nodes, `unassigned:${d.id}`, groupX, groupY, groupRadius);
+      separateGroup(nodes, `unassigned:${d.id}`, groupX, groupY, Math.max(0, fittedRadius || groupRadius));
     });
     
     // Полностью независимые задачи размещаем там, куда их перетащили
@@ -1081,7 +1233,7 @@ export function layoutMap() {
           const a = keyById[limited[i]],
             b = keyById[limited[j]];
           if (!a || !b) continue;
-          edges.push({ a, b, tag, color: "#1e2f53", w: 0.7 * DPR });
+          edges.push({ a, b, tag, color: mapThemeIsLight() ? "#b9cbe0" : "#1e2f53", w: 0.7 * DPR });
         }
       }
     });
@@ -1099,6 +1251,9 @@ export function drawMap() {
     } catch (_) {}
   }
   const t0 = performance.now();
+  // One palette per frame: every text and structure colour below comes from here
+  // so the canvas follows the interface theme instead of assuming dark.
+  const P = mapPalette();
   ctx.save();
   ctx.clearRect(0, 0, W, H);
   // single transform matrix: scale + translate
@@ -1127,14 +1282,14 @@ export function drawMap() {
   if (emptyStateEl) emptyStateEl.hidden = nodes.length > 0;
 
   // subtle stars
-  ctx.globalAlpha = 0.3;
+  ctx.globalAlpha = P.starAlpha;
   for (let i = 0; i < 40; i++) {
     const x = (i * 97) % W,
       y = (i * 57) % H,
       r = (i % 3) + 0.6;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = "#0f1627";
+    ctx.fillStyle = P.starFill;
     ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -1209,13 +1364,13 @@ export function drawMap() {
       // Domain is a quiet territory, not another status ring.
       if (dropTargetDomainId === n.id || hoverNodeId === n.id) {
         ctx.beginPath();
-        ctx.strokeStyle = dropTargetDomainId === n.id ? "#7fffd4" : "rgba(207,232,255,.8)";
+        ctx.strokeStyle = dropTargetDomainId === n.id ? "#7fffd4" : P.domainHoverRing;
         ctx.lineWidth = dropTargetDomainId === n.id ? css(3) : css(1.5);
         ctx.arc(n.x, n.y, n.r + css(5), 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.beginPath();
-      ctx.strokeStyle = `${n.color}88`;
+      ctx.strokeStyle = `${n.color}${P.domainStrokeAlpha}`;
       ctx.lineWidth = css(1.1);
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.stroke();
@@ -1226,7 +1381,7 @@ export function drawMap() {
       ctx.moveTo(n.x, n.y - n.r - css(3));
       ctx.lineTo(n.x, n.y - n.r + css(7));
       ctx.stroke();
-      ctx.fillStyle = "#cfe8ff";
+      ctx.fillStyle = P.domainLabel;
       ctx.font = `600 ${css(12)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
       ctx.textAlign = "center";
       ctx.fillText(
@@ -1239,14 +1394,14 @@ export function drawMap() {
         ctx.font = `700 ${css(9)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
         const width = ctx.measureText(label).width + css(14);
         const y = n.y - n.r + css(18);
-        ctx.fillStyle = "rgba(86,204,242,.16)";
-        ctx.strokeStyle = "rgba(86,204,242,.55)";
+        ctx.fillStyle = P.chipFill;
+        ctx.strokeStyle = P.chipStroke;
         ctx.lineWidth = css(1);
         ctx.beginPath();
         ctx.roundRect(n.x - width / 2, y - css(10), width, css(18), css(8));
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = "#9ee6ff";
+        ctx.fillStyle = P.chipLabel;
         ctx.fillText(label, n.x, y + css(3));
       }
     });
@@ -1258,7 +1413,7 @@ export function drawMap() {
     if (!count) return;
     ctx.font = `600 ${css(11)}px system-ui`;
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#b9cbe4';
+    ctx.fillStyle = P.counterLabel;
     ctx.fillText(`Мысли и заметки · ${count}`, n.x, n.y + n.r + css(22));
   });
 
@@ -1268,15 +1423,15 @@ export function drawMap() {
     .forEach((n) => {
       if (!inView(n.x, n.y, n.r + 24 * DPR)) return;
       ctx.beginPath();
-      ctx.fillStyle = hoverNodeId === n.id ? "rgba(86,204,242,.09)" : "rgba(86,204,242,.045)";
-      ctx.strokeStyle = hoverNodeId === n.id ? "rgba(147,197,253,.82)" : "rgba(147,197,253,.3)";
+      ctx.fillStyle = hoverNodeId === n.id ? P.groupFillHover : P.groupFill;
+      ctx.strokeStyle = hoverNodeId === n.id ? P.groupStrokeHover : P.groupStroke;
       ctx.lineWidth = css(1.1);
       ctx.setLineDash([css(4), css(4)]);
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = "#9dbde0";
+      ctx.fillStyle = P.groupLabel;
       ctx.font = `650 ${css(10.5)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
       ctx.textAlign = "center";
       ctx.fillText(`БЕЗ ПРОЕКТА · ${n.count}`, n.x, n.y - n.r - css(8));
@@ -1307,7 +1462,7 @@ export function drawMap() {
       ctx.arc(n.x, n.y, n.r + css(18), 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.strokeStyle = hoverNodeId === n.id ? "rgba(147,197,253,.9)" : "rgba(96,165,250,.24)";
+      ctx.strokeStyle = hoverNodeId === n.id ? "rgba(147,197,253,0.9)" : "rgba(96,165,250,.24)";
       ctx.lineWidth = hoverNodeId === n.id ? css(1.6) : css(1);
       ctx.arc(n.x, n.y, n.r + css(18), 0, Math.PI * 2);
       ctx.stroke();
@@ -1315,10 +1470,10 @@ export function drawMap() {
       ctx.save();
       ctx.translate(n.x, n.y);
       ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = "#8ab4ff";
+      ctx.fillStyle = P.hub;
       ctx.fillRect(-hub, -hub, hub * 2, hub * 2);
       ctx.restore();
-      ctx.fillStyle = "#cde1ff";
+      ctx.fillStyle = P.projectLabel;
       ctx.font = `600 ${css(11.5)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       // project titles stay readable at normal zoom; below ~0.65 they would
@@ -1403,7 +1558,7 @@ export function drawMap() {
     ctx.shadowBlur = 0;
     if (hoverNodeId === n.id && selectedNodeId !== n.id) {
       ctx.beginPath();
-      ctx.strokeStyle = "rgba(207,232,255,.92)";
+      ctx.strokeStyle = P.hoverRing;
       ctx.lineWidth = css(1.4);
       ctx.arc(n.x, n.y, n.r + css(6), 0, Math.PI * 2);
       ctx.stroke();
@@ -1532,9 +1687,13 @@ export function drawMap() {
       placedLabels.push(rect);
       ctx.textAlign = "center";
       ctx.lineWidth = css(2.5);
-      ctx.strokeStyle = "rgba(11,15,23,0.85)";
+      ctx.strokeStyle = P.labelHalo;
       ctx.strokeText(fitted, labelX, labelY);
-      ctx.fillStyle = n.due === "overdue" && n.status !== "done" ? "#fecaca" : n.status === "done" ? "#8b98a9" : "#cfe0f5";
+      ctx.fillStyle = n.due === "overdue" && n.status !== "done"
+        ? P.labelTextOverdue
+        : n.status === "done"
+        ? P.labelTextDone
+        : P.labelText;
       ctx.fillText(fitted, labelX, labelY);
     }
   }
@@ -1550,14 +1709,14 @@ export function drawMap() {
       const label = `+${n.hidden} ${n.hidden === 1 ? "задача" : n.hidden < 5 ? "задачи" : "задач"}`;
       const width = ctx.measureText(label).width + css(14);
       const y = n.y + n.r + css(26);
-      ctx.fillStyle = "rgba(86,204,242,.16)";
-      ctx.strokeStyle = "rgba(86,204,242,.5)";
+      ctx.fillStyle = P.chipFill;
+      ctx.strokeStyle = P.chipStroke;
       ctx.lineWidth = css(1);
       ctx.beginPath();
       ctx.roundRect(n.x - width / 2, y - css(10), width, css(18), css(8));
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = "#9ee6ff";
+      ctx.fillStyle = P.chipLabel;
       ctx.fillText(label, n.x, y + css(3));
     });
 
