@@ -1719,7 +1719,15 @@ export function drawMap() {
   // where its neighbours ended up. A label is limited by the distance to the
   // nearest other task and skipped when it would still collide, so long titles
   // stop being cropped into meaningless stubs and stop overlapping each other.
-  if (viewState.scale >= 1.15) {
+  //
+  // The gate used to be `scale >= 1.15`, while the overview (fitAll) settles at
+  // 1.0-1.1 — so the very view a person opens the map in carried no names at all,
+  // and every orb was anonymous until hovered. Naming now follows what a label
+  // would cost on screen instead of an arbitrary zoom: a task is named when it is
+  // decision-relevant, when it is the active object, or when its orb is big
+  // enough to read and its neighbours are far enough away for the label to fit.
+  // The collision check below stays the final authority either way.
+  if (viewState.scale >= 0.85) {
     const labelOrder = [...taskOrbs].sort((a, b) => {
       const rank = (n) =>
         selectedNodeId === n.id ? 0
@@ -1740,8 +1748,9 @@ export function drawMap() {
       if (!active) {
         const important =
           n.due === "overdue" || n.focus === true || n.status === "today" || n.due === "today";
-        const roomy = viewState.scale >= 1.5 && n.r * viewState.scale >= 8;
-        if (!important && !roomy) continue;
+        const readableOrb = n.r * viewState.scale >= 7;
+        const roomToSpare = labelBudget(n, taskOrbs, viewState) >= 70;
+        if (!important && !(readableOrb && roomToSpare)) continue;
       }
       const text = String(n.title || "");
       if (!text) continue;
