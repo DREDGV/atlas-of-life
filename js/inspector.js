@@ -8,8 +8,11 @@ import {
   normalizeTags,
   daysSince,
   statusPill,
+  FOCUS_LIMIT,
 } from "./state.js";
 import { requestSyncNow } from "./sync/runtime.js";
+import { dueLabel, dueState, localDay, plannedDayOf, stepDay } from "./features/today/model.js";
+import { formatDay } from "./ui/status-language.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
 function drawMap() {
   return window.mapApi && window.mapApi.drawMap && window.mapApi.drawMap();
@@ -341,7 +344,6 @@ export function openInspectorFor(obj) {
       <div class="kv">Теги: #${(obj.tags || []).join(" #")}</div>
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
-        <button class="btn" id="toToday">Взять 3 задачи в Сегодня</button>
       </div>
       <div class="list">${tks
         .map(
@@ -392,13 +394,6 @@ export function openInspectorFor(obj) {
         };
       }
     }catch(_){ }
-    document.getElementById("toToday").onclick = () => {
-      const candidates = tks.filter((t) => t.status !== "done").slice(0, 3);
-      candidates.forEach((t) => updateTask(t.id, { status: "today" }));
-      drawMap();
-      renderToday();
-      openInspectorFor(obj);
-    };
     ins.querySelectorAll("[data-task-id]").forEach((card) => {
       card.onclick = () => {
         const task = state.tasks.find((item) => item.id === card.dataset.taskId);
@@ -420,6 +415,15 @@ export function openInspectorFor(obj) {
     const taskProject = project(obj.projectId);
     const taskDomainId = obj.domainId || taskProject?.domainId;
     const taskDomain = taskDomainId ? byId(state.domains, taskDomainId) : null;
+    // `obj` may be a copy handed over by the map or the knowledge library; the
+    // Inspector has to act on the persisted task itself.
+    const live = () => state.tasks.find(item => item.id === obj.id) || obj;
+    const planLabel = () => {
+      const task = live();
+      const day = plannedDayOf(task);
+      if (!day) return 'Не запланирована на день';
+      return day === localDay() ? 'План: сегодня' : `План: ${formatDay(day, localDay()) ?? day}`;
+    };
     ins.innerHTML = `
       ${inspectorHeading("Задача", escapeKnowledge(obj.title), [
         escapeKnowledge(taskDomain?.title || "Без домена"),
@@ -430,7 +434,7 @@ export function openInspectorFor(obj) {
       <div class="kv">Домен: ${escapeKnowledge(taskDomain?.title || (taskDomainId ? 'Неизвестный домен' : 'Без домена'))}</div>
       ${obj.sourceInboxId ? `<div class="kv">Источник: Входящие</div>` : ''}
       <div class="kv">Теги: #${escapeKnowledge(normalizeTags(obj.tags).join(" #") || "-")}</div>
-      ${obj.due ? `<div class="kv">Срок: ${obj.due.date}${obj.due.time ? ` · ${obj.due.time}` : ""}</div>` : ""}
+      ${obj.due ? `<div class="kv${dueState(obj).kind === 'overdue' ? ' kv-overdue' : ''}">${escapeKnowledge(dueLabel(obj))}</div>` : ""}
       <div class="kv">Статус: ${statusPill(obj.status)} · обновл.: ${daysSince(
       obj.updatedAt
     )} дн.</div>
@@ -449,6 +453,19 @@ export function openInspectorFor(obj) {
             }</div>`
           : ""
       }
+      <div class="inspector-section-label">План дня</div>
+      <div class="inspector-plan">
+        <div class="kv" id="taskPlanLabel">${escapeKnowledge(planLabel())}</div>
+        <label class="hint" for="taskPlanDay">День задачи — когда вы собираетесь её делать. Срок (due) остаётся крайним сроком и не меняется.</label>
+        <input id="taskPlanDay" type="date" />
+        <div class="btns">
+          <button class="btn" type="button" id="planToday">Сегодня</button>
+          <button class="btn" type="button" id="planTomorrow">Завтра</button>
+          <button class="btn" type="button" id="planClear">Убрать из плана</button>
+        </div>
+        <label class="inspector-plan-focus"><input id="taskPlanFocus" type="checkbox" /> Фокус дня (до ${FOCUS_LIMIT} задач, только на сегодня)</label>
+        <div class="hint" id="taskPlanError" role="status"></div>
+      </div>
       <div class="inspector-section-label">Статус</div>
       <div class="btns">
         <button class="btn" data-st="backlog">Бэклог</button>
@@ -483,6 +500,51 @@ export function openInspectorFor(obj) {
         error.textContent = err?.message || "Не удалось сохранить задачу";
       }
     };
+
+    // Day plan: the Inspector can move a task to any day, not only to today.
+    // Every change goes through Core; invalid ones are reported, not swallowed.
+    const planDayInput = document.getElementById("taskPlanDay");
+    const planFocusInput = document.getElementById("taskPlanFocus");
+    const planError = document.getElementById("taskPlanError");
+    const refreshPlan = () => {
+      const task = live();
+      planDayInput.value = plannedDayOf(task) ?? "";
+      planFocusInput.checked = task.focus === true;
+      planFocusInput.disabled = !task.focus && plannedDayOf(task) !== localDay();
+      planFocusInput.title = planFocusInput.disabled
+        ? 'Фокус дня — только для задачи, выбранной на сегодня'
+        : '';
+      document.getElementById("taskPlanLabel").textContent = planLabel();
+    };
+    const applyPlan = (patch) => {
+      planError.textContent = '';
+      try {
+        const result = updateTask(obj.id, patch);
+        if (!result) return;
+        requestSyncNow();
+        drawMap();
+        renderToday();
+        openInspectorFor(forInspector(result.task, "task"));
+      } catch (err) {
+        refreshPlan();
+        planError.textContent = err?.message || 'Не удалось изменить план';
+      }
+    };
+    // "Backlog" is the plan-less state, so it also clears the day; naming a day
+    // is a move inside the plan and keeps the task planned.
+    const clearPlan = () => applyPlan({ status: 'backlog' });
+    planDayInput.onchange = () => {
+      if (!planDayInput.value) { clearPlan(); return; }
+      applyPlan({ plannedDay: planDayInput.value });
+    };
+    document.getElementById("planToday").onclick = () =>
+      applyPlan({ status: 'today', plannedDay: localDay() });
+    document.getElementById("planTomorrow").onclick = () =>
+      applyPlan({ plannedDay: stepDay(localDay(), 1), focus: false });
+    document.getElementById("planClear").onclick = clearPlan;
+    planFocusInput.onchange = () => applyPlan({ focus: planFocusInput.checked });
+    refreshPlan();
+
     if (pendForThis) {
       document.getElementById("confirmAttach").onclick = () => {
         confirmAttach();
@@ -494,8 +556,9 @@ export function openInspectorFor(obj) {
       };
     }
     ins.querySelectorAll(".btn[data-st]").forEach((b) => {
-      b.setAttribute("aria-pressed", String(obj.status === b.dataset.st));
-      if (obj.status === b.dataset.st) b.classList.add("primary");
+      const status = live().status;
+      b.setAttribute("aria-pressed", String(status === b.dataset.st));
+      if (status === b.dataset.st) b.classList.add("primary");
       b.onclick = () => {
         const result = updateTask(obj.id, { status: b.dataset.st });
         if (!result) return;
@@ -514,15 +577,17 @@ export function openInspectorFor(obj) {
         openInspectorFor(null);
       }
     };
-    // Add "Make project" button
+    // Add "Make project" button. It belongs to the status row, not to the plan
+    // row, so it is placed next to the task's own destructive action.
     try{
-      const btns = document.querySelector('#inspector .btns');
+      const delTask = document.getElementById('delTask');
+      const btns = delTask?.parentElement;
       if(btns){
         const b = document.createElement('button');
         b.className = 'btn';
         b.id = 'mkProject';
         b.textContent = 'Сделать проектом';
-        btns.appendChild(b);
+        btns.insertBefore(b, delTask);
         b.onclick = ()=>{
           const result = promoteTaskToProject(obj.id);
           if(!result) return;

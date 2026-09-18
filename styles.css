@@ -11,9 +11,12 @@
   --home:#2dd4bf; --dacha:#f59e0b;
   --gradient-1:#10162a; --gradient-2:#0c1322; --gradient-3:#0b0f17;
 }
-/* Light theme overrides */
+/* Light theme overrides.
+   --muted is one step deeper than the original #6b7a90: on the light panel that
+   value measured 4.36:1 and 4.02:1 on panel-2, i.e. below the 4.5:1 AA floor for
+   body-size text (measured, see .agents/skills/atlas-visual-verification). */
 [data-theme="light"]{
-  --bg:#f7fafc; --panel:#ffffff; --panel-2:#f2f6fb; --text:#0b1220; --muted:#6b7a90;
+  --bg:#f7fafc; --panel:#ffffff; --panel-2:#f2f6fb; --text:#0b1220; --muted:#5f6f86;
   --accent:#2563eb; --warn:#b7791f; --danger:#d14343; --ok:#059669; --link:#3b82f6;
   --gradient-1:#f7fafc; --gradient-2:#f2f6fb; --gradient-3:#e2e8f0;
 }
@@ -33,6 +36,20 @@ header .toggle{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .chip-group .chip.active{background:color-mix(in srgb, var(--panel-2) 80%, transparent)}
 header label{display:flex;gap:6px;align-items:center;color:var(--muted);cursor:pointer}
 .header-quiet-action{white-space:nowrap}
+/* Map lenses and search: a way of looking at the map, not a change to it.
+   The counter beside them is what keeps a lens honest — it reports how many
+   tasks the lens found, so a quiet-looking map is never read as an empty one. */
+.lens-group{gap:0}
+.lens-chip{padding:4px 8px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:600 11px/1.4 inherit;cursor:pointer;white-space:nowrap}
+.lens-chip:hover{color:var(--text);background:color-mix(in srgb,var(--panel-2) 70%,transparent)}
+.lens-chip.active{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent)}
+.lens-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.map-search{display:flex;align-items:center;padding:0 4px}
+.map-search input{width:132px;padding:4px 8px;border:1px solid color-mix(in srgb,var(--muted) 22%,transparent);border-radius:8px;background:var(--panel-2);color:var(--text);font:12px/1.4 inherit;outline:none}
+.map-search input::placeholder{color:color-mix(in srgb,var(--muted) 85%,transparent)}
+.map-search input:focus{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
+.map-lens-count{font:600 10px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);white-space:nowrap}
+.map-lens-count[hidden]{display:none}
 .map-zoom{padding:0 5px;font-size:11px;white-space:nowrap}
 .map-zoom .zoom-slider{accent-color:var(--accent)}
 .header-popover{position:relative;color:var(--muted);font-size:12px}
@@ -69,7 +86,7 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .domain-name{display:flex;min-width:0;align-items:center;gap:6px;padding:3px 0;text-align:left}
 .domain-name>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
 .domain-context-badge{flex:none;border:1px solid color-mix(in srgb,var(--accent) 38%,transparent);border-radius:999px;color:var(--accent);padding:1px 5px;font:700 8px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase}
-.domain-counts{white-space:nowrap;color:var(--muted);font:600 9px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+.domain-counts{white-space:nowrap;color:var(--muted);font:600 10px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
 .domain-focus,.domain-actions{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;color:var(--muted)}
 .domain-focus:hover,.domain-actions:hover{background:var(--panel-2);color:var(--text)}
 .domain-name:focus-visible,.domain-focus:focus-visible,.domain-actions:focus-visible,.domain-visibility:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -79,8 +96,39 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .tag{font-size:12px;border:1px solid var(--panel-2);padding:3px 8px;border-radius:999px;color:var(--muted)}
 .tag.active{border-color:var(--accent);color:var(--text)}
 #canvasWrap{position:relative;background:radial-gradient(1200px 600px at 60% -100px, var(--gradient-1), var(--gradient-2) 60%, var(--gradient-3) 100%);height:100%}
+/* The map is reachable from the keyboard: the canvas is focusable, and the
+   focused orb gets a dashed ring (drawn in js/view_map.js) plus this outline. */
+#canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 canvas{display:block;width:100%;height:100%}
 .tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--panel-2);padding:6px 8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);color:var(--text);font-size:12px;opacity:0;transform:translate(-50%,-130%);white-space:nowrap}
+/* Object card: what is under the pointer, told in numbers instead of one line
+   of prose. Anchored to the canvas corner so it never covers the terrain or the
+   orbs the pointer is moving between. */
+.map-hud{position:absolute;top:12px;left:12px;z-index:3;pointer-events:none;width:min(280px,calc(100% - 24px));padding:12px 13px 11px;border:1px solid color-mix(in srgb,var(--muted) 20%,transparent);border-radius:14px;background:color-mix(in srgb,var(--panel) 94%,transparent);box-shadow:0 18px 46px rgba(0,0,0,.42);backdrop-filter:blur(12px);color:var(--text);overflow:hidden}
+.map-hud[hidden]{display:none}
+.map-hud::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--hud-accent,var(--accent))}
+.map-hud-kind{font:700 9.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.map-hud-title{margin:3px 0 2px;font-size:15px;font-weight:700;line-height:1.25;overflow-wrap:break-word}
+.map-hud-path{margin-bottom:9px;color:var(--muted);font:500 10.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+.map-hud-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px;margin-bottom:10px}
+.map-hud-stat{min-width:0}
+.map-hud-stat b{display:block;font-size:19px;font-weight:750;line-height:1.1;font-variant-numeric:tabular-nums}
+.map-hud-stat span{display:block;margin-top:2px;color:var(--muted);font-size:9.5px;line-height:1.25}
+.map-hud-stat.is-danger b{color:var(--danger)}
+.map-hud-stat.is-warn b{color:var(--warn)}
+.map-hud-stat.is-ok b{color:var(--ok)}
+.map-hud-stat.is-quiet b{color:var(--muted)}
+.map-hud-base{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.map-hud-base-track{position:relative;flex:1;height:6px;border-radius:999px;background:color-mix(in srgb,var(--muted) 22%,transparent);overflow:hidden}
+.map-hud-base-track i{position:absolute;inset:0 auto 0 0;background:var(--ok)}
+.map-hud-base-caption{color:var(--muted);font:600 10px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+.map-hud-chips{display:flex;flex-wrap:wrap;gap:5px}
+.map-hud-chip{padding:2px 7px;border:1px solid color-mix(in srgb,var(--muted) 26%,transparent);border-radius:999px;color:var(--muted);font-size:10px;white-space:nowrap}
+.map-hud-chip.is-today{border-color:color-mix(in srgb,var(--warn) 55%,transparent);color:var(--warn)}
+.map-hud-chip.is-danger{border-color:color-mix(in srgb,var(--danger) 55%,transparent);color:var(--danger)}
+.map-hud-chip.is-focus{border-color:color-mix(in srgb,#67e8f9 55%,transparent);color:#67e8f9}
+.map-hud-chip.is-ok{border-color:color-mix(in srgb,var(--ok) 55%,transparent);color:var(--ok)}
 /* Empty map state: shown instead of a blank gradient when there are no domains */
 .map-empty{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;pointer-events:none;z-index:2}
 .map-empty[hidden]{display:none}
@@ -105,6 +153,14 @@ canvas{display:block;width:100%;height:100%}
 .inspector-form label{font-size:11px;color:var(--muted)}
 .inspector-form input{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--panel-2);border-radius:8px;color:var(--text);padding:7px 8px;outline:none}
 .inspector-form input:focus{border-color:var(--accent)}
+/* Day plan in the Inspector: one control for the day, one for today's focus. */
+.inspector-plan{display:grid;gap:8px;margin:10px 0;padding:10px;border:1px solid var(--panel-2);border-radius:10px;background:color-mix(in srgb,var(--panel-2) 70%,transparent)}
+.inspector-plan label{font-size:11px;color:var(--muted)}
+.inspector-plan .btns{margin:0}
+.inspector-plan input[type="date"]{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--panel-2);border-radius:8px;color:var(--text);padding:7px 8px;outline:none}
+.inspector-plan input[type="date"]:focus{border-color:var(--accent)}
+.inspector-plan-focus{display:flex;align-items:center;gap:7px}
+.inspector-plan-focus input{width:auto;margin:0}
 .inspector-card-button{display:block;width:100%;color:var(--text);text-align:left;font:inherit;cursor:pointer}
 .inspector-card-button:hover,.inspector-card-button:focus-visible{border-color:var(--accent);outline:none}
 .inspector-overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:12px 0}
@@ -169,6 +225,25 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .todo .handle{opacity:.5;cursor:grab}
 .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel-2);border:1px solid var(--panel-2);padding:1px 6px;border-radius:6px;font-size:12px;color:var(--text)}
 .hint{color:var(--muted);font-size:12px}
+/* Deadline urgency reads the same in every surface: the map tooltip, the
+   Inspector and Today. Colour is never the only carrier — the text says
+   «Срок истёк» — and the Focus of the day has its own quiet mark. */
+.tooltip .hint.is-overdue,.kv-overdue{color:var(--danger)}
+.kv-overdue{font-weight:600}
+.tooltip .focus-mark{color:#67e8f9;font-size:11px;font-weight:600}
+/* «Вид карты» explains the orb vocabulary instead of leaving it to be guessed. */
+.map-orb-legend{display:grid;gap:5px;max-width:260px}
+.map-orb-legend>span{display:flex;align-items:center;gap:7px;min-height:16px}
+.map-orb-legend>span>.orb-mark{flex:0 0 16px}
+.orb-mark{position:relative;flex:0 0 auto;width:14px;height:14px;border-radius:50%}
+.orb-mark.orb-size{background:#9ca3af;width:11px;height:11px;box-shadow:7px 0 0 -3px #9ca3af}
+.orb-mark.orb-overdue{border:2px solid var(--danger);background:rgba(248,113,113,.25)}
+.orb-mark.orb-focus::before,.orb-mark.orb-focus::after{content:"";position:absolute;inset:50% auto auto 50%;background:#67e8f9;transform:translate(-50%,-50%)}
+.orb-mark.orb-focus::before{width:16px;height:1.5px}
+.orb-mark.orb-focus::after{width:1.5px;height:16px}
+.orb-mark.orb-focus{background:#9ca3af;width:8px;height:8px}
+.orb-mark.orb-doing{border:1.5px dashed var(--accent);background:#9ca3af}
+.orb-mark.orb-age{background:#9ca3af;box-shadow:0 -6px 0 -3px var(--ok)}
 .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:50}
 .modal .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.5)}
 .modal .box{position:relative;z-index:1;min-width:300px;max-width:90vw;background:var(--panel);border:1px solid var(--panel-2);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:12px}
@@ -549,6 +624,16 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .today-task-title { background: none; border: none; color: inherit; text-align: left; cursor: pointer; font: inherit; padding: 0 0 6px; overflow-wrap: anywhere; }
 .today-task-title:hover { text-decoration: underline; }
 .today-error { color: #ffb7ad; }
+/* Day navigation: Today is one day of the plan, and the day is choosable. */
+.today-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 10px; }
+.today-nav .btn { min-width: 40px; padding: 8px 12px; }
+.today-day { font-size: 18px; font-weight: 600; letter-spacing: -.01em; text-transform: capitalize; }
+.today-day-picker { padding: 7px 9px; border: 1px solid var(--panel-2); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
+.today-capacity { color: var(--muted, #a8bbd3); font-size: 13px; margin: 0 0 4px; }
+.today-capacity[data-over="true"] { color: #f3c98b; }
+/* The day's feedback: what the plan produced, not another parameter. */
+.today-outcome { color: var(--muted, #a8bbd3); font-size: 13px; margin: 0 0 4px; }
+.today-carry-all { margin: 0 0 10px; }
 
 /* Material workspace: context-colored reading cards and a quiet action rail. */
 #viewKnowledge { position:absolute; inset:0; overflow:auto; padding:32px 28px 48px; background:var(--bg); }

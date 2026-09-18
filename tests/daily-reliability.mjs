@@ -35,7 +35,7 @@ try {
   memory.delete(adapter.key); assert.equal(loadState(),false); assert.equal(getStorageStatus().status,'empty');
   reset();
   const original = memory.get(adapter.key);
-  createTask({ id:'planned', title:'Chosen', status:'today', domainId:'d1', due:{date:'2099-01-01',time:null} });
+  createTask({ id:'planned', title:'Chosen', status:'today', domainId:'d1', due:{date:'2099-01-01',time:null} }, { now:new Date(2026,8,6,12).getTime() });
   assert.equal(memory.get(BACKUP_KEY),original);
   const stable = JSON.stringify(state), stored = memory.get(adapter.key);
   failWrite = adapter.key; assert.throws(() => updateTask('planned',{status:'done'}));
@@ -46,7 +46,7 @@ try {
   updateTask('planned',{status:'done'},{now:new Date(2026,8,6,12).getTime()});
   loadState();
   assert.equal(todayGroups(state.tasks,new Date(2026,8,6)).completed.length,1);
-  updateTask('planned',{status:'today'});
+  updateTask('planned',{status:'today'},{now:new Date(2026,8,6,12).getTime()});
   assert.equal(state.tasks[0].due.date,'2099-01-01');
   createTask({ id:'deadline', title:'Due', domainId:'d1', due:{date:'2026-09-06',time:null} });
   const groups = todayGroups(state.tasks,new Date(2026,8,6));
