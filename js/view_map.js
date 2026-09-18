@@ -67,7 +67,11 @@ const MAP_PALETTE = {
     domainHoverRing: "rgba(207,232,255,.8)",
     starFill: "#0f1627",
     starAlpha: 0.3,
-    ringTrack: "rgba(148,178,214,.22)",
+    ringTrack: "rgba(148,178,214,.34)",
+    ringDone: "#34d399",
+    ringOverdue: "#f87171",
+    ringBacking: "rgba(8,12,20,.85)",
+    ringMark: "rgba(11,15,23,.9)",
   },
   light: {
     domainLabel: "#1f3a5f",
@@ -91,7 +95,11 @@ const MAP_PALETTE = {
     domainHoverRing: "rgba(31,58,95,.6)",
     starFill: "#c8d6e6",
     starAlpha: 0.55,
-    ringTrack: "rgba(87,113,143,.28)",
+    ringTrack: "rgba(87,113,143,.38)",
+    ringDone: "#059669",
+    ringOverdue: "#c53030",
+    ringBacking: "rgba(255,255,255,.9)",
+    ringMark: "rgba(255,255,255,.95)",
   },
 };
 
@@ -1636,19 +1644,30 @@ export function drawMap() {
   // reporting the state of each area at a glance — one arc you read without
   // hovering anything. Drawn outside the territory so it never competes with the
   // orbs, and skipped for an area with no tasks (an empty arc means nothing).
+  //
+  // The ring is deliberately loud: it carries the only number on the map that is
+  // about the whole area, and its colour must read from across the canvas. A
+  // quarter marks give the eye a scale, so "about half" is visible as half.
   const drawProgressRing = (n, ringRadius) => {
     const stats = areaStats(n);
     if (!stats || !stats.total) return;
-    const lineWidth = css(2.6);
+    const lineWidth = css(3.4);
+    const start = -Math.PI / 2;
+    // Dark backing under the track keeps the ring separate from the domain border
+    // it runs beside, so the two arcs never read as one thick line.
+    ctx.beginPath();
+    ctx.strokeStyle = P.ringBacking;
+    ctx.lineWidth = lineWidth + css(2);
+    ctx.arc(n.x, n.y, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.beginPath();
     ctx.strokeStyle = P.ringTrack;
     ctx.lineWidth = lineWidth;
     ctx.arc(n.x, n.y, ringRadius, 0, Math.PI * 2);
     ctx.stroke();
-    const start = -Math.PI / 2;
     if (stats.doneRatio > 0) {
       ctx.beginPath();
-      ctx.strokeStyle = "#34d399";
+      ctx.strokeStyle = P.ringDone;
       ctx.lineWidth = lineWidth;
       ctx.arc(n.x, n.y, ringRadius, start, start + Math.PI * 2 * Math.min(1, stats.doneRatio));
       ctx.stroke();
@@ -1657,11 +1676,48 @@ export function drawMap() {
     // map already uses for a missed deadline.
     if (stats.overdueRatio > 0) {
       ctx.beginPath();
-      ctx.strokeStyle = "#f87171";
+      ctx.strokeStyle = P.ringOverdue;
       ctx.lineWidth = lineWidth + css(0.8);
       ctx.arc(n.x, n.y, ringRadius, start, start + Math.PI * 2 * Math.min(1, stats.overdueRatio));
       ctx.stroke();
     }
+    // Quarter marks: a scale for the arc, not decoration.
+    ctx.beginPath();
+    ctx.strokeStyle = P.ringMark;
+    ctx.lineWidth = css(1);
+    for (const quarter of [0.25, 0.5, 0.75]) {
+      const angle = start + Math.PI * 2 * quarter;
+      ctx.moveTo(n.x + Math.cos(angle) * (ringRadius - lineWidth / 2), n.y + Math.sin(angle) * (ringRadius - lineWidth / 2));
+      ctx.lineTo(n.x + Math.cos(angle) * (ringRadius + lineWidth / 2), n.y + Math.sin(angle) * (ringRadius + lineWidth / 2));
+    }
+    ctx.stroke();
+  };
+
+  // The share finished, written under the territory name. The ring shows the
+  // shape of progress; this is the same fact as a number.
+  //
+  // Three rules keep it from becoming noise, because a scene with several sparse
+  // territories produced a wall of identical "0% выполнено" lines:
+  //   * a number that says nothing new is not written — an area with no progress
+  //     and no missed deadline is already told by its empty ring;
+  //   * a Project only reports when it has progress or overdue work of its own;
+  //   * a lone Project inside a Domain leaves the number to the Domain, since the
+  //     Domain's share would repeat the Project's.
+  const drawAreaReadout = (n, ringRadius, { loneChild = false } = {}) => {
+    const stats = areaStats(n);
+    if (!stats || !stats.total) return;
+    const percent = Math.round(stats.doneRatio * 100);
+    const hasNews = stats.overdue > 0 || percent > 0;
+    if (!hasNews) return;
+    if (n._type === "project" && loneChild) return;
+    if (ringRadius < css(60)) return;
+    const label = stats.overdue
+      ? `${percent}% · просрочено ${stats.overdue}`
+      : `${percent}% выполнено`;
+    ctx.font = `650 ${css(10)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = stats.overdue ? P.ringOverdue : P.counterLabel;
+    ctx.fillText(label, n.x, n.y + ringRadius + css(13));
   };
 
   // Materials remain in their context: one count badge, never one orb per note.
@@ -1670,10 +1726,23 @@ export function drawMap() {
   // not under its centre: the centre is occupied by the Domain's children, and a
   // badge there landed on top of the child's own badge.
   const knowledgeCounts = knowledgeCountFor(nodes, state.knowledge);
+  // How many territories live directly inside each Domain: used to let a lone
+  // Project stay quiet while the Domain speaks for the same numbers.
+  const childCountByDomain = new Map();
+  nodes.forEach(node => {
+    if (node._type !== 'project' && node._type !== 'unassigned') return;
+    const domainId = node._type === 'project' ? node.parent : node.domainId;
+    if (!domainId) return;
+    childCountByDomain.set(domainId, (childCountByDomain.get(domainId) || 0) + 1);
+  });
   nodes.filter(n => n._type === 'domain' || n._type === 'project').forEach(n => {
     // The progress ring sits outside the territory border. For a Project that
     // means outside its halo, so the ring is never mistaken for the halo itself.
-    drawProgressRing(n, n._type === 'domain' ? n.r + css(7) : n.r + css(25));
+    const ringRadius = n._type === 'domain' ? n.r + css(9) : n.r + css(27);
+    drawProgressRing(n, ringRadius);
+    drawAreaReadout(n, ringRadius, {
+      loneChild: n._type === 'project' && (childCountByDomain.get(n.parent) || 0) === 1,
+    });
     const count = knowledgeCounts[`${n._type}:${n.id}`] || 0;
     if (!count) return;
     ctx.font = `600 ${css(11)}px system-ui`;
