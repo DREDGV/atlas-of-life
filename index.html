@@ -31,6 +31,18 @@
       <button class="chip" type="button" id="btnFitProject" title="Подогнать активный проект (P)">Проект</button>
       <button class="chip" type="button" id="btnReset" title="Сбросить камеру (R)">Сброс</button>
     </div>
+    <div class="chip-group lens-group" role="group" aria-label="Линзы карты">
+      <button class="lens-chip active" type="button" data-map-lens="all" aria-pressed="true" title="Показать все задачи">Все</button>
+      <button class="lens-chip" type="button" data-map-lens="due" aria-pressed="false" title="Срок наступил или план на сегодня и раньше">Срок</button>
+      <button class="lens-chip" type="button" data-map-lens="focus" aria-pressed="false" title="Только Фокус дня">Фокус</button>
+      <button class="lens-chip" type="button" data-map-lens="stale" aria-pressed="false" title="Нет движения 30+ дней">Застой</button>
+      <button class="lens-chip" type="button" data-map-lens="done" aria-pressed="false" title="Только выполненные">Готово</button>
+    </div>
+    <label class="map-search" for="mapSearch">
+      <span class="sr-only">Поиск по карте</span>
+      <input id="mapSearch" type="search" placeholder="Поиск на карте" autocomplete="off" />
+    </label>
+    <span class="map-lens-count" id="mapLensCount" role="status" aria-live="polite" hidden></span>
     <button class="chip" type="button" id="btnSync" title="Синхронизация между устройствами">Синхронизация</button>
     <div class="spacer"></div>
     <button class="chip header-quiet-action" type="button" id="btnFullscreen" title="Полный экран">Экран</button>

@@ -36,6 +36,20 @@ header .toggle{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .chip-group .chip.active{background:color-mix(in srgb, var(--panel-2) 80%, transparent)}
 header label{display:flex;gap:6px;align-items:center;color:var(--muted);cursor:pointer}
 .header-quiet-action{white-space:nowrap}
+/* Map lenses and search: a way of looking at the map, not a change to it.
+   The counter beside them is what keeps a lens honest — it reports how many
+   tasks the lens found, so a quiet-looking map is never read as an empty one. */
+.lens-group{gap:0}
+.lens-chip{padding:4px 8px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:600 11px/1.4 inherit;cursor:pointer;white-space:nowrap}
+.lens-chip:hover{color:var(--text);background:color-mix(in srgb,var(--panel-2) 70%,transparent)}
+.lens-chip.active{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent)}
+.lens-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.map-search{display:flex;align-items:center;padding:0 4px}
+.map-search input{width:132px;padding:4px 8px;border:1px solid color-mix(in srgb,var(--muted) 22%,transparent);border-radius:8px;background:var(--panel-2);color:var(--text);font:12px/1.4 inherit;outline:none}
+.map-search input::placeholder{color:color-mix(in srgb,var(--muted) 85%,transparent)}
+.map-search input:focus{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
+.map-lens-count{font:600 10px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);white-space:nowrap}
+.map-lens-count[hidden]{display:none}
 .map-zoom{padding:0 5px;font-size:11px;white-space:nowrap}
 .map-zoom .zoom-slider{accent-color:var(--accent)}
 .header-popover{position:relative;color:var(--muted);font-size:12px}
@@ -72,7 +86,7 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .domain-name{display:flex;min-width:0;align-items:center;gap:6px;padding:3px 0;text-align:left}
 .domain-name>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
 .domain-context-badge{flex:none;border:1px solid color-mix(in srgb,var(--accent) 38%,transparent);border-radius:999px;color:var(--accent);padding:1px 5px;font:700 8px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase}
-.domain-counts{white-space:nowrap;color:var(--muted);font:600 9px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+.domain-counts{white-space:nowrap;color:var(--muted);font:600 10px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
 .domain-focus,.domain-actions{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;color:var(--muted)}
 .domain-focus:hover,.domain-actions:hover{background:var(--panel-2);color:var(--text)}
 .domain-name:focus-visible,.domain-focus:focus-visible,.domain-actions:focus-visible,.domain-visibility:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

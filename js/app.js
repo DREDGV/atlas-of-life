@@ -12,6 +12,8 @@ import {
   resetView,
   setShowFps,
   undoLastMove,
+  getMapFilterState,
+  setMapFilter,
 } from "./view_map.js";
 import { renderToday, setTodayDay } from "./view_today.js";
 import { renderKnowledge } from './features/knowledge/view.js';
@@ -1107,7 +1109,76 @@ async function init() {
   const canvas = document.getElementById("canvas");
   const tooltip = document.getElementById("tooltip");
   initMap(canvas, tooltip);
+  initMapFilterControls();
   updateWip();
+}
+
+// Lenses and search above the map.
+//
+// A lens answers one question about the whole map ("what is due", "what has gone
+// quiet"). It is a way of looking, not a change to the data: the choice lives in
+// session state, never in storage, and no task is moved or deleted. The count
+// next to the controls is what keeps a filter honest — it says how many tasks the
+// lens found, so an empty-looking map is never mistaken for an empty life.
+function initMapFilterControls() {
+  const chips = $$("[data-map-lens]");
+  const search = document.getElementById("mapSearch");
+  const counter = document.getElementById("mapLensCount");
+  if (!chips.length && !search) return;
+
+  const renderState = () => {
+    const filter = getMapFilterState();
+    chips.forEach(chip => {
+      const active = chip.dataset.mapLens === filter.lens;
+      chip.classList.toggle("active", active);
+      chip.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (!counter) return;
+    counter.hidden = !filter.active;
+    counter.textContent = filter.active
+      ? `найдено ${filter.matching} из ${filter.total}`
+      : "";
+  };
+
+  chips.forEach(chip => {
+    chip.onclick = () => {
+      const current = getMapFilterState();
+      // Clicking the active lens returns to the whole map: a filter with no way
+      // out is a trap.
+      const next = current.lens === chip.dataset.mapLens ? "all" : chip.dataset.mapLens;
+      setMapFilter({ lens: next });
+      renderState();
+      try { logEvent("map_lens", { lens: next }); } catch (_) {}
+    };
+  });
+
+  if (search) {
+    let timer = null;
+    const apply = () => {
+      setMapFilter({ query: search.value });
+      renderState();
+    };
+    search.addEventListener("input", () => {
+      // Typing should not re-layout the map on every keystroke: a short pause is
+      // cheaper and matches how people type a word they are looking for.
+      clearTimeout(timer);
+      timer = setTimeout(apply, 220);
+    });
+    search.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && search.value) {
+        event.preventDefault();
+        search.value = "";
+        clearTimeout(timer);
+        apply();
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        clearTimeout(timer);
+        apply();
+      }
+    });
+  }
+  renderState();
 }
 init();
 

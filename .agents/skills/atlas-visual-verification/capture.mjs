@@ -104,21 +104,53 @@ async function measure(page) {
     for (const name of ['--bg', '--panel', '--panel-2', '--text', '--muted', '--accent', '--warn', '--danger', '--ok']) {
       tokens[name] = css.getPropertyValue(name).trim();
     }
-    const parse = (value) => {
-      const hex = value.replace('#', '');
-      const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
-      return [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16));
+    const parseRgb = (value) => {
+      const text = String(value).trim();
+      if (text.startsWith('#')) {
+        const hex = text.replace('#', '');
+        const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+        return [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16)).concat([1]);
+      }
+      const match = text.match(/rgba?\(([^)]+)\)/);
+      if (!match) return null;
+      const parts = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+      return [parts[0], parts[1], parts[2], parts.length > 3 ? parts[3] : 1];
     };
     const luminance = (rgb) => {
-      const [r, g, b] = rgb.map(v => {
+      const [r, g, b] = rgb.slice(0, 3).map(v => {
         const s = v / 255;
         return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
       });
       return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     };
-    const ratio = (a, b) => {
-      const [l1, l2] = [luminance(parse(a)), luminance(parse(b))].sort((x, y) => y - x);
+    const ratioOf = (a, b) => {
+      const [l1, l2] = [luminance(a), luminance(b)].sort((x, y) => y - x);
       return Number(((l1 + 0.05) / (l2 + 0.05)).toFixed(2));
+    };
+    const parse = parseRgb;
+    const ratio = (a, b) => ratioOf(parse(a) || [0, 0, 0, 1], parse(b) || [0, 0, 0, 1]);
+    // The colour a person actually sees behind an element: walk up the tree and
+    // blend every translucent layer, because many panels are color-mix(...).
+    const effectiveBackground = (element) => {
+      const layers = [];
+      let node = element;
+      while (node) {
+        const background = parseRgb(getComputedStyle(node).backgroundColor);
+        if (background && background[3] > 0) {
+          layers.push(background);
+          if (background[3] >= 0.999) break;
+        }
+        node = node.parentElement;
+      }
+      const base = layers.length && layers[layers.length - 1][3] >= 0.999
+        ? layers.pop()
+        : (parseRgb(getComputedStyle(document.body).backgroundColor) || [11, 15, 23, 1]);
+      let result = base.slice(0, 3);
+      for (const layer of layers.reverse()) {
+        const a = layer[3];
+        result = [0, 1, 2].map(i => layer[i] * a + result[i] * (1 - a));
+      }
+      return result.concat([1]);
     };
     const contrast = {
       'text on panel': ratio(tokens['--text'], tokens['--panel']),
@@ -126,6 +158,39 @@ async function measure(page) {
       'accent on panel': ratio(tokens['--accent'], tokens['--panel']),
       'text on bg': ratio(tokens['--text'], tokens['--bg']),
     };
+    // Real elements, not only the palette: a token can pass while the element
+    // that uses it fails, for example because its background is lighter.
+    const elements = [];
+    for (const [label, selector] of [
+      ['header chip', 'header .chip:not(.active)'],
+      ['header nav chip', '.chip-group .chip:not(.active)'],
+      ['header popover summary', '.header-popover summary'],
+      ['sidebar section title', '.section h3'],
+      ['domain row name', '.domain-name'],
+      ['domain counts', '.domain-counts'],
+      ['sidebar hint', 'aside .hint'],
+      ['quick dock preview', '.quick-preview'],
+      ['quick dock mode', '.quick-mode:not(.active)'],
+      ['inspector kv', '.kv'],
+      ['inspector section label', '.inspector-section-label'],
+      ['wip counter', '.wip'],
+    ]) {
+      const element = document.querySelector(selector);
+      if (!element) continue;
+      const style = getComputedStyle(element);
+      const size = parseFloat(style.fontSize);
+      const bold = Number(style.fontWeight) >= 700;
+      elements.push({
+        label,
+        selector,
+        fontSize: style.fontSize,
+        color: style.color,
+        background: `rgb(${effectiveBackground(element).slice(0, 3).map(v => Math.round(v)).join(', ')})`,
+        ratio: ratioOf(parseRgb(style.color) || [0, 0, 0, 1], effectiveBackground(element)),
+        // AA: 3:1 is enough for large text (>=18.66px, or >=14px bold).
+        required: (size >= 24 || (size >= 18.66) || (size >= 14 && bold)) ? 3 : 4.5,
+      });
+    }
     const fontSizes = {};
     for (const [label, selector] of [
       ['body', 'body'],
@@ -146,6 +211,7 @@ async function measure(page) {
       theme: document.documentElement.getAttribute('data-theme') || 'dark',
       tokenValues: tokens,
       contrast,
+      elements,
       fontSizes,
       layout: {
         columns,
@@ -247,8 +313,12 @@ writeFileSync(reportFile, JSON.stringify(report, null, 2), 'utf8');
 console.log(`✅ visual capture: ${report.screens.length} screens → ${OUT}`);
 for (const [key, value] of Object.entries(report.measurements)) {
   const thin = Object.entries(value.contrast).filter(([, r]) => r < 4.5).map(([k, r]) => `${k}=${r}:1`);
+  const failing = (value.elements || []).filter(item => item.ratio < item.required);
   console.log(`   ${key}: columns=${value.layout.columns} overflow=${value.layout.horizontalOverflow} ` +
     `contrast<4.5:1 ${thin.length ? thin.join(', ') : 'none'}`);
+  if (failing.length) {
+    console.log(`      below AA: ${failing.map(item => `${item.label} ${item.ratio}:1 < ${item.required} (${item.fontSize})`).join('; ')}`);
+  }
 }
 if (errors.length) console.log(`   page errors: ${errors.length}`);
 console.log(`   report: ${reportFile.replace(`${ROOT}\\`, '').replace(/\\/g, '/')}`);

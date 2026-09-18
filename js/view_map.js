@@ -14,8 +14,18 @@ import { moveTask, undoTaskMove } from "./core/commands.js";
 import { saveState } from "./storage.js";
 import { requestSyncNow } from "./sync/runtime.js";
 import { logEvent } from "./utils/analytics.js";
-import { getVisibleDomainIds, setDomainVisible } from "./ui/map-session.js";
-import { dueState, dueLabel } from "./features/today/model.js";
+import {
+  getVisibleDomainIds,
+  setDomainVisible,
+  getMapLens,
+  getMapQuery,
+  isMapFilterActive,
+  setMapLens,
+  setMapQuery,
+  MAP_LENSES,
+  matchesMapView,
+} from "./ui/map-session.js";
+import { dueState, dueLabel, localDay } from "./features/today/model.js";
 import { statusLabel, plural } from "./ui/status-language.js";
 
 // A task orb carries its meaning explicitly instead of leaving the renderer to
@@ -85,6 +95,78 @@ const MAP_PALETTE = {
 
 function mapPalette() {
   return mapThemeIsLight() ? MAP_PALETTE.light : MAP_PALETTE.dark;
+}
+
+// ── Lenses and search ────────────────────────────────────────────────
+// A lens is a way of looking at the map, not a change to it. Filtering never
+// moves or hides an object: a task that does not match stays where it is and
+// recedes, so the map keeps its shape and the user does not lose the place they
+// remember. What it does change is emphasis, labels and the reported counts.
+const LENS_DIM_ALPHA = 0.16;
+
+// taskId → whether the task matches the current lens/search, for the current
+// layout. Filled by layoutMap, read by the renderer and by the header counter.
+let taskMatches = new Map();
+let taskTotals = { tasks: 0, matching: 0 };
+let staleDays = 30;
+
+function currentTaskVisibility(task) {
+  return taskMatches.get(task.id) !== false;
+}
+
+function buildTaskMatches(list, today) {
+  const matches = new Map();
+  let matching = 0;
+  for (const task of list) {
+    const project = task.projectId
+      ? state.projects.find(entry => entry.id === task.projectId)
+      : null;
+    const hit = matchesMapView(task, { projectTitle: project?.title || "", today, staleDays });
+    matches.set(task.id, hit);
+    if (hit) matching++;
+  }
+  return { matches, matching };
+}
+
+export function getMapFilterState() {
+  return {
+    lens: getMapLens(),
+    query: getMapQuery(),
+    active: isMapFilterActive(),
+    lenses: [...MAP_LENSES],
+    total: taskTotals.tasks,
+    matching: taskTotals.matching,
+  };
+}
+
+export function setMapFilter({ lens = getMapLens(), query = getMapQuery() } = {}) {
+  setMapLens(lens);
+  setMapQuery(query);
+  layoutMap();
+  // A search is a question about a specific task, so the map answers it by
+  // moving to the first match instead of leaving the user to hunt for it.
+  const firstMatch = nodes.find(node => node._type === "task" && currentTaskVisibility(node));
+  if (getMapQuery() && firstMatch) {
+    fitTask(firstMatch.id);
+  } else {
+    drawMap();
+  }
+  return getMapFilterState();
+}
+
+// How much of a task the current lens lets through, in one place: the renderer
+// paints with it and a regression can read it, so the two cannot drift apart.
+function taskEmphasis(node) {
+  if (node.status === "done") return 0.55;
+  if (isMapFilterActive() && !currentTaskVisibility(node)) return LENS_DIM_ALPHA;
+  return 1;
+}
+
+// Which tasks the current lens emphasises. Exposed for tests and diagnostics.
+export function getTaskEmphasisList() {
+  return nodes
+    .filter(node => node._type === "task")
+    .map(node => ({ id: node.id, title: node.title, alpha: taskEmphasis(node) }));
 }
 
 function taskNode(task, x, y, groupId = null) {
@@ -648,12 +730,15 @@ function animateTo(target, ms = 230) {
   requestAnimationFrame(step);
 }
 
-function fitToBBox(bx, { maxScale = 2.2 } = {}) {
+function fitToBBox(bx, { maxScale = 2.2, padK = 0.2 } = {}) {
   if (!bx) {
     drawMap();
     return;
   }
-  const padK = 0.12; // ~12% outer padding
+  // Padding is generous on purpose: zooming onto a single task is only useful if
+  // the Project and Domain around it stay on screen. Framing the bare object
+  // fills the canvas with one dot and hides the very context the map exists to
+  // show, so callers that aim at one small thing ask for a looser frame instead.
   const w = Math.max(1, bx.maxX - bx.minX);
   const h = Math.max(1, bx.maxY - bx.minY);
   const cx = (bx.minX + bx.maxX) / 2;
@@ -809,9 +894,10 @@ export function fitTask(taskId) {
     minY = node.y - r,
     maxX = node.x + r,
     maxY = node.y + r;
+  // A task inside a Project is framed together with its Domain, not with the
+  // Project alone: "here is your task" only reads as an answer when the place it
+  // lives in is visible too.
   if (task && task.projectId) {
-    // include the whole project circle so the landing shows context,
-    // not just a dot on an empty background
     const pNode = nodes.find(
       (n) => n._type === "project" && n.id === task.projectId
     );
@@ -820,6 +906,13 @@ export function fitTask(taskId) {
       minY = Math.min(minY, pNode.y - pNode.r);
       maxX = Math.max(maxX, pNode.x + pNode.r);
       maxY = Math.max(maxY, pNode.y + pNode.r);
+      const dNode = nodes.find((n) => n._type === "domain" && n.id === pNode.parent);
+      if (dNode) {
+        minX = Math.min(minX, dNode.x - dNode.r);
+        minY = Math.min(minY, dNode.y - dNode.r);
+        maxX = Math.max(maxX, dNode.x + dNode.r);
+        maxY = Math.max(maxY, dNode.y + dNode.r);
+      }
     }
   } else {
     // independent task: keep a comfortable margin around the dot
@@ -829,7 +922,7 @@ export function fitTask(taskId) {
     maxX = node.x + r + pad;
     maxY = node.y + r + pad;
   }
-  fitToBBox({ minX, minY, maxX, maxY });
+  fitToBBox({ minX, minY, maxX, maxY }, { padK: 0.06 });
 }
 
 export function resize() {
@@ -969,6 +1062,19 @@ export function layoutMap() {
   const taskList = state.tasks.filter(
     (task) => visibleProjectIds.has(task.projectId) && matchesFilter(task)
   );
+
+  // Lenses and search do not remove anything from the map: they decide what is
+  // emphasised, named and counted. The map keeps its shape while the answer to
+  // "what is due / focus / stale / this word" comes forward. The lens must judge
+  // every task the layout draws — inside a visible Project, in a Domain's
+  // "Без проекта" group, or fully independent beside the Domains — and nothing
+  // else, or the counter would report tasks that are not on screen at all.
+  const drawnTaskList = state.tasks.filter(task => matchesFilter(task)
+    && (visibleProjectIds.has(task.projectId) || (!task.projectId && domainIds.has(task.domainId))));
+  const today = localDay();
+  const view = buildTaskMatches(drawnTaskList, today);
+  taskMatches = view.matches;
+  taskTotals = { tasks: taskMatches.size, matching: view.matching };
 
   // Build each Domain from the same child descriptors later used to place
   // Projects and the virtual "Без проекта" group. This keeps sizing and
@@ -1610,11 +1716,15 @@ export function drawMap() {
       : "#9ca3af";
   const taskOrbs = nodes.filter((n) => n._type === "task");
   const placedLabels = [];
+  const lensActive = isMapFilterActive();
 
   taskOrbs.forEach((n) => {
     if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
+    // A task outside the current lens is not removed, it recedes: the map keeps
+    // the shape the user remembers while the answer comes forward.
+    const dim = lensActive && !currentTaskVisibility(n);
     const baseColor = taskColor(n);
-    if (state.showAging && selectedNodeId !== n.id) {
+    if (state.showAging && selectedNodeId !== n.id && !dim) {
       ctx.beginPath();
       ctx.arc(
         n.x,
@@ -1629,18 +1739,22 @@ export function drawMap() {
     }
     ctx.beginPath();
     ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-    if (state.showGlow && allowGlow) {
+    if (state.showGlow && allowGlow && !dim) {
       ctx.shadowColor = baseColor;
       ctx.shadowBlur = 12 * DPR;
     } else {
       ctx.shadowBlur = 0;
     }
     ctx.fillStyle = baseColor;
-    // done: dimmed fill + a check glyph, so status never relies on color alone
-    if (n.status === "done") ctx.globalAlpha = 0.55;
+    // done: dimmed fill + a check glyph, so status never relies on color alone.
+    // A task outside the lens recedes further — see taskEmphasis, which is the
+    // single place that decides how much of a task is drawn.
+    const alpha = taskEmphasis(n);
+    if (alpha < 1) ctx.globalAlpha = alpha;
     ctx.fill();
     ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
+    if (dim) return;
     if (hoverNodeId === n.id && selectedNodeId !== n.id) {
       ctx.beginPath();
       ctx.strokeStyle = P.hoverRing;
@@ -1648,6 +1762,9 @@ export function drawMap() {
       ctx.arc(n.x, n.y, n.r + css(6), 0, Math.PI * 2);
       ctx.stroke();
     }
+    // The badge, ring and crosshair of a receded task are skipped together: a
+    // faded orb carrying a bright "overdue" ring would still shout.
+    if (dim) return;
     // The ring is reserved for work state — today / в работе / просрочено —
     // never for the neutral case, so a red ring means exactly one thing.
     if (n.due === "overdue") {
@@ -1743,6 +1860,9 @@ export function drawMap() {
     for (const n of labelOrder) {
       if (!inView(n.x, n.y, n.r + 40 * DPR)) continue;
       const active = selectedNodeId === n.id || hoverNodeId === n.id;
+      // Under a lens only what the lens asked about is named: a name is the
+      // strongest signal on the canvas, and it must not contradict the filter.
+      if (lensActive && !active && !currentTaskVisibility(n)) continue;
       // Progressive disclosure: outside a deliberate zoom only the active and
       // decision-relevant tasks are named.
       if (!active) {
