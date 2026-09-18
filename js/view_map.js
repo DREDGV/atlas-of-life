@@ -67,6 +67,7 @@ const MAP_PALETTE = {
     domainHoverRing: "rgba(207,232,255,.8)",
     starFill: "#0f1627",
     starAlpha: 0.3,
+    ringTrack: "rgba(148,178,214,.22)",
   },
   light: {
     domainLabel: "#1f3a5f",
@@ -90,6 +91,7 @@ const MAP_PALETTE = {
     domainHoverRing: "rgba(31,58,95,.6)",
     starFill: "#c8d6e6",
     starAlpha: 0.55,
+    ringTrack: "rgba(87,113,143,.28)",
   },
 };
 
@@ -112,6 +114,47 @@ let staleDays = 30;
 
 function currentTaskVisibility(task) {
   return taskMatches.get(task.id) !== false;
+}
+
+// ── Territory statistics ─────────────────────────────────────────────
+// A Domain and a Project are containers, so the useful question about them is
+// not "what is this" but "how is it going": how much is finished, how much is
+// overdue, when does the next deadline land. One function answers it for both
+// the progress ring around the territory and the hovered card, so the picture
+// and the numbers cannot disagree.
+export function areaStats(node) {
+  if (!node || (node._type !== "project" && node._type !== "domain")) return null;
+  const tasks = node._type === "project"
+    ? state.tasks.filter(task => task.projectId === node.id)
+    : state.tasks.filter(task => {
+        if (task.projectId) {
+          const project = state.projects.find(entry => entry.id === task.projectId);
+          return project?.domainId === node.id;
+        }
+        return task.domainId === node.id;
+      });
+  const today = localDay();
+  const open = tasks.filter(task => task.status !== "done");
+  const overdue = open.filter(task => dueState(task, today).kind === "overdue");
+  const done = tasks.filter(task => task.status === "done");
+  const focus = open.filter(task => task.focus === true);
+  const plannedToday = open.filter(task => task.plannedDay && task.plannedDay <= today);
+  const days = tasks.map(task => daysSince(task.updatedAt));
+  return {
+    id: node.id,
+    type: node._type,
+    title: node.title,
+    total: tasks.length,
+    done: done.length,
+    open: open.length,
+    overdue: overdue.length,
+    focus: focus.length,
+    plannedToday: plannedToday.length,
+    // What the progress ring draws: finished share of everything in the area.
+    doneRatio: tasks.length ? done.length / tasks.length : 0,
+    overdueRatio: tasks.length ? overdue.length / tasks.length : 0,
+    lastActivityDays: days.length ? Math.min(...days) : null,
+  };
 }
 
 function buildTaskMatches(list, today) {
@@ -318,7 +361,6 @@ export function separateGroup(nodeList, groupId, cx, cy, drawRadius, { maxRadius
 }
 
 let canvas,
-  tooltip,
   ctx,
   W = 0,
   H = 0,
@@ -621,9 +663,8 @@ function onKeyDown(e) {
   }
 }
 
-export function initMap(canvasEl, tooltipEl) {
+export function initMap(canvasEl) {
   canvas = canvasEl;
-  tooltip = tooltipEl;
   emptyStateEl = document.getElementById("mapEmpty");
   // Keyboard and screen-reader access: the canvas itself cannot be read, so it
   // is focusable, labelled, and announces the focused task through a live
@@ -1590,6 +1631,39 @@ export function drawMap() {
       }
     });
 
+  // Progress ring around a territory: how much of it is finished, and how much of
+  // it is on fire. The map stops being a picture of structure and starts
+  // reporting the state of each area at a glance — one arc you read without
+  // hovering anything. Drawn outside the territory so it never competes with the
+  // orbs, and skipped for an area with no tasks (an empty arc means nothing).
+  const drawProgressRing = (n, ringRadius) => {
+    const stats = areaStats(n);
+    if (!stats || !stats.total) return;
+    const lineWidth = css(2.6);
+    ctx.beginPath();
+    ctx.strokeStyle = P.ringTrack;
+    ctx.lineWidth = lineWidth;
+    ctx.arc(n.x, n.y, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    const start = -Math.PI / 2;
+    if (stats.doneRatio > 0) {
+      ctx.beginPath();
+      ctx.strokeStyle = "#34d399";
+      ctx.lineWidth = lineWidth;
+      ctx.arc(n.x, n.y, ringRadius, start, start + Math.PI * 2 * Math.min(1, stats.doneRatio));
+      ctx.stroke();
+    }
+    // Overdue work is drawn on top of the finished share, in the one colour the
+    // map already uses for a missed deadline.
+    if (stats.overdueRatio > 0) {
+      ctx.beginPath();
+      ctx.strokeStyle = "#f87171";
+      ctx.lineWidth = lineWidth + css(0.8);
+      ctx.arc(n.x, n.y, ringRadius, start, start + Math.PI * 2 * Math.min(1, stats.overdueRatio));
+      ctx.stroke();
+    }
+  };
+
   // Materials remain in their context: one count badge, never one orb per note.
   // The owner rule lives in knowledgeCountFor, so the badge and the library agree
   // on where a Thought/Note belongs. A Domain badge sits under the Domain border,
@@ -1597,6 +1671,9 @@ export function drawMap() {
   // badge there landed on top of the child's own badge.
   const knowledgeCounts = knowledgeCountFor(nodes, state.knowledge);
   nodes.filter(n => n._type === 'domain' || n._type === 'project').forEach(n => {
+    // The progress ring sits outside the territory border. For a Project that
+    // means outside its halo, so the ring is never mistaken for the halo itself.
+    drawProgressRing(n, n._type === 'domain' ? n.r + css(7) : n.r + css(25));
     const count = knowledgeCounts[`${n._type}:${n.id}`] || 0;
     if (!count) return;
     ctx.font = `600 ${css(11)}px system-ui`;
@@ -2174,58 +2251,47 @@ function onMouseMove(e) {
   if (!n) {
     hoverNodeId = null;
     canvas.style.cursor = "";
-    tooltip.style.opacity = 0;
+    hideMapHoverCard();
     // clear drop targets when not dragging
     dropTargetProjectId = null;
     dropTargetDomainId = null;
     requestDraw();
     return;
   }
-  tooltip.style.left = e.clientX + "px";
-  tooltip.style.top = e.clientY + "px";
-  tooltip.style.opacity = 1;
   hoverNodeId = n.id;
   canvas.style.cursor = "pointer";
-  if (n._type === "task") {
-    const t = state.tasks.find((x) => x.id === n.id);
-    const tags = (t.tags || []).map((s) => `#${s}`).join(" ");
-    const est = t.estimateMin ? ` ~${t.estimateMin}м` : "";
-    // The tooltip used to print raw model values (`backlog`, `doing`) in an
-    // otherwise Russian interface, and never showed a deadline at all.
-    const lines = [
-      `🪐 <b>${t.title}</b>`,
-      `<span class="hint">${statusLabel(t.status)}${est} · обновл. ${daysSince(t.updatedAt)} дн. ${tags}</span>`,
-    ];
-    if (t.focus === true) lines.push(`<span class="focus-mark">✦ Фокус дня</span>`);
-    const deadline = dueLabel(t);
-    if (deadline) {
-      const state = dueState(t);
-      lines.push(
-        `<span class="hint${state.kind === "overdue" ? " is-overdue" : ""}">${deadline}</span>`
-      );
-    }
-    tooltip.innerHTML = lines.join("<br/>");
-  } else if (n._type === "project") {
-    const p = state.projects.find((x) => x.id === n.id);
-    const tags = (p.tags || []).map((s) => `#${s}`).join(" ");
-    const count = state.tasks.filter((t) => t.projectId === p.id).length;
-    const overdue = state.tasks.filter(
-      (t) => t.projectId === p.id && dueState(t).kind === "overdue"
-    ).length;
-    tooltip.innerHTML = `🛰 Проект: <b>${p.title}</b><br/><span class="hint">${count} ${plural(
-      count,
-      "задача",
-      "задачи",
-      "задач"
-    )}${overdue ? ` · просрочено ${overdue}` : ""}${tags ? ` · ${tags}` : ""}</span>`;
-  } else if (n._type === "unassigned") {
-    const domain = state.domains.find(item => item.id === n.domainId);
-    tooltip.innerHTML = `Без проекта: <b>${n.count} ${plural(n.count, "задача", "задачи", "задач")}</b>${n.hidden ? `<br/><span class="hint">на карте показано ${n.count - n.hidden}</span>` : ""}${domain ? `<br/><span class="hint">${domain.title}</span>` : ""}`;
-  } else {
-    const d = state.domains.find((x) => x.id === n.id);
-    tooltip.innerHTML = `🌌 Домен: <b>${d.title}</b>`;
-  }
+  // The card answers "how is this going"; the one-line tooltip answered "what is
+  // this". Details belong to the Inspector, so the card carries counts and the
+  // source text is not repeated on the canvas.
+  showMapHoverCard(n);
   requestDraw();
+}
+
+// The card is built by app.js (which owns the page chrome) and reached through a
+// window hook, because view_map.js cannot import app.js without a cycle. Keeping
+// one fallback path here means a missing card never breaks hovering.
+function showMapHoverCard(node) {
+  try {
+    if (typeof window.renderMapHoverCard === "function") {
+      window.renderMapHoverCard({
+        _type: node._type,
+        id: node.id,
+        title: node.title,
+        color: node.color || null,
+        domainId: node.domainId || null,
+        parent: node.parent || null,
+        groupId: node.groupId || null,
+      });
+    }
+  } catch (error) {
+    console.error("map card failed", error);
+  }
+}
+
+function hideMapHoverCard() {
+  try {
+    if (typeof window.renderMapHoverCard === "function") window.renderMapHoverCard(null);
+  } catch (_) {}
 }
 
 function onMouseLeave() {
@@ -2236,7 +2302,7 @@ function onMouseLeave() {
   }
   hoverNodeId = null;
   canvas.style.cursor = "";
-  tooltip.style.opacity = 0;
+  hideMapHoverCard();
   dropTargetProjectId = null;
   dropTargetDomainId = null;
   drawMap();

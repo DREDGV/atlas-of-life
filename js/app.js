@@ -1,6 +1,6 @@
 import { showStorageRecovery } from './ui/storage-recovery.js';
 // js/app.js
-import { state, $, $$, normalizeTags } from "./state.js";
+import { state, $, $$, normalizeTags, daysSince } from "./state.js";
 import { loadState, getStorageStatus, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
 import {
   initMap,
@@ -15,7 +15,11 @@ import {
   getMapFilterState,
   setMapFilter,
 } from "./view_map.js";
+import { areaStats } from "./view_map.js";
 import { renderToday, setTodayDay } from "./view_today.js";
+import { statusLabel } from "./ui/status-language.js";
+import { deadlineState, deadlineLabel, formatDay, taskDueDay } from "./ui/status-language.js";
+import { localDay, plannedDayOf } from "./features/today/model.js";
 import { renderKnowledge } from './features/knowledge/view.js';
 import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
@@ -1107,10 +1111,171 @@ async function init() {
     }
   });
   const canvas = document.getElementById("canvas");
-  const tooltip = document.getElementById("tooltip");
-  initMap(canvas, tooltip);
+  initMap(canvas);
   initMapFilterControls();
   updateWip();
+}
+
+// Lenses and search above the map.
+//
+// A lens answers one question about the whole map ("what is due", "what has gone
+// quiet"). It is a way of looking, not a change to the data: the choice lives in
+// session state, never in storage, and no task is moved or deleted. The count
+// next to the controls is what keeps a filter honest — it says how many tasks the
+// lens found, so an empty-looking map is never mistaken for an empty life.
+// The object card: what is under the pointer, told in numbers.
+//
+// A single line of prose cannot answer "how is this area going", and the map is
+// an overview tool — the questions asked of it are about state, not identity.
+// The card reports the few counts that decide what to do next (due today, missed
+// deadlines, what is in progress, how long it has been quiet) and reuses the
+// shared status and deadline vocabulary, so the card, the map, the Inspector and
+// Today keep saying the same words about the same task.
+function pluralRu(count, one, few, many) {
+  const n = Math.abs(Number(count) || 0) % 100;
+  const n1 = n % 10;
+  if (n > 10 && n < 20) return many;
+  if (n1 > 1 && n1 < 5) return few;
+  if (n1 === 1) return one;
+  return many;
+}
+
+function cssVar(name, fallback) {
+  try {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function hudStat(value, label, tone) {
+  return `<div class="map-hud-stat${tone ? ` is-${tone}` : ""}"><b>${value}</b><span>${label}</span></div>`;
+}
+
+function hudChip(text, tone) {
+  return `<span class="map-hud-chip${tone ? ` is-${tone}` : ""}">${text}</span>`;
+}
+
+function renderMapHoverCard(node) {
+  const host = document.getElementById("mapHud");
+  if (!host) return;
+  if (!node) {
+    host.hidden = true;
+    return;
+  }
+  const today = localDay();
+  const accent = node.color || (node._type === "task" ? null : null);
+  const render = ({ kind, title, path, stats = [], base = null, chips = [] }) => {
+    host.style.setProperty("--hud-accent", accent || cssVar("--accent", "#56ccf2"));
+    host.innerHTML = `
+      <div class="map-hud-kind">${kind}</div>
+      <div class="map-hud-title">${title}</div>
+      <div class="map-hud-path">${path}</div>
+      ${base ? `<div class="map-hud-base"><div class="map-hud-base-track"><i style="width:${base.percent}%"></i></div><span class="map-hud-base-caption">${base.caption}</span></div>` : ""}
+      ${stats.length ? `<div class="map-hud-stats">${stats.join("")}</div>` : ""}
+      ${chips.length ? `<div class="map-hud-chips">${chips.join("")}</div>` : ""}`;
+    host.hidden = false;
+  };
+
+  if (node._type === "task") {
+    const task = state.tasks.find(entry => entry.id === node.id);
+    if (!task) {
+      host.hidden = true;
+      return;
+    }
+    const project = task.projectId ? state.projects.find(entry => entry.id === task.projectId) : null;
+    const domain = state.domains.find(entry => entry.id === (project?.domainId || task.domainId));
+    const deadline = deadlineState(task, today);
+    const planned = plannedDayOf(task);
+    const estimate = Number(task.estimateMin) || 0;
+    const stats = [];
+    if (deadline.kind === "overdue") {
+      stats.push(hudStat(`${Math.abs(deadline.days)} ${pluralRu(deadline.days, "день", "дня", "дней")}`, "просрочено", "danger"));
+    } else if (deadline.kind === "today") {
+      stats.push(hudStat("сегодня", "срок", "warn"));
+    } else if (deadline.kind === "soon") {
+      stats.push(hudStat(formatDay(deadline.day, today) || "скоро", "срок", "warn"));
+    } else if (deadline.kind === "later") {
+      stats.push(hudStat(formatDay(deadline.day, today) || "—", "срок", null));
+    }
+    stats.push(hudStat(`${daysSince(task.updatedAt)} дн.`, "без движения", daysSince(task.updatedAt) >= 30 ? "danger" : daysSince(task.updatedAt) >= 14 ? "warn" : null));
+    stats.push(hudStat(estimate ? `${estimate} мин` : "—", "оценка", null));
+    const chips = [hudChip(statusLabel(task.status), task.status === "today" ? "today" : task.status === "done" ? "ok" : null)];
+    if (task.focus === true) chips.push(hudChip("✦ Фокус дня", "focus"));
+    if (planned) chips.push(hudChip(`план: ${formatDay(planned, today) || planned}`));
+    if (task.priority) chips.push(hudChip(`приоритет ${task.priority}`));
+    (task.tags || []).forEach(tag => chips.push(hudChip(`#${tag}`)));
+    if (task.sourceInboxId) chips.push(hudChip("из Входящих"));
+    render({
+      kind: "Задача",
+      title: task.title,
+      path: [domain?.title, project?.title].filter(Boolean).join(" → ") || "Без контекста",
+      stats,
+      chips,
+    });
+    return;
+  }
+
+  const stats = areaStats(node);
+  if (!stats) {
+    host.hidden = true;
+    return;
+  }
+  if (node._type === "unassigned") {
+    const domain = state.domains.find(entry => entry.id === node.domainId);
+    render({
+      kind: "Группа",
+      title: "Без проекта",
+      path: domain?.title || "Домен",
+      stats: [
+        hudStat(stats.total, pluralRu(stats.total, "задача", "задачи", "задач")),
+        hudStat(stats.overdue, "просрочено", stats.overdue ? "danger" : null),
+        hudStat(stats.plannedToday, "в плане дня", stats.plannedToday ? "warn" : null),
+      ],
+      chips: [hudChip("нажмите, чтобы раскрыть", "focus")],
+    });
+    return;
+  }
+  const kind = node._type === "project" ? "Проект" : "Домен";
+  const domain = node._type === "project"
+    ? state.domains.find(entry => entry.id === node.parent)
+    : null;
+  const percent = Math.round(stats.doneRatio * 100);
+  const deadline = node._type === "project"
+    ? state.tasks
+        .filter(task => task.projectId === node.id && task.status !== "done")
+        .map(task => taskDueDay(task))
+        .filter(Boolean)
+        .sort()[0]
+    : null;
+  const knowledge = node._type === "project"
+    ? state.knowledge.filter(item => item.projectId === node.id).length
+    : state.knowledge.filter(item => !item.projectId && item.domainId === node.id).length;
+  const chips = [];
+  if (stats.overdue) chips.push(hudChip(`${stats.overdue} просрочено`, "danger"));
+  if (stats.focus) chips.push(hudChip(`✦ ${stats.focus} в фокусе`, "focus"));
+  if (deadline) {
+    const state_ = deadlineState({ due: { date: deadline }, status: "backlog" }, today);
+    chips.push(hudChip(`ближайший срок: ${formatDay(deadline, today) || deadline}${state_.kind === "overdue" ? " (истёк)" : ""}`, state_.kind === "overdue" ? "danger" : null));
+  }
+  if (knowledge) chips.push(hudChip(`мысли и заметки: ${knowledge}`));
+  if (stats.lastActivityDays !== null && stats.lastActivityDays >= 30) {
+    chips.push(hudChip(`тишина ${stats.lastActivityDays} дн.`, "danger"));
+  }
+  render({
+    kind,
+    title: node.title,
+    path: node._type === "project"
+      ? (domain?.title || "Домен")
+      : `${stats.total} ${pluralRu(stats.total, "задача", "задачи", "задач")} всего`,
+    stats: [
+      hudStat(stats.open, "в работе", stats.open ? null : "quiet"),
+      hudStat(stats.done, "готово", stats.done ? "ok" : "quiet"),
+      hudStat(stats.overdue, "просрочено", stats.overdue ? "danger" : "quiet"),
+    ],
+    base: { percent, caption: `${percent}% выполнено` },
+    chips,
+  });
 }
 
 // Lenses and search above the map.
@@ -1186,3 +1351,6 @@ init();
 try { window.renderSidebar = renderSidebar; } catch(_) {}
 try { window.renderToday = renderToday; } catch(_) {}
 try { window.renderKnowledge = renderKnowledge; } catch(_) {}
+// The map asks for the object card through this hook, so view_map.js does not
+// have to import app.js (which imports view_map.js: a cycle).
+try { window.renderMapHoverCard = renderMapHoverCard; } catch(_) {}
