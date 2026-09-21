@@ -96,6 +96,37 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .tag{font-size:12px;border:1px solid var(--panel-2);padding:3px 8px;border-radius:999px;color:var(--muted)}
 .tag.active{border-color:var(--accent);color:var(--text)}
 #canvasWrap{position:relative;background:radial-gradient(1200px 600px at 60% -100px, var(--gradient-1), var(--gradient-2) 60%, var(--gradient-3) 100%);height:100%}
+#canvasWrap{min-height:0;min-width:0;overflow:hidden}
+main{grid-template-rows:minmax(0,1fr)}
+.map-attention{padding:16px 12px;border-block:1px solid var(--panel-2)}
+.map-attention h3{margin:0 0 5px;font-size:13px;font-weight:650;color:var(--text)}
+.attention-intro{color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 12px}
+.attention-area{border-left:2px solid var(--muted);margin:9px 0;padding:0 0 0 10px}
+.attention-area summary{cursor:pointer;padding:6px 0;list-style:none;display:grid;grid-template-columns:1fr auto;gap:3px 5px}
+.attention-area summary::after{content:'+';grid-column:2;grid-row:1;color:var(--muted)}
+.attention-area[open] summary::after{content:'−'}
+.attention-name{font-weight:650;overflow-wrap:anywhere;font-size:13px}
+.attention-state{grid-column:1/-1;font-size:12px;color:var(--muted);display:block}
+.attention-overdue{border-color:var(--danger)}
+.attention-overdue>.attention-state,.attention-overdue>summary>.attention-state{color:var(--danger)}
+.attention-load,.attention-stale{border-color:var(--warn)}
+.attention-load>summary>.attention-state,.attention-stale>summary>.attention-state{color:var(--warn)}
+.attention-open,.attention-task{border:0;background:transparent;color:var(--accent);text-align:left;font:inherit;font-size:12px;cursor:pointer;padding:6px 0;display:block;max-width:100%;overflow-wrap:anywhere}
+.attention-open:hover,.attention-task:hover{text-decoration:underline}
+.map-attention :is(button,summary):focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+.attention-reason{font-size:12px;line-height:1.5;color:var(--muted);margin:8px 0 0}
+.attention-reason strong{color:var(--text);font-weight:600}
+.attention-project{border-top:1px solid color-mix(in srgb,var(--muted) 20%,transparent);padding:5px 0}
+.attention-rules{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.5}
+.attention-rules summary{cursor:pointer}
+[data-theme="light"] .map-attention{--warn:#825500;--danger:#b42323}
+.domain-row .domain-counts{grid-column:3;grid-row:2;font-size:10px}
+.domain-row{grid-template-columns:16px 10px minmax(0,1fr) 26px 24px}
+.domain-row .domain-focus{grid-column:4;grid-row:1}
+.domain-row .domain-actions{grid-column:5;grid-row:1}
+.app{grid-template-rows:auto minmax(0,1fr) auto}
+.app>header{flex-wrap:wrap;padding-block:6px}
+.app:has([data-view="today"].active) .map-attention,.app:has([data-view="knowledge"].active) .map-attention{display:none}
 /* The map is reachable from the keyboard: the canvas is focusable, and the
    focused orb gets a dashed ring (drawn in js/view_map.js) plus this outline. */
 #canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}

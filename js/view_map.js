@@ -27,6 +27,37 @@ import {
 } from "./ui/map-session.js";
 import { dueState, dueLabel, localDay } from "./features/today/model.js";
 import { statusLabel, plural } from "./ui/status-language.js";
+import { buildAttention } from "./features/map/attention.js";
+import { renderAttention } from "./features/map/attention-view.js";
+
+let attentionSnapshot = new Map();
+let attentionDay = '';
+
+function openAttentionArea(area) {
+  document.querySelector('[data-view="map"]')?.click();
+  // A direct navigation must reveal the destination even if filters hid it.
+  document.querySelector('#tagsList [data-tag=""]')?.click();
+  setMapLens('all');
+  setMapQuery('');
+  setDomainVisible(area.domainId, true, state.domains);
+  window.renderSidebar?.();
+  layoutMap();
+  const entity = (area.type === 'project' ? state.projects : state.domains).find(e => e.id === area.id);
+  if (!entity) return;
+  openInspectorFor({ ...entity, _type: area.type });
+  fitDomain(area.domainId);
+  window.dispatchEvent(new Event('atlas:map-reveal'));
+  drawMap();
+}
+
+function openAttentionTask(id) {
+  const task = state.tasks.find(t => t.id === id);
+  if (!task) return;
+  const domainId = task.projectId ? state.projects.find(p => p.id === task.projectId)?.domainId : task.domainId;
+  openAttentionArea({ type: 'domain', id: domainId, domainId });
+  openInspectorFor({ ...task, _type: 'task' });
+  fitTask(id);
+}
 
 // A task orb carries its meaning explicitly instead of leaving the renderer to
 // re-derive it: status (filled/dashed/check), deadline urgency (red ring),
@@ -132,37 +163,7 @@ function currentTaskVisibility(task) {
 // and the numbers cannot disagree.
 export function areaStats(node) {
   if (!node || (node._type !== "project" && node._type !== "domain")) return null;
-  const tasks = node._type === "project"
-    ? state.tasks.filter(task => task.projectId === node.id)
-    : state.tasks.filter(task => {
-        if (task.projectId) {
-          const project = state.projects.find(entry => entry.id === task.projectId);
-          return project?.domainId === node.id;
-        }
-        return task.domainId === node.id;
-      });
-  const today = localDay();
-  const open = tasks.filter(task => task.status !== "done");
-  const overdue = open.filter(task => dueState(task, today).kind === "overdue");
-  const done = tasks.filter(task => task.status === "done");
-  const focus = open.filter(task => task.focus === true);
-  const plannedToday = open.filter(task => task.plannedDay && task.plannedDay <= today);
-  const days = tasks.map(task => daysSince(task.updatedAt));
-  return {
-    id: node.id,
-    type: node._type,
-    title: node.title,
-    total: tasks.length,
-    done: done.length,
-    open: open.length,
-    overdue: overdue.length,
-    focus: focus.length,
-    plannedToday: plannedToday.length,
-    // What the progress ring draws: finished share of everything in the area.
-    doneRatio: tasks.length ? done.length / tasks.length : 0,
-    overdueRatio: tasks.length ? overdue.length / tasks.length : 0,
-    lastActivityDays: days.length ? Math.min(...days) : null,
-  };
+  return attentionSnapshot.get(`${node._type}:${node.id}`) || null;
 }
 
 function buildTaskMatches(list, today) {
@@ -411,7 +412,7 @@ function onWheel(e) {
   const d = e.deltaY || e.wheelDelta || 0;
   const zoomFactor = d > 0 ? 0.9 : 1.1;
   const old = viewState.scale;
-  const next = clamp(old * zoomFactor, 0.5, 2.2);
+  const next = clamp(old * zoomFactor, 0.1, 2.2);
   // keep world point under cursor stable
   const dpr = window.devicePixelRatio || 1;
   const cx = (e.offsetX || 0) * dpr;
@@ -795,7 +796,7 @@ function fitToBBox(bx, { maxScale = 2.2, padK = 0.2 } = {}) {
   const wPad = w * (1 + padK);
   const hPad = h * (1 + padK);
   const sx = Math.min(W / Math.max(1, wPad), H / Math.max(1, hPad));
-  const scale = clamp(sx, 0.5, maxScale);
+  const scale = clamp(sx, 0.1, maxScale);
   const target = {
     sx: scale,
     tx: W * 0.5 - cx * scale,
@@ -818,7 +819,8 @@ export function fitAll() {
   });
   // An overview should not magnify sparse data until two empty territories
   // fill the whole canvas. Deliberate object focus may still zoom to 220%.
-  fitToBBox({ minX, minY, maxX, maxY }, { maxScale: 1.1 });
+  const labelMargin = 42 * DPR;
+  fitToBBox({ minX, minY: minY - labelMargin, maxX, maxY: maxY + labelMargin }, { maxScale: 1.1 });
 }
 
 export function fitDomain(domId) {
@@ -1091,12 +1093,17 @@ function childDrawRadius(child) {
 }
 
 export function layoutMap() {
+  attentionSnapshot = buildAttention(state);
+  attentionDay = localDay();
+  renderAttention(document.getElementById('mapAttention'), attentionSnapshot, {
+    openArea: openAttentionArea, openTask: openAttentionTask,
+  });
   nodes = [];
   edges = [];
   const visibleDomainIds = getVisibleDomainIds(state.domains);
   const domains = state.domains.filter((domain) => visibleDomainIds.has(domain.id));
   const domainIds = new Set(domains.map((domain) => domain.id));
-  const gap = 32 * DPR;
+  const gap = 92 * DPR;
   const matchesFilter = (task) =>
     !state.filterTag || (task.tags || []).includes(state.filterTag);
 
@@ -1178,7 +1185,9 @@ export function layoutMap() {
   });
 
   // Greedy centered rows keep the overview useful on medium and narrow widths.
-  const availableWidth = Math.max(320 * DPR, W - 56 * DPR);
+  const columns = Math.max(1, Math.round(Math.sqrt(domainLayout.length * W / Math.max(H, 1))));
+  const widest = Math.max(0, ...domainLayout.map(item => item.r * 2));
+  const availableWidth = Math.max(320 * DPR, W - 56 * DPR, columns * widest + (columns - 1) * gap);
   const rows = [];
   let row = [];
   let rowWidth = 0;
@@ -1477,6 +1486,7 @@ export function layoutMap() {
 
 export function drawMap() {
   if (!ctx) return;
+  if (attentionDay !== localDay()) layoutMap();
   // if nodes not prepared (empty), try to rebuild layout once — helps recover after edits
   if (!nodes || nodes.length === 0) {
     try {
@@ -1618,7 +1628,7 @@ export function drawMap() {
       ctx.font = `600 ${css(12)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
       ctx.textAlign = "center";
       ctx.fillText(
-        fitLabel(`ДОМЕН · ${n.title}`, css(210)),
+        fitLabel(n.title, css(210)),
         n.x,
         n.y - n.r - css(13)
       );
@@ -1639,19 +1649,12 @@ export function drawMap() {
       }
     });
 
-  // Progress ring around a territory: how much of it is finished, and how much of
-  // it is on fire. The map stops being a picture of structure and starts
-  // reporting the state of each area at a glance — one arc you read without
-  // hovering anything. Drawn outside the territory so it never competes with the
-  // orbs, and skipped for an area with no tasks (an empty arc means nothing).
-  //
-  // The ring is deliberately loud: it carries the only number on the map that is
-  // about the whole area, and its colour must read from across the canvas. A
-  // quarter marks give the eye a scale, so "about half" is visible as half.
+  // Task composition, not completion of a life area. Done and overdue
+  // are disjoint segments of the same total; the neutral track is open work.
   const drawProgressRing = (n, ringRadius) => {
     const stats = areaStats(n);
     if (!stats || !stats.total) return;
-    const lineWidth = css(3.4);
+    const lineWidth = css(2.4);
     const start = -Math.PI / 2;
     // Dark backing under the track keeps the ring separate from the domain border
     // it runs beside, so the two arcs never read as one thick line.
@@ -1672,13 +1675,13 @@ export function drawMap() {
       ctx.arc(n.x, n.y, ringRadius, start, start + Math.PI * 2 * Math.min(1, stats.doneRatio));
       ctx.stroke();
     }
-    // Overdue work is drawn on top of the finished share, in the one colour the
-    // map already uses for a missed deadline.
+    // Start after the done segment so neither category conceals the other.
     if (stats.overdueRatio > 0) {
       ctx.beginPath();
       ctx.strokeStyle = P.ringOverdue;
       ctx.lineWidth = lineWidth + css(0.8);
-      ctx.arc(n.x, n.y, ringRadius, start, start + Math.PI * 2 * Math.min(1, stats.overdueRatio));
+      const overdueStart = start + Math.PI * 2 * stats.doneRatio;
+      ctx.arc(n.x, n.y, ringRadius, overdueStart, overdueStart + Math.PI * 2 * Math.min(1, stats.overdueRatio));
       ctx.stroke();
     }
     // Quarter marks: a scale for the arc, not decoration.
@@ -1693,31 +1696,19 @@ export function drawMap() {
     ctx.stroke();
   };
 
-  // The share finished, written under the territory name. The ring shows the
-  // shape of progress; this is the same fact as a number.
-  //
-  // Three rules keep it from becoming noise, because a scene with several sparse
-  // territories produced a wall of identical "0% выполнено" lines:
-  //   * a number that says nothing new is not written — an area with no progress
-  //     and no missed deadline is already told by its empty ring;
-  //   * a Project only reports when it has progress or overdue work of its own;
-  //   * a lone Project inside a Domain leaves the number to the Domain, since the
-  //     Domain's share would repeat the Project's.
+  // One plain-language observation on the canvas; all reasons in the sidebar.
+  // A lone project lets its domain report the same observation once.
   const drawAreaReadout = (n, ringRadius, { loneChild = false } = {}) => {
     const stats = areaStats(n);
-    if (!stats || !stats.total) return;
-    const percent = Math.round(stats.doneRatio * 100);
-    const hasNews = stats.overdue > 0 || percent > 0;
-    if (!hasNews) return;
+    if (!stats) return;
     if (n._type === "project" && loneChild) return;
     if (ringRadius < css(60)) return;
-    const label = stats.overdue
-      ? `${percent}% · просрочено ${stats.overdue}`
-      : `${percent}% выполнено`;
-    ctx.font = `650 ${css(10)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    const { kind, label } = stats.primary;
+    ctx.font = `600 ${css(11)}px system-ui, sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillStyle = stats.overdue ? P.ringOverdue : P.counterLabel;
-    ctx.fillText(label, n.x, n.y + ringRadius + css(13));
+    ctx.fillStyle = kind === 'overdue' ? P.ringOverdue
+      : (kind === 'stale' || kind === 'load') ? (mapThemeIsLight() ? '#825500' : '#f2c94c') : P.counterLabel;
+    ctx.fillText(fitLabel(label, css(210)), n.x, n.y + ringRadius + css(15));
   };
 
   // Materials remain in their context: one count badge, never one orb per note.
@@ -1749,8 +1740,8 @@ export function drawMap() {
     ctx.textAlign = 'center';
     ctx.fillStyle = P.counterLabel;
     const badgeY = n._type === 'domain'
-      ? n.y + n.r + css(18)
-      : n.y + n.r + css(22);
+      ? n.y + n.r + css(40)
+      : n.y + n.r + css(56);
     ctx.fillText(`Мысли и заметки · ${count}`, n.x, badgeY);
   });
 
@@ -1817,7 +1808,7 @@ export function drawMap() {
       // collide inside packed domains, so they yield to hover tooltips
       if (viewState.scale >= 0.82 || hoverNodeId === n.id || selectedNodeId === n.id) {
         ctx.fillText(
-          fitLabel(`Проект · ${n.title}`, css(170)),
+          fitLabel(n.title, css(170)),
           n.x,
           n.y - n.r - css(11)
         );
@@ -2950,7 +2941,7 @@ function getScale() {
   return Math.round(viewState.scale * 100);
 }
 function setZoom(percent) {
-  const p = clamp(percent / 100, 0.5, 2.2);
+  const p = clamp(percent / 100, 0.1, 2.2);
   // keep center unchanged (zoom about center of canvas)
   const cx = W * 0.5;
   const cy = H * 0.5;
