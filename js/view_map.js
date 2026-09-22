@@ -5,7 +5,6 @@ import {
   project,
   tasksOfProject,
   clamp,
-  colorByAging,
   sizeByImportance,
   daysSince,
 } from "./state.js";
@@ -29,6 +28,9 @@ import { dueState, dueLabel, localDay } from "./features/today/model.js";
 import { statusLabel, plural } from "./ui/status-language.js";
 import { buildAttention } from "./features/map/attention.js";
 import { renderAttention } from "./features/map/attention-view.js";
+import { drawAtlasScene } from "./features/map/scene.js";
+import { renderMapNavigator } from "./features/map/navigator.js";
+import { containsTerritory, projectRadius } from "./features/map/geometry.js";
 
 let attentionSnapshot = new Map();
 let attentionDay = '';
@@ -74,69 +76,6 @@ function openAttentionTask(id) {
 function mapThemeIsLight() {
   return typeof document !== "undefined"
     && document.documentElement.getAttribute("data-theme") === "light";
-}
-
-const MAP_PALETTE = {
-  dark: {
-    domainLabel: "#cfe8ff",
-    projectLabel: "#cde1ff",
-    groupLabel: "#9dbde0",
-    counterLabel: "#b9cbe4",
-    chipLabel: "#9ee6ff",
-    chipFill: "rgba(86,204,242,.16)",
-    chipStroke: "rgba(86,204,242,.5)",
-    hub: "#8ab4ff",
-    domainStrokeAlpha: "88",
-    labelHalo: "rgba(11,15,23,0.85)",
-    labelText: "#cfe0f5",
-    labelTextDone: "#8b98a9",
-    labelTextOverdue: "#fecaca",
-    hoverRing: "rgba(207,232,255,.92)",
-    groupStrokeHover: "rgba(147,197,253,.82)",
-    groupStroke: "rgba(147,197,253,.3)",
-    groupFillHover: "rgba(86,204,242,.09)",
-    groupFill: "rgba(86,204,242,.045)",
-    domainHoverRing: "rgba(207,232,255,.8)",
-    starFill: "#0f1627",
-    starAlpha: 0.3,
-    ringTrack: "rgba(148,178,214,.34)",
-    ringDone: "#34d399",
-    ringOverdue: "#f87171",
-    ringBacking: "rgba(8,12,20,.85)",
-    ringMark: "rgba(11,15,23,.9)",
-  },
-  light: {
-    domainLabel: "#1f3a5f",
-    projectLabel: "#24405f",
-    groupLabel: "#3d5675",
-    counterLabel: "#41597a",
-    chipLabel: "#0d5c78",
-    chipFill: "rgba(13,92,120,.10)",
-    chipStroke: "rgba(13,92,120,.45)",
-    hub: "#2f6fd0",
-    domainStrokeAlpha: "aa",
-    labelHalo: "rgba(255,255,255,0.9)",
-    labelText: "#12283f",
-    labelTextDone: "#5c6b7e",
-    labelTextOverdue: "#9f1d1d",
-    hoverRing: "rgba(31,58,95,.85)",
-    groupStrokeHover: "rgba(37,99,235,.75)",
-    groupStroke: "rgba(37,99,235,.35)",
-    groupFillHover: "rgba(37,99,235,.08)",
-    groupFill: "rgba(37,99,235,.04)",
-    domainHoverRing: "rgba(31,58,95,.6)",
-    starFill: "#c8d6e6",
-    starAlpha: 0.55,
-    ringTrack: "rgba(87,113,143,.38)",
-    ringDone: "#059669",
-    ringOverdue: "#c53030",
-    ringBacking: "rgba(255,255,255,.9)",
-    ringMark: "rgba(255,255,255,.95)",
-  },
-};
-
-function mapPalette() {
-  return mapThemeIsLight() ? MAP_PALETTE.light : MAP_PALETTE.dark;
 }
 
 // ── Lenses and search ────────────────────────────────────────────────
@@ -210,8 +149,8 @@ export function setMapFilter({ lens = getMapLens(), query = getMapQuery() } = {}
 // How much of a task the current lens lets through, in one place: the renderer
 // paints with it and a regression can read it, so the two cannot drift apart.
 function taskEmphasis(node) {
-  if (node.status === "done") return 0.55;
   if (isMapFilterActive() && !currentTaskVisibility(node)) return LENS_DIM_ALPHA;
+  if (node.status === "done") return 0.55;
   return 1;
 }
 
@@ -299,23 +238,6 @@ function taskDisplayOrder(a, b) {
 // How many orbs may be drawn inside one packed group before density costs more
 // than it explains. The rest are reported as a count, honestly.
 const GROUP_ORB_LIMIT = 12;
-
-// The room a task label actually has: half the distance to the nearest other
-// orb on screen, never less than a readable stub and never more than a full
-// title width. This is what replaces the fixed 110 px crop that turned long
-// titles into meaningless fragments while short ones collided.
-function labelBudget(node, taskOrbs, view){
-  let nearest = Infinity;
-  for (const other of taskOrbs) {
-    if (other === node) continue;
-    const dx = (other.x - node.x) * view.scale;
-    const dy = (other.y - node.y) * view.scale;
-    const distance = Math.hypot(dx, dy);
-    if (distance < nearest) nearest = distance;
-  }
-  const room = Number.isFinite(nearest) ? nearest : 220;
-  return clamp(room - 12, 54, 200);
-}
 
 // Group packing with a minimum gap, so orbs of different sizes stop overlapping
 // and their labels have room. Deterministic: same input, same picture.
@@ -406,6 +328,7 @@ function requestDraw() {
 }
 
 function onWheel(e) {
+  cameraAnimation++;
   // handle pinch/scroll zoom centered on cursor
   try {
     e.preventDefault();
@@ -485,7 +408,7 @@ function hitSlop(node) {
 // hover, click and drag.
 function hitRadius(node) {
   if (node._type === "task") return node.r + hitSlop(node);
-  if (node._type === "project") return node.r + 10 * DPR;
+  if (node._type === "project") return projectRadius(node, DPR);
   return node.r;
 }
 
@@ -516,7 +439,9 @@ function bestHit(x, y, ignoreId = null) {
     const dx = x - node.x;
     const dy = y - node.y;
     const radius = hitRadius(node);
-    if (dx * dx + dy * dy > radius * radius) continue;
+    if (node._type === 'project' || node._type === 'domain') {
+      if (!containsTerritory(node, x, y, DPR)) continue;
+    } else if (dx * dx + dy * dy > radius * radius) continue;
     const rank = hitRank(node);
     if (best && (radius > bestRadius || (radius === bestRadius && rank >= bestRank))) continue;
     best = node;
@@ -765,11 +690,15 @@ function syncZoomSlider() {
   if (s) s.value = String(Math.round(viewState.scale * 100));
 }
 
+let cameraAnimation = 0;
 function animateTo(target, ms = 230) {
+  const animation = ++cameraAnimation;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) ms = 0;
   const start = { sx: viewState.scale, tx: viewState.tx, ty: viewState.ty };
   const t0 = performance.now();
   function step() {
-    const t = Math.min(1, (performance.now() - t0) / ms);
+    if (animation !== cameraAnimation) return;
+    const t = ms ? Math.min(1, (performance.now() - t0) / ms) : 1;
     const e = 1 - Math.pow(1 - t, 3);
     viewState.scale = start.sx + (target.sx - start.sx) * e;
     viewState.tx = start.tx + (target.tx - start.tx) * e;
@@ -796,12 +725,12 @@ function fitToBBox(bx, { maxScale = 2.2, padK = 0.2 } = {}) {
   const cy = (bx.minY + bx.maxY) / 2;
   const wPad = w * (1 + padK);
   const hPad = h * (1 + padK);
-  const sx = Math.min(W / Math.max(1, wPad), H / Math.max(1, hPad));
+  const sx = Math.min(W / Math.max(1, wPad), Math.max(100 * DPR, H - 116 * DPR) / Math.max(1, hPad));
   const scale = clamp(sx, 0.1, maxScale);
   const target = {
     sx: scale,
     tx: W * 0.5 - cx * scale,
-    ty: H * 0.5 - cy * scale,
+    ty: (H + 60 * DPR) * 0.5 - cy * scale,
   };
   animateTo(target, 230);
 }
@@ -1027,7 +956,6 @@ function calculateProjectRadius(tasks) {
 // because DPR is only known after the canvas has been measured.
 const CHILD_MARGIN = () => 24 * DPR;
 const CHILD_GAP = () => 10 * DPR;
-const PROJECT_HALO = () => 18 * DPR;
 
 // Distance from the Domain centre to the centre of each child.
 function ringOrbit(childRadii, domainRadius = Infinity) {
@@ -1035,13 +963,12 @@ function ringOrbit(childRadii, domainRadius = Infinity) {
   const count = childRadii.length;
   const maxChildRadius = Math.max(...childRadii);
   // sin(π/n) turns "keep neighbours apart" into a radius. With one child there
-  // is no neighbour, so it only has to stay off the Domain centre.
+  // is no neighbour; a small offset leaves room for the domain caption.
   const spread = maxChildRadius + (count > 1 ? CHILD_GAP() : 0);
   const required = count > 1
     ? spread / Math.max(0.35, Math.sin(Math.PI / count))
-    : maxChildRadius + CHILD_GAP();
-  // A Domain too small for its children collapses the ring instead of letting
-  // them spill across its own border.
+    : 14 * DPR;
+  // Clamp only to the containing radius calculated by the same geometry.
   const available = Math.max(0, domainRadius - maxChildRadius - CHILD_MARGIN());
   return Math.min(required, available);
 }
@@ -1053,44 +980,19 @@ function ringOuterRadius(childRadii) {
   return ringOrbit(childRadii) + maxChildRadius + CHILD_MARGIN();
 }
 
-// The largest Domain worth drawing. Beyond this the map stops being readable,
-// so an overfull Domain shrinks its children instead of growing further.
-const MAX_DOMAIN_RADIUS = () => 360 * DPR;
+// Grow to contain the actual children. Shrinking only the computed envelope
+// while rendering original-sized children caused overlaps in dense domains.
 const MIN_DOMAIN_RADIUS = () => 112 * DPR;
-
-// Fit a Domain and its children together, in this order of preference:
-//   1. grow the Domain to the room its children need (normal case);
-//   2. if that would exceed the largest sensible Domain, reduce the children
-//      proportionally so they still fit with a margin.
-// Scaling children down is the last resort, because a Domain is a container:
-// shrinking the container is less destructive than swallowing its contents.
 function fitDomainChildren(childRadii) {
   const radii = [...childRadii];
-  if (!radii.length) return { radii, orbit: 0, radius: MIN_DOMAIN_RADIUS(), scaled: false };
-  const natural = Math.max(MIN_DOMAIN_RADIUS(), ringOuterRadius(radii));
-  if (natural <= MAX_DOMAIN_RADIUS()) {
-    return { radii, orbit: ringOrbit(radii, natural), radius: natural, scaled: false };
-  }
-  const maxChildRadius = Math.max(...radii);
-  const maxOrbit = Math.max(0, MAX_DOMAIN_RADIUS() - maxChildRadius - CHILD_MARGIN());
-  // Ring distance is proportional to the scaled radius (plus the fixed gap), so
-  // the factor that lands the ring exactly on maxOrbit follows from the ratio.
-  const current = ringOrbit(radii);
-  const factor = Math.max(0.2, Math.min(1, (maxOrbit + CHILD_GAP()) / Math.max(1, current + CHILD_GAP())));
-  const scaled = radii.map(r => r * factor);
-  const maxScaled = Math.max(...scaled);
-  return {
-    radii: scaled,
-    radius: MAX_DOMAIN_RADIUS(),
-    orbit: Math.max(0, Math.min(ringOrbit(scaled, MAX_DOMAIN_RADIUS()), MAX_DOMAIN_RADIUS() - maxScaled - CHILD_MARGIN())),
-    scaled: true,
-  };
+  const radius = Math.max(MIN_DOMAIN_RADIUS(), ringOuterRadius(radii));
+  return { radii, orbit: ringOrbit(radii, radius), radius };
 }
 
 // The radius used to draw a child. Projects carry a halo (see the project
 // renderer), so they take a little more room than the group.
 function childDrawRadius(child) {
-  return child.type === "project" ? child.r + PROJECT_HALO() : child.r;
+  return child.type === "project" ? projectRadius(child, DPR) : child.r;
 }
 
 export function layoutMap() {
@@ -1495,9 +1397,6 @@ export function drawMap() {
     } catch (_) {}
   }
   const t0 = performance.now();
-  // One palette per frame: every text and structure colour below comes from here
-  // so the canvas follows the interface theme instead of assuming dark.
-  const P = mapPalette();
   ctx.save();
   ctx.clearRect(0, 0, W, H);
   // single transform matrix: scale + translate
@@ -1510,610 +1409,30 @@ export function drawMap() {
     viewState.ty
   );
 
-  // CSS-pixel-constant screen size under any zoom: pass a CSS px value, get
-  // the world-unit equivalent (labels, rings, dashes stay readable at 50%..220%)
-  const css = (v) => (v * DPR) / viewState.scale;
-  const fitLabel = (value, maxWidth) => {
-    const original = String(value || "");
-    if (ctx.measureText(original).width <= maxWidth) return original;
-    let text = original;
-    while (text.length > 1 && ctx.measureText(`${text}…`).width > maxWidth) {
-      text = text.slice(0, -1);
-    }
-    return `${text}…`;
-  };
   // empty-state overlay: nothing to show on the map yet
   if (emptyStateEl) emptyStateEl.hidden = nodes.length > 0;
 
-  // subtle stars
-  ctx.globalAlpha = P.starAlpha;
-  for (let i = 0; i < 40; i++) {
-    const x = (i * 97) % W,
-      y = (i * 57) % H,
-      r = (i % 3) + 0.6;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = P.starFill;
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  // compute viewport in world coords for culling
-  const inv = 1 / Math.max(0.0001, viewState.scale);
-  const pad = 120 * inv;
-  const vx0 = -viewState.tx * inv - pad;
-  const vy0 = -viewState.ty * inv - pad;
-  const vx1 = (W - viewState.tx) * inv + pad;
-  const vy1 = (H - viewState.ty) * inv + pad;
-  const inView = (x, y, r = 0) =>
-    x + r > vx0 && x - r < vx1 && y + r > vy0 && y - r < vy1;
-
-  // edges
-  if (state.showLinks) {
-    ctx.lineCap = "round";
-    edges.forEach((e) => {
-      if (!inView(e.a.x, e.a.y, e.a.r) && !inView(e.b.x, e.b.y, e.b.r)) return;
-      ctx.beginPath();
-      const a = e.a,
-        b = e.b;
-      const mx = (a.x + b.x) / 2,
-        my = (a.y + b.y) / 2;
-      const dist = Math.hypot(b.x - a.x, b.y - a.y);
-      const k = 0.12 * (1 / (1 + dist / (300 * DPR)));
-      const dx = (b.y - a.y) * k,
-        dy = (a.x - b.x) * k;
-      ctx.moveTo(a.x, a.y);
-      ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
-      ctx.strokeStyle = e.color;
-      ctx.lineWidth = e.w;
-      ctx.stroke();
-    });
-  }
-
-  // Hover highlights only the hovered object and its actual links. Neighbor
-  // rings made hover compete with persistent selection and obscured hierarchy.
-  if (hoverNodeId) {
-    edges.forEach((e) => {
-      if (e.a.id === hoverNodeId || e.b.id === hoverNodeId) {
-        ctx.beginPath();
-        const a = e.a,
-          b = e.b;
-        const mx = (a.x + b.x) / 2,
-          my = (a.y + b.y) / 2;
-        const dist = Math.hypot(b.x - a.x, b.y - a.y);
-        const k = 0.12 * (1 / (1 + dist / (300 * DPR)));
-        const dx = (b.y - a.y) * k,
-          dy = (a.x - b.x) * k;
-        ctx.moveTo(a.x, a.y);
-        ctx.bezierCurveTo(mx + dx, my + dy, mx - dx, my - dy, b.x, b.y);
-        ctx.strokeStyle = "#7fb3ff";
-        ctx.lineWidth = 2 * DPR;
-        ctx.stroke();
-      }
-    });
-  }
-
-  // domains
-  nodes
-    .filter((n) => n._type === "domain")
-    .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
-      const grad = ctx.createRadialGradient(n.x, n.y, n.r * 0.3, n.x, n.y, n.r);
-      grad.addColorStop(0, n.color + "33");
-      grad.addColorStop(1, "#0000");
-      ctx.beginPath();
-      ctx.fillStyle = grad;
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fill();
-      // Domain is a quiet territory, not another status ring.
-      if (dropTargetDomainId === n.id || hoverNodeId === n.id) {
-        ctx.beginPath();
-        ctx.strokeStyle = dropTargetDomainId === n.id ? "#7fffd4" : P.domainHoverRing;
-        ctx.lineWidth = dropTargetDomainId === n.id ? css(3) : css(1.5);
-        ctx.arc(n.x, n.y, n.r + css(5), 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.strokeStyle = `${n.color}${P.domainStrokeAlpha}`;
-      ctx.lineWidth = css(1.1);
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.stroke();
-      // north tick: a small cartographic cue that distinguishes a domain
-      ctx.beginPath();
-      ctx.strokeStyle = n.color;
-      ctx.lineWidth = css(2);
-      ctx.moveTo(n.x, n.y - n.r - css(3));
-      ctx.lineTo(n.x, n.y - n.r + css(7));
-      ctx.stroke();
-      ctx.fillStyle = P.domainLabel;
-      ctx.font = `600 ${css(12)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-      ctx.textAlign = "center";
-      ctx.fillText(
-        fitLabel(n.title, css(210)),
-        n.x,
-        n.y - n.r - css(13)
-      );
-      if (state.activeDomain === n.id) {
-        const label = "КОНТЕКСТ ВВОДА";
-        ctx.font = `700 ${css(9)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-        const width = ctx.measureText(label).width + css(14);
-        const y = n.y - n.r + css(18);
-        ctx.fillStyle = P.chipFill;
-        ctx.strokeStyle = P.chipStroke;
-        ctx.lineWidth = css(1);
-        ctx.beginPath();
-        ctx.roundRect(n.x - width / 2, y - css(10), width, css(18), css(8));
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = P.chipLabel;
-        ctx.fillText(label, n.x, y + css(3));
-      }
-    });
-
-  // Task composition, not completion of a life area. Done and overdue
-  // are disjoint segments of the same total; the neutral track is open work.
-  const drawProgressRing = (n, ringRadius) => {
-    const stats = areaStats(n);
-    if (!stats || !stats.total) return;
-    const lineWidth = css(2.4);
-    const start = -Math.PI / 2;
-    // Dark backing under the track keeps the ring separate from the domain border
-    // it runs beside, so the two arcs never read as one thick line.
-    ctx.beginPath();
-    ctx.strokeStyle = P.ringBacking;
-    ctx.lineWidth = lineWidth + css(2);
-    ctx.arc(n.x, n.y, ringRadius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.strokeStyle = P.ringTrack;
-    ctx.lineWidth = lineWidth;
-    ctx.arc(n.x, n.y, ringRadius, 0, Math.PI * 2);
-    ctx.stroke();
-    if (stats.doneRatio > 0) {
-      ctx.beginPath();
-      ctx.strokeStyle = P.ringDone;
-      ctx.lineWidth = lineWidth;
-      ctx.arc(n.x, n.y, ringRadius, start, start + Math.PI * 2 * Math.min(1, stats.doneRatio));
-      ctx.stroke();
-    }
-    // Start after the done segment so neither category conceals the other.
-    if (stats.overdueRatio > 0) {
-      ctx.beginPath();
-      ctx.strokeStyle = P.ringOverdue;
-      ctx.lineWidth = lineWidth + css(0.8);
-      const overdueStart = start + Math.PI * 2 * stats.doneRatio;
-      ctx.arc(n.x, n.y, ringRadius, overdueStart, overdueStart + Math.PI * 2 * Math.min(1, stats.overdueRatio));
-      ctx.stroke();
-    }
-    // Quarter marks: a scale for the arc, not decoration.
-    ctx.beginPath();
-    ctx.strokeStyle = P.ringMark;
-    ctx.lineWidth = css(1);
-    for (const quarter of [0.25, 0.5, 0.75]) {
-      const angle = start + Math.PI * 2 * quarter;
-      ctx.moveTo(n.x + Math.cos(angle) * (ringRadius - lineWidth / 2), n.y + Math.sin(angle) * (ringRadius - lineWidth / 2));
-      ctx.lineTo(n.x + Math.cos(angle) * (ringRadius + lineWidth / 2), n.y + Math.sin(angle) * (ringRadius + lineWidth / 2));
-    }
-    ctx.stroke();
-  };
-
-  // One plain-language observation on the canvas; all reasons in the sidebar.
-  // A lone project lets its domain report the same observation once.
-  const drawAreaReadout = (n, ringRadius, { loneChild = false } = {}) => {
-    const stats = areaStats(n);
-    if (!stats) return;
-    if (n._type === "project" && loneChild) return;
-    if (ringRadius < css(60)) return;
-    const { kind, label } = stats.primary;
-    ctx.font = `600 ${css(11)}px system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillStyle = kind === 'overdue' ? P.ringOverdue
-      : (kind === 'stale' || kind === 'load') ? (mapThemeIsLight() ? '#825500' : '#f2c94c') : P.counterLabel;
-    ctx.fillText(fitLabel(label, css(210)), n.x, n.y + ringRadius + css(15));
-  };
-
-  // Materials remain in their context: one count badge, never one orb per note.
-  // The owner rule lives in knowledgeCountFor, so the badge and the library agree
-  // on where a Thought/Note belongs. A Domain badge sits under the Domain border,
-  // not under its centre: the centre is occupied by the Domain's children, and a
-  // badge there landed on top of the child's own badge.
-  const knowledgeCounts = knowledgeCountFor(nodes, state.knowledge);
-  // How many territories live directly inside each Domain: used to let a lone
-  // Project stay quiet while the Domain speaks for the same numbers.
-  const childCountByDomain = new Map();
-  nodes.forEach(node => {
-    if (node._type !== 'project' && node._type !== 'unassigned') return;
-    const domainId = node._type === 'project' ? node.parent : node.domainId;
-    if (!domainId) return;
-    childCountByDomain.set(domainId, (childCountByDomain.get(domainId) || 0) + 1);
+  drawAtlasScene(ctx, {
+    nodes, facts: attentionSnapshot, camera: viewState, dpr: DPR,
+    light: mapThemeIsLight(), selected: selectedNodeId, hovered: hoverNodeId,
+    keyboard: kbdNodeId, emphasis: taskEmphasis, knowledgeCounts: knowledgeCountFor(nodes, state.knowledge),
+    edges, showLinks: state.showLinks, showAging: state.showAging, showGlow: state.showGlow && allowGlow,
+    targetDomain: dropTargetDomainId, targetProject: dropTargetProjectId, pendingAttach, dragged: draggedNode,
   });
-  nodes.filter(n => n._type === 'domain' || n._type === 'project').forEach(n => {
-    // The progress ring sits outside the territory border. For a Project that
-    // means outside its halo, so the ring is never mistaken for the halo itself.
-    const ringRadius = n._type === 'domain' ? n.r + css(9) : n.r + css(27);
-    drawProgressRing(n, ringRadius);
-    drawAreaReadout(n, ringRadius, {
-      loneChild: n._type === 'project' && (childCountByDomain.get(n.parent) || 0) === 1,
-    });
-    const count = knowledgeCounts[`${n._type}:${n.id}`] || 0;
-    if (!count) return;
-    ctx.font = `600 ${css(11)}px system-ui`;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = P.counterLabel;
-    const badgeY = n._type === 'domain'
-      ? n.y + n.r + css(40)
-      : n.y + n.r + css(56);
-    ctx.fillText(`Мысли и заметки · ${count}`, n.x, badgeY);
+  renderMapNavigator({
+    state, selected: selectedNodeId, type: nodes.find(n => n.id === selectedNodeId)?._type,
+    nodes, camera: viewState, width: W, height: H, dpr: DPR,
+    open: (entity, type) => openInspectorFor({ ...entity, _type: type }),
+    fit: (id, type) => {
+      if(type === 'domain') fitDomain(id);
+      else if(type === 'project') fitProject(id);
+      else if(type === 'task') fitMembers(nodes.filter(n => n.id === id));
+    },
+    overview: () => { openInspectorFor(null); fitAll(); },
+    pan: (x, y) => animateTo({ sx: viewState.scale, tx: W / 2 - x * viewState.scale, ty: H / 2 - y * viewState.scale }),
   });
-
-  // View-only home for tasks that belong to a Domain but not to a Project.
-  nodes
-    .filter((n) => n._type === "unassigned")
-    .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 24 * DPR)) return;
-      ctx.beginPath();
-      ctx.fillStyle = hoverNodeId === n.id ? P.groupFillHover : P.groupFill;
-      ctx.strokeStyle = hoverNodeId === n.id ? P.groupStrokeHover : P.groupStroke;
-      ctx.lineWidth = css(1.1);
-      ctx.setLineDash([css(4), css(4)]);
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = P.groupLabel;
-      ctx.font = `650 ${css(10.5)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-      ctx.textAlign = "center";
-      ctx.fillText(`БЕЗ ПРОЕКТА · ${n.count}`, n.x, n.y - n.r - css(8));
-    });
-
-  // projects
-  nodes
-    .filter((n) => n._type === "project")
-    .forEach((n) => {
-      if (!inView(n.x, n.y, n.r + 30 * DPR)) return;
-      // highlight if drop target (pulsing)
-      if (dropTargetProjectId === n.id) {
-        const t = (performance.now() / 300) % (Math.PI * 2);
-        const pulse = 1 + Math.sin(t) * 0.18;
-        ctx.save();
-        ctx.shadowColor = "#ffe066";
-        ctx.shadowBlur = 22 * DPR;
-        ctx.lineWidth = 6 * DPR * pulse;
-        ctx.strokeStyle = "#ffd27a";
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r + 18 * DPR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
-      // A project is a contained workspace: a quiet territory plus a diamond hub.
-      ctx.beginPath();
-      ctx.fillStyle = "rgba(96,165,250,.025)";
-      ctx.arc(n.x, n.y, n.r + css(18), 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.strokeStyle = hoverNodeId === n.id ? "rgba(147,197,253,0.9)" : "rgba(96,165,250,.24)";
-      ctx.lineWidth = hoverNodeId === n.id ? css(1.6) : css(1);
-      ctx.arc(n.x, n.y, n.r + css(18), 0, Math.PI * 2);
-      ctx.stroke();
-      const hub = css(7);
-      ctx.save();
-      ctx.translate(n.x, n.y);
-      ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = P.hub;
-      ctx.fillRect(-hub, -hub, hub * 2, hub * 2);
-      ctx.restore();
-      ctx.fillStyle = P.projectLabel;
-      ctx.font = `600 ${css(11.5)}px system-ui, sans-serif`;
-      ctx.textAlign = "center";
-      // project titles stay readable at normal zoom; below ~0.65 they would
-      // collide inside packed domains, so they yield to hover tooltips
-      if (viewState.scale >= 0.82 || hoverNodeId === n.id || selectedNodeId === n.id) {
-        ctx.fillText(
-          fitLabel(n.title, css(170)),
-          n.x,
-          n.y - n.r - css(11)
-        );
-      }
-    });
-
-  // transient drag feedback: dashed connector from dragged task to potential drop target
-  if (draggedNode && draggedNode._type === "task") {
-    try {
-      const target = nodes.find(
-        (n) => n._type === "project" && n.id === dropTargetProjectId
-      );
-      if (target) {
-        ctx.beginPath();
-        ctx.setLineDash([8 * DPR, 6 * DPR]);
-        ctx.strokeStyle = "#ffd27a";
-        ctx.lineWidth = 1.6 * DPR;
-        ctx.moveTo(draggedNode.x, draggedNode.y);
-        ctx.lineTo(target.x, target.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    } catch (e) {}
-  }
-
-  // tasks
-  // Every semantic channel of a task orb is decided here from the node's own
-  // fields: fill = status, colour = deadline urgency, ring = work/overdue,
-  // crosshair = today's Focus, arc = age, radius = importance + estimate.
-  // The map used to know only `status` and `aging`, so a missed deadline looked
-  // exactly like an old backlog item.
-  const overdueColor = "#f87171";
-  const taskColor = (n) =>
-    n.due === "overdue"
-      ? overdueColor
-      : n.status === "done"
-      ? "#6b7280"
-      : n.status === "today" || n.focus
-      ? "#ffd166"
-      : n.status === "doing"
-      ? "#60a5fa"
-      : "#9ca3af";
-  const taskOrbs = nodes.filter((n) => n._type === "task");
-  const placedLabels = [];
-  const lensActive = isMapFilterActive();
-
-  taskOrbs.forEach((n) => {
-    if (!inView(n.x, n.y, n.r + 20 * DPR)) return;
-    // A task outside the current lens is not removed, it recedes: the map keeps
-    // the shape the user remembers while the answer comes forward.
-    const dim = lensActive && !currentTaskVisibility(n);
-    const baseColor = taskColor(n);
-    if (state.showAging && selectedNodeId !== n.id && !dim) {
-      ctx.beginPath();
-      ctx.arc(
-        n.x,
-        n.y,
-        n.r + css(3),
-        -Math.PI * 0.72,
-        -Math.PI * 0.18
-      );
-      ctx.strokeStyle = colorByAging(n.aging);
-      ctx.lineWidth = css(2);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-    if (state.showGlow && allowGlow && !dim) {
-      ctx.shadowColor = baseColor;
-      ctx.shadowBlur = 12 * DPR;
-    } else {
-      ctx.shadowBlur = 0;
-    }
-    ctx.fillStyle = baseColor;
-    // done: dimmed fill + a check glyph, so status never relies on color alone.
-    // A task outside the lens recedes further — see taskEmphasis, which is the
-    // single place that decides how much of a task is drawn.
-    const alpha = taskEmphasis(n);
-    if (alpha < 1) ctx.globalAlpha = alpha;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
-    if (dim) return;
-    if (hoverNodeId === n.id && selectedNodeId !== n.id) {
-      ctx.beginPath();
-      ctx.strokeStyle = P.hoverRing;
-      ctx.lineWidth = css(1.4);
-      ctx.arc(n.x, n.y, n.r + css(6), 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    // The badge, ring and crosshair of a receded task are skipped together: a
-    // faded orb carrying a bright "overdue" ring would still shout.
-    if (dim) return;
-    // The ring is reserved for work state — today / в работе / просрочено —
-    // never for the neutral case, so a red ring means exactly one thing.
-    if (n.due === "overdue") {
-      ctx.beginPath();
-      ctx.strokeStyle = overdueColor;
-      ctx.lineWidth = css(2);
-      ctx.arc(n.x, n.y, n.r + css(4.5), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(11,15,23,0.72)";
-      ctx.lineWidth = css(2.6);
-      ctx.arc(n.x, n.y, n.r + css(4.5), -Math.PI * 0.34, Math.PI * 0.34);
-      ctx.stroke();
-    } else if (n.status === "today") {
-      ctx.beginPath();
-      ctx.strokeStyle = "#f59e0b";
-      ctx.lineWidth = css(1.5);
-      ctx.arc(n.x, n.y, n.r + css(5), 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (n.status === "doing") {
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(147,197,253,0.9)";
-      ctx.lineWidth = css(1.5);
-      ctx.setLineDash([css(2.5), css(2.5)]);
-      ctx.arc(n.x, n.y, n.r + css(4.5), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    if (n.focus === true && n.status !== "done") {
-      // Focus of the day: never more than three, so a crosshair stays readable.
-      const radius = n.r + css(8.5);
-      ctx.strokeStyle = "#67e8f9";
-      ctx.lineWidth = css(1.4);
-      for (const angle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
-        const px = n.x + Math.cos(angle) * (n.r + css(2.5));
-        const py = n.y + Math.sin(angle) * (n.r + css(2.5));
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.lineTo(n.x + Math.cos(angle) * radius, n.y + Math.sin(angle) * radius);
-        ctx.stroke();
-      }
-    }
-    // Keyboard focus must be visible: the orb the arrows landed on gets a
-    // distinct ring, so the canvas never moves focus invisibly.
-    if (kbdNodeId === n.id) {
-      ctx.beginPath();
-      ctx.strokeStyle = "#a5f3fc";
-      ctx.lineWidth = css(2);
-      ctx.setLineDash([css(3), css(2.5)]);
-      ctx.arc(n.x, n.y, n.r + css(10), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    if (n.status === "done" && n.r * viewState.scale >= 7) {
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(255,255,255,0.92)";
-      ctx.lineWidth = css(1.4);
-      ctx.lineCap = "round";
-      const s = n.r * 0.5;
-      ctx.moveTo(n.x - s * 0.55, n.y + s * 0.05);
-      ctx.lineTo(n.x - s * 0.12, n.y + s * 0.4);
-      ctx.lineTo(n.x + s * 0.55, n.y - s * 0.42);
-      ctx.stroke();
-      ctx.lineCap = "butt";
-    }
-  });
-
-  // Labels are placed after all orbs, because the room a label has depends on
-  // where its neighbours ended up. A label is limited by the distance to the
-  // nearest other task and skipped when it would still collide, so long titles
-  // stop being cropped into meaningless stubs and stop overlapping each other.
-  //
-  // The gate used to be `scale >= 1.15`, while the overview (fitAll) settles at
-  // 1.0-1.1 — so the very view a person opens the map in carried no names at all,
-  // and every orb was anonymous until hovered. Naming now follows what a label
-  // would cost on screen instead of an arbitrary zoom: a task is named when it is
-  // decision-relevant, when it is the active object, or when its orb is big
-  // enough to read and its neighbours are far enough away for the label to fit.
-  // The collision check below stays the final authority either way.
-  if (viewState.scale >= 0.85) {
-    const labelOrder = [...taskOrbs].sort((a, b) => {
-      const rank = (n) =>
-        selectedNodeId === n.id ? 0
-        : hoverNodeId === n.id ? 1
-        : n.due === "overdue" ? 2
-        : n.focus ? 3
-        : n.due === "today" ? 4
-        : n.status === "today" ? 5
-        : n.status === "doing" ? 6
-        : 7;
-      return rank(a) - rank(b) || b.r - a.r || String(a.id).localeCompare(String(b.id));
-    });
-    for (const n of labelOrder) {
-      if (!inView(n.x, n.y, n.r + 40 * DPR)) continue;
-      const active = selectedNodeId === n.id || hoverNodeId === n.id;
-      // Under a lens only what the lens asked about is named: a name is the
-      // strongest signal on the canvas, and it must not contradict the filter.
-      if (lensActive && !active && !currentTaskVisibility(n)) continue;
-      // Progressive disclosure: outside a deliberate zoom only the active and
-      // decision-relevant tasks are named.
-      if (!active) {
-        const important =
-          n.due === "overdue" || n.focus === true || n.status === "today" || n.due === "today";
-        const readableOrb = n.r * viewState.scale >= 7;
-        const roomToSpare = labelBudget(n, taskOrbs, viewState) >= 70;
-        if (!important && !(readableOrb && roomToSpare)) continue;
-      }
-      const text = String(n.title || "");
-      if (!text) continue;
-      ctx.font = `${active ? 600 : 400} ${css(10.5)}px system-ui`;
-      let labelX = n.x;
-      let labelY = n.y + n.r + css(13);
-      if (active && viewState.scale < 0.82) {
-        const t = state.tasks.find((x) => x.id === n.id);
-        const parentProject = t?.projectId
-          ? nodes.find((item) => item._type === "project" && item.id === t.projectId)
-          : null;
-        if (parentProject) {
-          labelX = parentProject.x;
-          labelY = parentProject.y + parentProject.r + css(30);
-        }
-      }
-      const screenX = (labelX * viewState.scale + viewState.tx) / DPR;
-      const screenY = (labelY * viewState.scale + viewState.ty) / DPR;
-      if (screenX < 4 || screenX > W / DPR - 4 || screenY < 4 || screenY > H / DPR - 4) continue;
-      const budget = labelBudget(n, taskOrbs, viewState) * (active ? 1.35 : 1);
-      const fitted = fitLabel(text, css(Math.max(28, budget)));
-      const width = ctx.measureText(fitted).width * viewState.scale / DPR;
-      const rect = { x0: screenX - width / 2, x1: screenX + width / 2, y0: screenY - 7, y1: screenY + 4 };
-      const collides = placedLabels.some(
-        (other) => rect.x0 < other.x1 + 3 && rect.x1 > other.x0 - 3 && rect.y0 < other.y1 && rect.y1 > other.y0
-      );
-      if (collides) continue;
-      placedLabels.push(rect);
-      ctx.textAlign = "center";
-      ctx.lineWidth = css(2.5);
-      ctx.strokeStyle = P.labelHalo;
-      ctx.strokeText(fitted, labelX, labelY);
-      ctx.fillStyle = n.due === "overdue" && n.status !== "done"
-        ? P.labelTextOverdue
-        : n.status === "done"
-        ? P.labelTextDone
-        : P.labelText;
-      ctx.fillText(fitted, labelX, labelY);
-    }
-  }
-
-  // A group that could not show everything says so instead of pretending that
-  // the drawn orbs are the whole story.
-  nodes
-    .filter((n) => n._type === "unassigned")
-    .forEach((n) => {
-      if (!n.hidden) return;
-      ctx.font = `600 ${css(10)}px system-ui`;
-      ctx.textAlign = "center";
-      const label = `+${n.hidden} ${n.hidden === 1 ? "задача" : n.hidden < 5 ? "задачи" : "задач"}`;
-      const width = ctx.measureText(label).width + css(14);
-      const y = n.y + n.r + css(26);
-      ctx.fillStyle = P.chipFill;
-      ctx.strokeStyle = P.chipStroke;
-      ctx.lineWidth = css(1);
-      ctx.beginPath();
-      ctx.roundRect(n.x - width / 2, y - css(10), width, css(18), css(8));
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = P.chipLabel;
-      ctx.fillText(label, n.x, y + css(3));
-    });
-
-  // Visualize pending attach (dashed connector + highlights)
-  if (pendingAttach) {
-    try {
-      const taskNode = nodes.find(
-        (n) => n._type === "task" && n.id === pendingAttach.taskId
-      );
-      const projNode = nodes.find(
-        (n) => n._type === "project" && n.id === pendingAttach.toProjectId
-      );
-      if (taskNode && projNode) {
-        // dashed connector
-        ctx.beginPath();
-        ctx.setLineDash([6 * DPR, 6 * DPR]);
-        ctx.strokeStyle = "#ffd27a";
-        ctx.lineWidth = 1.5 * DPR;
-        ctx.moveTo(taskNode.x, taskNode.y);
-        ctx.lineTo(projNode.x, projNode.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // highlight task outline
-        ctx.beginPath();
-        ctx.strokeStyle = "#ffcc66";
-        ctx.lineWidth = 3 * DPR;
-        ctx.arc(taskNode.x, taskNode.y, taskNode.r + 8 * DPR, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // highlight target project with small badge
-        ctx.beginPath();
-        ctx.fillStyle = "#ffd27a";
-        const bx = projNode.x + (projNode.r + 10 * DPR) * Math.cos(0.2);
-        const by = projNode.y - (projNode.r + 10 * DPR) * Math.sin(0.2);
-        ctx.arc(bx, by, 6 * DPR, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } catch (e) {
-      // defensive: ignore drawing errors
-    }
-  }
 
   // active object ring + navigation ping (drawn on top of everything)
-  drawSelection();
   drawLandingPing();
 
   // FPS overlay
@@ -2259,8 +1578,9 @@ function onMouseMove(e) {
     const dx = e.clientX - viewState.lastX,
       dy = e.clientY - viewState.lastY;
     const dpr = window.devicePixelRatio || 1;
-    viewState.tx += (dx * dpr) / viewState.scale;
-    viewState.ty += (dy * dpr) / viewState.scale;
+    cameraAnimation++;
+    viewState.tx += dx * dpr;
+    viewState.ty += dy * dpr;
     viewState.lastX = e.clientX;
     viewState.lastY = e.clientY;
     requestDraw();
@@ -2300,7 +1620,7 @@ function onMouseMove(e) {
     dropTargetDomainId = null;
     const hitNode = hitExcluding(pt.x, pt.y, draggedNode.id);
     if (draggedNode._type === 'project') {
-      dropTargetDomainId = nodes.filter(n => n._type === 'domain' && Math.hypot(n.x - pt.x, n.y - pt.y) <= n.r)
+      dropTargetDomainId = nodes.filter(n => n._type === 'domain' && containsTerritory(n, pt.x, pt.y, DPR))
         .sort((a, b) => a.r - b.r)[0]?.id || null;
     }
     if (hitNode) {
@@ -2820,52 +2140,6 @@ function refreshMap(opts) {
   drawMap();
 }
 
-function drawSelection() {
-  if (!selectedNodeId) return;
-  const node = nodes.find((n) => n.id === selectedNodeId);
-  if (!node) return;
-  const pad = node._type === "task" ? 8 : node._type === "project" ? 12 : 16;
-  const gap = (pad * DPR) / viewState.scale;
-  // Atlas locator: four brackets read as "active location" without adding
-  // another full ring on top of status and aging contours.
-  const locatorRadius = node.r + gap;
-  const arcSize = Math.PI * 0.16;
-  ctx.strokeStyle = "#56ccf2";
-  ctx.lineWidth = (2.6 * DPR) / viewState.scale;
-  ctx.lineCap = "round";
-  [0, Math.PI / 2, Math.PI, Math.PI * 1.5].forEach((angle) => {
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, locatorRadius, angle - arcSize, angle + arcSize);
-    ctx.stroke();
-  });
-  ctx.lineCap = "butt";
-  // parent-chain context: where does this object belong?
-  const drawContextRing = (n) => {
-    ctx.beginPath();
-    ctx.strokeStyle = "rgba(86,204,242,0.34)";
-    ctx.lineWidth = (1 * DPR) / viewState.scale;
-    ctx.setLineDash([(5 * DPR) / viewState.scale, (4 * DPR) / viewState.scale]);
-    ctx.arc(n.x, n.y, n.r + (10 * DPR) / viewState.scale, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  };
-  if (node._type === "task") {
-    const t = state.tasks.find((x) => x.id === node.id);
-    if (t && t.projectId) {
-      const pn = nodes.find(
-        (x) => x._type === "project" && x.id === t.projectId
-      );
-      if (pn) drawContextRing(pn);
-    }
-  } else if (node._type === "project") {
-    const p = state.projects.find((x) => x.id === node.id);
-    if (p) {
-      const dn = nodes.find((x) => x._type === "domain" && x.id === p.domainId);
-      if (dn) drawContextRing(dn);
-    }
-  }
-}
-
 // transient expanding ring right after camera navigation (Открыть задачу etc.)
 function drawLandingPing() {
   if (!landingPing || !landingPing.id) return;
@@ -3041,6 +2315,11 @@ export function fitGroup(groupId) {
   if (!group) return;
   const members = [group, ...nodes.filter((n) => n._type === "task" && n.groupId === groupId)];
   fitMembers(members);
+}
+
+export function fitProject(projectId) {
+  const ids = new Set(state.tasks.filter(t => t.projectId === projectId).map(t => t.id));
+  fitMembers(nodes.filter(n => (n._type === 'project' && n.id === projectId) || (n._type === 'task' && ids.has(n.id))));
 }
 
 function onDblClick(e) {
