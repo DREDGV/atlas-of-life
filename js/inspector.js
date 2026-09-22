@@ -11,6 +11,7 @@ import {
   FOCUS_LIMIT,
 } from "./state.js";
 import { requestSyncNow } from "./sync/runtime.js";
+import { appendProjectPlacement } from './features/map/project-placement.js';
 import { dueLabel, dueState, localDay, plannedDayOf, stepDay } from "./features/today/model.js";
 import { formatDay } from "./ui/status-language.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
@@ -336,12 +337,13 @@ export function openInspectorFor(obj) {
     });
   }
   if (type === "project") {
+    obj = { ...(state.projects.find(p => p.id === obj.id) || obj), _type: 'project' };
     const tks = tasksOfProject(obj.id);
     const projectDomain = domainOf(obj);
     ins.innerHTML = `
-      ${inspectorHeading("Проект", obj.title, [projectDomain?.title, obj.title])}
-      <div class="kv">Домен: ${projectDomain?.title || "Без домена"}</div>
-      <div class="kv">Теги: #${(obj.tags || []).join(" #")}</div>
+      ${inspectorHeading("Проект", escapeKnowledge(obj.title), [escapeKnowledge(projectDomain?.title || ''), escapeKnowledge(obj.title)])}
+      <div class="kv">Домен: ${escapeKnowledge(projectDomain?.title || "Без домена")}</div>
+      <div class="kv">Теги: #${escapeKnowledge((obj.tags || []).join(" #"))}</div>
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
       </div>
@@ -349,8 +351,8 @@ export function openInspectorFor(obj) {
         .map(
           (t) => `
         <button type="button" class="card inspector-card-button" data-task-id="${t.id}">
-          <div>${statusPill(t.status)} <strong>${t.title}</strong></div>
-          <div class="meta">#${normalizeTags(t.tags).join(" #")} · обновл. ${daysSince(
+          <div>${statusPill(t.status)} <strong>${escapeKnowledge(t.title)}</strong></div>
+          <div class="meta">#${escapeKnowledge(normalizeTags(t.tags).join(" #"))} · обновл. ${daysSince(
             t.updatedAt
           )} дн.</div>
         </button>
@@ -358,6 +360,7 @@ export function openInspectorFor(obj) {
         )
         .join("")}</div>
     `;
+    appendProjectPlacement(ins, { ...obj }, next => openInspectorFor({ ...next, _type: 'project' }));
     document.getElementById("addTask").onclick = () => {
       const title = prompt("Название задачи:", "Новая задача");
       if (!title) return;

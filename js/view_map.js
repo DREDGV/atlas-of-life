@@ -10,8 +10,8 @@ import {
   daysSince,
 } from "./state.js";
 import { openInspectorFor } from "./inspector.js";
-import { moveTask, undoTaskMove } from "./core/commands.js";
-import { saveState } from "./storage.js";
+import { moveTask, undoTaskMove, moveProject, undoProjectMove } from "./core/commands.js";
+import { revealProject } from "./features/map/project-placement.js";
 import { requestSyncNow } from "./sync/runtime.js";
 import { logEvent } from "./utils/analytics.js";
 import {
@@ -32,6 +32,7 @@ import { renderAttention } from "./features/map/attention-view.js";
 
 let attentionSnapshot = new Map();
 let attentionDay = '';
+let skipClickUntil = 0;
 
 function openAttentionArea(area) {
   document.querySelector('[data-view="map"]')?.click();
@@ -2286,12 +2287,22 @@ function onMouseMove(e) {
   }
   if (draggedNode) {
     const pt = screenToWorld(e.offsetX, e.offsetY);
+    const dx = pt.x - dragOffset.x - draggedNode.x;
+    const dy = pt.y - dragOffset.y - draggedNode.y;
+    if (draggedNode._type === 'project') {
+      const ids = new Set(state.tasks.filter(t => t.projectId === draggedNode.id).map(t => t.id));
+      nodes.filter(n => n._type === 'task' && ids.has(n.id)).forEach(n => { n.x += dx; n.y += dy; });
+    }
     draggedNode.x = pt.x - dragOffset.x;
     draggedNode.y = pt.y - dragOffset.y;
     // detect potential drop targets while dragging
     dropTargetProjectId = null;
     dropTargetDomainId = null;
     const hitNode = hitExcluding(pt.x, pt.y, draggedNode.id);
+    if (draggedNode._type === 'project') {
+      dropTargetDomainId = nodes.filter(n => n._type === 'domain' && Math.hypot(n.x - pt.x, n.y - pt.y) <= n.r)
+        .sort((a, b) => a.r - b.r)[0]?.id || null;
+    }
     if (hitNode) {
       if (draggedNode._type === "task" && hitNode._type === "project") {
         dropTargetProjectId = hitNode.id;
@@ -2379,7 +2390,7 @@ function onMouseDown(e) {
   if (e.button === 0) {
     const pt = screenToWorld(e.offsetX, e.offsetY);
     const n = hit(pt.x, pt.y);
-    if (n && n._type === "task") {
+    if (n && (n._type === "task" || n._type === "project")) {
       pendingDragNode = n;
       pendingDragStart.x = e.clientX;
       pendingDragStart.y = e.clientY;
@@ -2398,19 +2409,33 @@ window.addEventListener("mouseup", (e) => {
     return;
   }
   if (!draggedNode) return;
+  if (draggedNode._type === 'project') {
+    skipClickUntil = performance.now() + 250;
+    const id = draggedNode.id;
+    const destination = dropTargetDomainId;
+    // Clear the preview before Core refreshes the map; a failed save restores it.
+    draggedNode = null;
+    dropTargetDomainId = null;
+    dropTargetProjectId = null;
+    canvas.style.cursor = '';
+    try {
+      if (destination) {
+        const result = moveProject(id, destination);
+        if (result.operation) {
+          undoStack.push({ type: 'project.move', moveResult: result });
+          if (undoStack.length > 50) undoStack.shift();
+          revealProject(result.project);
+          openInspectorFor({ ...result.project, _type: 'project' });
+          showProjectMoveNotice('Проект перенесён вместе с задачами и материалами.', true);
+        } else showProjectMoveNotice('Проект уже в этой сфере. Положение задаёт автоматическая раскладка.');
+      } else showProjectMoveNotice('Перенос отменён. Отпустите проект внутри нужной сферы.');
+    } catch (error) { showProjectMoveNotice(`Не удалось перенести: ${error.message}`); }
+    layoutMap(); drawMap();
+    return;
+  }
   let moved = false;
   let taskMoveDeferred = false;
   let taskMoveCommitted = false;
-  // record before state for undo
-  const before = {};
-  if (draggedNode._type === "project") {
-    const p = state.projects.find((x) => x.id === draggedNode.id);
-    if (p) {
-      before.fromPos = p._pos ? { x: p._pos.x, y: p._pos.y } : null;
-      before.fromDomainId = p.domainId;
-    }
-  }
-
   // DnD: если есть dropTargetProjectId и он отличается от текущего projectId — переносим задачу
   // If mouseup occurred outside canvas, ensure we compute hit from last known mouse position
   if (!dropTargetProjectId && draggedNode && draggedNode._type === "task") {
@@ -2481,26 +2506,6 @@ window.addEventListener("mouseup", (e) => {
               cancelAttach();
             };
         }, 20);
-      }
-    }
-  }
-
-  // For projects: if dropped over a domain, move project to that domain
-  if (draggedNode._type === "project") {
-    // find world point under mouse
-    const offX =
-      e && typeof e.offsetX === "number" ? e.offsetX : lastMouseClient.offsetX;
-    const offY =
-      e && typeof e.offsetY === "number" ? e.offsetY : lastMouseClient.offsetY;
-    const pt = screenToWorld(offX || 0, offY || 0);
-    const n = hit(pt.x, pt.y);
-    if (n && n._type === "domain") {
-      const p = state.projects.find((x) => x.id === draggedNode.id);
-      if (p && p.domainId !== n.id) {
-        p.domainId = n.id;
-        p.updatedAt = Date.now();
-        // mark moved for toast
-        var projectMoved = true;
       }
     }
   }
@@ -2609,40 +2614,10 @@ window.addEventListener("mouseup", (e) => {
       requestSyncNow(); // C2: routed Task placement follows immediately
       moved = taskMoveCommitted;
     }
-  }
-  if (draggedNode._type === "project") {
-    const p = state.projects.find((x) => x.id === draggedNode.id);
-    if (p) {
-      p.pos = { x: draggedNode.x, y: draggedNode.y };
-      saveState();
+    if (t?.projectId && !taskMoveDeferred && !taskMoveCommitted) {
+      showProjectMoveNotice('Внутри проекта задачи раскладываются автоматически. Для переноса отпустите задачу в другом проекте или сфере.');
     }
   }
-
-  // record after state and push undo entry if relevant
-  const after = {};
-  if (draggedNode._type === "project") {
-    const p = state.projects.find((x) => x.id === draggedNode.id);
-    if (p) {
-      after.toPos = p.pos ? { x: p.pos.x, y: p.pos.y } : null;
-      after.toDomainId = p.domainId;
-      if (
-        before.fromPos ||
-        after.toPos ||
-        before.fromDomainId !== after.toDomainId
-      ) {
-        undoStack.push({
-          type: "project",
-          id: draggedNode.id,
-          fromPos: before.fromPos,
-          toPos: after.toPos,
-          fromDomainId: before.fromDomainId,
-          toDomainId: after.toDomainId,
-        });
-        if (undoStack.length > 50) undoStack.shift();
-      }
-    }
-  }
-
   draggedNode = null;
   dropTargetProjectId = null;
   dropTargetDomainId = null;
@@ -2668,42 +2643,45 @@ window.addEventListener("mouseup", (e) => {
       }, 1800);
     }
   }
-  // toast for project move
-  if (typeof projectMoved !== "undefined" && projectMoved) {
-    const toast = document.getElementById("toast");
-    if (toast) {
-      toast.className = "toast ok";
-      toast.textContent = "Проект перенесён";
-      toast.style.display = "block";
-      toast.style.opacity = "1";
-      setTimeout(() => {
-        toast.style.transition = "opacity .3s linear";
-        toast.style.opacity = "0";
-        setTimeout(() => {
-          toast.style.display = "none";
-          toast.style.transition = "";
-        }, 320);
-      }, 1800);
-    }
-  }
+
 });
 
 // expose undo function
+function showProjectMoveNotice(message, allowUndo = false) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.replaceChildren(document.createTextNode(message + ' '));
+  toast.className = 'toast';
+  toast.style.display = 'block'; toast.style.opacity = '1';
+  if (allowUndo) {
+    const undo = document.createElement('button');
+    undo.textContent = 'Отменить перенос'; undo.type = 'button';
+    undo.onclick = () => {
+      try { if (undoLastMove()) toast.style.display = 'none'; }
+      catch (error) { showProjectMoveNotice(error.message); }
+    };
+    toast.append(undo);
+  }
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = 'Закрыть';
+  close.onclick = () => { toast.style.display = 'none'; };
+  toast.append(close);
+}
+
 export function undoLastMove() {
+  const latest = undoStack.at(-1);
+  if (latest?.type === 'project.move') {
+    const result = undoProjectMove(latest.moveResult);
+    undoStack.pop();
+    revealProject(result.project);
+    openInspectorFor({ ...result.project, _type: 'project' });
+    return true;
+  }
   const item = undoStack.pop();
   if (!item) return false;
   if (item.type === "task.move") {
     const result = undoTaskMove(item.moveResult, { reason: "map.undo" });
     if (!result) return false;
-    layoutMap();
-    drawMap();
-    return true;
-  }
-  if (item.type === "project") {
-    const p = state.projects.find((x) => x.id === item.id);
-    if (!p) return false;
-    if (item.fromPos) p.pos = { x: item.fromPos.x, y: item.fromPos.y };
-    saveState();
     layoutMap();
     drawMap();
     return true;
@@ -3098,6 +3076,7 @@ function onDblClick(e) {
 }
 
 function onClick(e) {
+  if (performance.now() < skipClickUntil) return;
   const pt = screenToWorld(e.offsetX, e.offsetY);
   const n = hit(pt.x, pt.y);
   if (!n) {

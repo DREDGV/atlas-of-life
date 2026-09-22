@@ -95,7 +95,7 @@ function buildTaskResultProjection(task){
     id: String(task.id),
     title: String(task.title || '').slice(0, 200),
     sourceInboxId: task.sourceInboxId ? String(task.sourceInboxId) : null,
-    domainId: task.domainId ? String(task.domainId) : (domain?.id ? String(domain.id) : null),
+    domainId: domain?.id ? String(domain.id) : (task.domainId ? String(task.domainId) : null),
     domainTitle: domain?.title ?? null,
     projectId: task.projectId ? String(task.projectId) : null,
     projectTitle: project?.title ?? null,
@@ -1715,6 +1715,51 @@ function updateProjectMutation(projectId, patch, options){
 
 export function updateProject(projectId, patch, options = {}){
   return runAtomicCommand(() => updateProjectMutation(projectId, patch, options));
+}
+
+// Placement is owned by the project; its tasks and materials keep stable IDs.
+export function moveProject(projectId, domainId, options = {}){
+  return runAtomicCommand(() => {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) throw new Error('Проект больше не существует.');
+    if (!state.domains.some(d => d.id === domainId)) throw new Error('Сфера назначения больше не существует.');
+    if (options.expectedUpdatedAt !== undefined && project.updatedAt !== options.expectedUpdatedAt) {
+      throw new Error('Проект изменился. Откройте его заново перед переносом.');
+    }
+    const before = snapshot(project);
+    if (project.domainId === domainId) return { project, before, operation: null };
+    if (options.restorePosition && (!Number.isFinite(options.restorePosition.x) || !Number.isFinite(options.restorePosition.y))) {
+      throw new Error('Некорректная позиция проекта.');
+    }
+    project.domainId = domainId;
+    // Old absolute coordinates belong to the old territory, not the new one.
+    delete project.pos;
+    delete project._pos;
+    if (options.restorePosition) project.pos = snapshot(options.restorePosition);
+    project.updatedAt = Math.max(options.now ?? Date.now(), (Number(before.updatedAt) || 0) + 1);
+    const operation = appendOperation({
+      type: options.sourceOperationId ? 'project.move.undo' : 'project.move',
+      entityType: 'project', entityId: projectId, baseVersion: before.updatedAt || null,
+      payload: { before, after: project, sourceOperationId: options.sourceOperationId || null },
+    }, { timestamp: project.updatedAt, deviceId: options.deviceId });
+    finish(options);
+    state.tasks.filter(t => t.projectId === projectId && t.sourceInboxId)
+      .forEach(t => enqueueTaskResultOperation('task.result.upsert', t, options));
+    return { project, before, operation };
+  });
+}
+
+export function undoProjectMove(result, options = {}){
+  const operation = result?.operation;
+  const before = operation?.payload?.before;
+  const after = operation?.payload?.after;
+  if (!before || !after || !operation.id) throw new Error('Нет переноса для отмены.');
+  const current = state.projects.find(p => p.id === operation.entityId);
+  if (JSON.stringify(current) !== JSON.stringify(after)) throw new Error('Проект изменился после переноса. Отмена не затронет новые изменения.');
+  return moveProject(operation.entityId, before.domainId, {
+    ...options, expectedUpdatedAt: after.updatedAt, sourceOperationId: operation.id,
+    restorePosition: before.pos || before._pos || null,
+  });
 }
 
 function mergeDomainMutation(sourceDomainId, targetDomainId, options){
