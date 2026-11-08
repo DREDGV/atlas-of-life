@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { mkdirSync } from 'node:fs';
+import { startStaticServer,closeAll } from './smoke-shared.mjs';
+const server=await startStaticServer(),browser=await chromium.launch({headless:true});
+const page=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));mkdirSync('output/life-scenarios',{recursive:true});
+try{
+ await page.goto(server.origin);
+ const capture=async(text,type='task')=>{
+  await page.locator('#quickAdd').fill(text);await page.locator('#quickSubmit').click();await page.locator('#btnInbox').click();
+  await page.locator('[data-queue-filter=review]').click();await page.locator(`[data-item-type=${type}]`).click();
+ };
+ const prompt=async(name,title)=>{page.once('dialog',d=>d.accept(title));await page.getByRole('button',{name,exact:true}).click();};
+ await capture('Не забыть купить молоко и батарейки');
+ await prompt('+ Создать домен','Дом и быт');
+ await page.getByRole('button',{name:'Создать задачу',exact:true}).click();
+ await page.getByRole('button',{name:'Открыть задачу',exact:true}).click();
+ await page.locator('#atlasNavigator [data-action=today]').click();
+ await page.locator('#atlasNavigator [data-action=complete]').click();
+ await page.reload();
+ const buying=await page.evaluate(async()=>{const s=(await import('/js/state.js')).state;return s.tasks.find(t=>t.title.startsWith('Не забыть'));});
+ assert.equal(buying.status,'done');assert.ok(buying.plannedDay);assert.equal(buying.due,null);
+ await capture('Отремонтировать крепление на велосипеде');
+ await prompt('+ Создать домен','Мастерская');
+ await prompt('+ Создать проект','Ремонт велосипеда');
+ await page.getByRole('button',{name:'Создать задачу',exact:true}).click();
+ await page.getByRole('button',{name:'Открыть задачу',exact:true}).click();
+ const repair=await page.evaluate(async()=>{const s=(await import('/js/state.js')).state;return s.tasks.find(t=>t.title.startsWith('Отремонтировать'));});assert.ok(repair.projectId);
+ await page.evaluate(async id=>{const m=await import('/js/view_map.js');m.setMapFilter({query:'Ремонт велосипеда'});m.fitProject(id);},repair.projectId);
+ await page.locator('[name=outcome]').fill('Велосипед безопасен и готов к поездкам');
+ await page.locator('[name=nextActionId]').selectOption(repair.id);
+ await page.getByRole('button',{name:'Сохранить решение',exact:true}).click();
+ await page.screenshot({path:'output/life-scenarios/repair-project.png'});
+ await capture('Маркировка подшипника: 608-2RS','note');
+ await page.getByLabel('Домен назначения',{exact:true}).selectOption({label:'Мастерская'});
+ await page.getByLabel('Проект назначения',{exact:true}).selectOption({label:'Ремонт велосипеда'});
+ await page.getByRole('button',{name:'Сохранить как заметку',exact:true}).click();
+ await page.reload();
+ const saved=await page.evaluate(async()=>{const s=(await import('/js/state.js')).state;return {projects:s.projects,knowledge:s.knowledge,inbox:s.inbox};});
+ assert.equal(saved.projects.find(p=>p.id===repair.projectId).nextActionId,repair.id);
+ assert.equal(saved.knowledge[0].projectId,repair.projectId);assert.equal(saved.inbox[0].rawText,'Не забыть купить молоко и батарейки');
+ assert.deepEqual(errors,[]);console.log('PASS life scenarios: buy -> Inbox -> new sphere -> Task -> Today -> done -> reload; repair -> another sphere/project -> result/next step; technical Note -> same project -> reload');
+}finally{await browser.close();await closeAll(server);}

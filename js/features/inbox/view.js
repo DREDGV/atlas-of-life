@@ -19,6 +19,7 @@ import {
 let root = null;
 let onStateChange = () => {};
 let lastRemoval = null;
+let lastRouteId = null;
 
 // Edit flow state: "unsaved draft" and "active edit mode" are separate.
 // Escape/Back leave edit mode but keep the draft; Save and Delete clear both.
@@ -229,24 +230,7 @@ function buildRoutingControls(item){
     const empty = document.createElement('span');
     empty.className = 'inbox-empty-state';
     empty.textContent = isKnowledge ? 'Без контекста' : 'Нет доменов';
-    const createDomainButton = document.createElement('button');
-    createDomainButton.type = 'button';
-    createDomainButton.className = 'inbox-button secondary';
-    createDomainButton.textContent = '+ Создать домен';
-    createDomainButton.addEventListener('click', () => {
-      const title = prompt('Название домена:');
-      if (!title || !title.trim()) return;
-      const domain = createDomain({ title: title.trim() });
-      if (domain) {
-        routingDraftState.set(item.id, {
-          ...(routingDraftState.get(item.id) || {}),
-          domainId: domain.id,
-        });
-        commit('domain:create');
-        openInboxList();
-      }
-    });
-    domainRow.append(empty, createDomainButton);
+    domainRow.append(empty);
   } else {
     const draftDomainValid = domains.some(domain => domain.id === draft.domainId);
     const defaultDomainId = isKnowledge && draft.domainId === null ? null : draftDomainValid
@@ -262,6 +246,27 @@ function buildRoutingControls(item){
     domainRow.appendChild(domainSelect);
     domainSelect.setAttribute('aria-label', 'Домен назначения');
   }
+
+    const createDomainButton = document.createElement('button');
+    createDomainButton.type = 'button';
+    createDomainButton.className = 'inbox-button secondary';
+    createDomainButton.textContent = '+ Создать домен';
+    createDomainButton.addEventListener('click', () => {
+      const title = prompt('Название домена:');
+      if (!title || !title.trim()) return;
+      let domain;
+      try { domain = createDomain({ title: title.trim() }); }
+      catch(error){ alert(error.message); return; }
+      if (domain) {
+        routingDraftState.set(item.id, {
+          ...(routingDraftState.get(item.id) || {}),
+          domainId: domain.id,
+        });
+        commit('domain:create');
+        openInboxList();
+      }
+    });
+  domainRow.append(createDomainButton);
   wrap.appendChild(domainRow);
 
   // ---- Project (filtered by the chosen Domain) ----
@@ -276,7 +281,7 @@ function buildRoutingControls(item){
       projectSelect.replaceChildren();
       projectSelect.appendChild(new Option('Без проекта', ''));
       const domainId = domainSelect.value;
-      const projects = state.projects.filter(project => project.domainId === domainId);
+      const projects = state.projects.filter(project => project.domainId === domainId && (isKnowledge || project.lifecycle !== 'completed'));
       if (projects.length === 0) {
         const none = new Option('Нет проектов', '');
         none.disabled = true;
@@ -305,10 +310,9 @@ function buildRoutingControls(item){
     createProjectButton.addEventListener('click', () => {
       const title = prompt('Название проекта:');
       if (!title || !title.trim()) return;
-      const project = createProject({
-        domainId: domainSelect.value,
-        title: title.trim(),
-      });
+      let project;
+      try { project = createProject({ domainId:domainSelect.value, title:title.trim() }); }
+      catch(error){ alert(error.message); return; }
       if (project) {
         routingDraftState.set(item.id, {
           ...(routingDraftState.get(item.id) || {}),
@@ -394,6 +398,7 @@ function buildRoutingControls(item){
         sessionDefaults.projectId = projectSelect ? projectSelect.value || null : null;
         sessionDefaults.priority = priority;
         commit('inbox:route');
+        lastRouteId = item.id;
         if (isKnowledge) { queueFilter = 'done'; activeProcessingId = item.id; }
       }
     } catch (error) {
@@ -1363,6 +1368,17 @@ export function openInboxList(){
   captureButton.addEventListener('click', openInboxCapture);
   toolbar.append(summary, captureButton);
   body.appendChild(toolbar);
+  if(queueFilter==='review' && lastRouteId){
+    const item=state.inbox.find(i=>i.id===lastRouteId);
+    const task=state.tasks.find(t=>t.id===item?.resultRef?.id);
+    if(item?.resultRef && task){
+      const receipt=document.createElement('section');receipt.className='inbox-route-receipt';
+      const heading=document.createElement('strong');heading.textContent='Задача создана — можно открыть или продолжить разбор';
+      const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='inbox-button secondary';dismiss.textContent='Скрыть результат';
+      dismiss.onclick=()=>{lastRouteId=null;receipt.remove();};
+      receipt.append(heading,buildLinkedResult(item,task),dismiss);body.append(receipt);
+    }
+  }
 
   // Calm, full-width local search.
   const searchRow = document.createElement('div');

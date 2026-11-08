@@ -1,3 +1,4 @@
+import { gridAddress, childAddress, DOMAIN_RADIUS, PROJECT_RADIUS, domainPages, projectPage, revealProjectPage, revealedTaskId, revealTask } from './features/map/spatial-layout.js';
 // js/view_map.js
 import {
   state,
@@ -32,6 +33,7 @@ import { drawAtlasScene } from "./features/map/scene.js";
 import { renderMapNavigator } from "./features/map/navigator.js";
 import { containsTerritory, projectRadius } from "./features/map/geometry.js";
 import { expandedCompletedProjects } from './ui/map-session.js';
+import { withSpatialAddresses } from './core/spatial-address.js';
 
 let attentionSnapshot = new Map();
 let attentionDay = '';
@@ -139,6 +141,9 @@ export function setMapFilter({ lens = getMapLens(), query = getMapQuery() } = {}
   // A search is a question about a specific task, so the map answers it by
   // moving to the first match instead of leaving the user to hunt for it.
   const firstMatch = nodes.find(node => node._type === "task" && currentTaskVisibility(node));
+  const foundProject=state.projects.find(p=>getMapQuery() && p.title.toLocaleLowerCase('ru-RU').includes(getMapQuery().toLocaleLowerCase('ru-RU')));
+  if(foundProject){openInspectorFor({...foundProject,_type:'project'});setSelectedNode(foundProject.id,'project');fitProject(foundProject.id);return getMapFilterState();}
+
   if (getMapQuery() && firstMatch) {
     fitTask(firstMatch.id);
   } else {
@@ -174,6 +179,7 @@ function taskNode(task, x, y, groupId = null) {
     status: task.status,
     aging: task.updatedAt,
     groupId,
+    projectId: task.projectId || null,
     priority: Number(task.priority) || 2,
     estimateMin: Number(task.estimateMin) || 0,
     ageDays: daysSince(task.updatedAt),
@@ -337,7 +343,7 @@ function onWheel(e) {
   const d = e.deltaY || e.wheelDelta || 0;
   const zoomFactor = d > 0 ? 0.9 : 1.1;
   const old = viewState.scale;
-  const next = clamp(old * zoomFactor, 0.1, 2.2);
+  const next = clamp(old * zoomFactor, 0.025, 2.2);
   // keep world point under cursor stable
   const dpr = window.devicePixelRatio || 1;
   const cx = (e.offsetX || 0) * dpr;
@@ -432,6 +438,12 @@ function hitRank(node) {
 }
 
 function bestHit(x, y, ignoreId = null) {
+  // The visible diamond is a project handle; invisible task slop must not steal it.
+  const actualTask=nodes.some(n=>n._type==='task' && n.id!==ignoreId && Math.hypot(x-n.x,y-n.y)<=n.r);
+  if(!actualTask){
+    const handle=nodes.find(n=>n._type==='project' && n.id!==ignoreId && Math.hypot(x-n.x,y-n.y)<=8*DPR/Math.max(.1,viewState.scale));
+    if(handle)return handle;
+  }
   let best = null;
   let bestRadius = 0;
   let bestRank = 0;
@@ -708,7 +720,7 @@ function animateTo(target, ms = 230) {
     syncZoomSlider();
     if (t < 1) requestAnimationFrame(step);
   }
-  requestAnimationFrame(step);
+  if (ms === 0) step(); else requestAnimationFrame(step);
 }
 
 function fitToBBox(bx, { maxScale = 2.2, padK = 0.2 } = {}) {
@@ -727,7 +739,7 @@ function fitToBBox(bx, { maxScale = 2.2, padK = 0.2 } = {}) {
   const wPad = w * (1 + padK);
   const hPad = h * (1 + padK);
   const sx = Math.min(W / Math.max(1, wPad), Math.max(100 * DPR, H - 116 * DPR) / Math.max(1, hPad));
-  const scale = clamp(sx, 0.1, maxScale);
+  const scale = clamp(sx, 0.025, maxScale);
   const target = {
     sx: scale,
     tx: W * 0.5 - cx * scale,
@@ -846,6 +858,10 @@ export function fitActiveProject() {
 }
 
 export function fitTask(taskId) {
+  revealTask(taskId);
+  const owner=state.projects.find(p=>state.tasks.some(t=>t.id===taskId && t.projectId===p.id));
+  if(owner){revealProjectPage(owner);expandedCompletedProjects.add(owner.id);}
+  layoutMap();
   const task = state.tasks.find((t) => t.id === taskId);
   let node = nodes.find((n) => n._type === "task" && n.id === taskId);
   if (!node && task) {
@@ -919,77 +935,6 @@ export function resize() {
   ctx = canvas.getContext("2d");
 }
 
-function calculateProjectRadius(tasks) {
-  // Минимальный размер для пустых проектов (с учетом DPR)
-  const baseRadius = 48 * DPR;
-
-  if (tasks.length === 0) return baseRadius;
-
-  // Вычисляем общую площадь всех задач с учетом DPR
-  const totalTaskArea = tasks.reduce((sum, task) => {
-    const taskSize = sizeByImportance(task) * DPR;
-    return sum + Math.PI * taskSize * taskSize;
-  }, 0);
-
-  // Добавляем пространство для отступов между задачами (50%)
-  const areaWithPadding = totalTaskArea * 1.5;
-
-  // Вычисляем радиус круга, который может вместить эту площадь
-  // и добавляем отступ от края
-  const radiusFromArea = Math.sqrt(areaWithPadding / Math.PI) + 32 * DPR;
-
-  // Возвращаем максимальное значение между базовым радиусом и вычисленным
-  return Math.max(baseRadius, radiusFromArea);
-}
-
-// Geometry of one Domain and its children (visible Projects and the virtual
-// "Без проекта" group).
-//
-// A child territory is the circle drawn around it: a Project is drawn with a
-// halo of PROJECT_HALO beyond its radius, the group and its orbs stay inside
-// its own radius. Two rules make the picture honest, because the previous
-// version placed an only child exactly on the Domain centre and let sibling
-// territories overlap:
-//   * CHILD_MARGIN — every child territory fits inside the Domain border;
-//   * CHILD_GAP — two sibling territories never touch.
-// Both are pure functions of the declared radii, so the Domain can be sized and
-// its children placed from the same numbers. They are read through functions
-// because DPR is only known after the canvas has been measured.
-const CHILD_MARGIN = () => 24 * DPR;
-const CHILD_GAP = () => 10 * DPR;
-
-// Distance from the Domain centre to the centre of each child.
-function ringOrbit(childRadii, domainRadius = Infinity) {
-  if (!childRadii.length) return 0;
-  const count = childRadii.length;
-  const maxChildRadius = Math.max(...childRadii);
-  // sin(π/n) turns "keep neighbours apart" into a radius. With one child there
-  // is no neighbour; a small offset leaves room for the domain caption.
-  const spread = maxChildRadius + (count > 1 ? CHILD_GAP() : 0);
-  const required = count > 1
-    ? spread / Math.max(0.35, Math.sin(Math.PI / count))
-    : 14 * DPR;
-  // Clamp only to the containing radius calculated by the same geometry.
-  const available = Math.max(0, domainRadius - maxChildRadius - CHILD_MARGIN());
-  return Math.min(required, available);
-}
-
-// Radius of the smallest Domain that contains that ring with a margin.
-function ringOuterRadius(childRadii) {
-  if (!childRadii.length) return 112 * DPR;
-  const maxChildRadius = Math.max(...childRadii);
-  return ringOrbit(childRadii) + maxChildRadius + CHILD_MARGIN();
-}
-
-// Grow to contain the actual children. Shrinking only the computed envelope
-// while rendering original-sized children caused overlaps in dense domains.
-const MIN_DOMAIN_RADIUS = () => 112 * DPR;
-function fitDomainChildren(childRadii) {
-  const radii = [...childRadii];
-  const radius = Math.max(MIN_DOMAIN_RADIUS(), ringOuterRadius(radii));
-  return { radii, orbit: ringOrbit(radii, radius), radius };
-}
-
 // The radius used to draw a child. Projects carry a halo (see the project
 // renderer), so they take a little more room than the group.
 function childDrawRadius(child) {
@@ -997,6 +942,8 @@ function childDrawRadius(child) {
 }
 
 export function layoutMap() {
+  const wasEmpty = nodes.length === 0;
+  const spatial = withSpatialAddresses(state);
   attentionSnapshot = buildAttention(state);
   attentionDay = localDay();
   renderAttention(document.getElementById('mapAttention'), attentionSnapshot, {
@@ -1005,19 +952,24 @@ export function layoutMap() {
   nodes = [];
   edges = [];
   const visibleDomainIds = getVisibleDomainIds(state.domains);
-  const domains = state.domains.filter((domain) => visibleDomainIds.has(domain.id));
+  const domains = spatial.domains.filter((domain) => visibleDomainIds.has(domain.id));
   const domainIds = new Set(domains.map((domain) => domain.id));
-  const gap = 92 * DPR;
   const matchesFilter = (task) =>
     !state.filterTag || (task.tags || []).includes(state.filterTag);
 
-  const visibleProjects = state.projects
-    .filter((project) => domainIds.has(project.domainId))
-    .filter((project) =>
-      !state.filterTag || state.tasks.some(
-        (task) => task.projectId === project.id && matchesFilter(task)
-      )
-    );
+  const query=getMapQuery().toLocaleLowerCase('ru-RU');
+  if(query){
+    const found=state.projects.find(p=>`${p.title}`.toLocaleLowerCase('ru-RU').includes(query)) ||
+      state.projects.find(p=>state.tasks.some(t=>t.projectId===p.id && matchesMapView(t,{projectTitle:p.title,today:localDay()})));
+    if(found)revealProjectPage(found);
+  }
+  for(const domain of domains){
+    const pages=[...new Set(state.projects.filter(p=>p.domainId===domain.id).map(projectPage))].sort((a,b)=>a-b);
+    if(pages.length && !pages.includes(domainPages.get(domain.id)||0))domainPages.set(domain.id,pages[0]);
+  }
+  const visibleProjects = spatial.projects.filter(p=>domainIds.has(p.domainId))
+    .filter(p=>projectPage(p)===(domainPages.get(p.domainId)||0))
+    .filter(p=>!state.filterTag || state.tasks.some(t=>t.projectId===p.id && matchesFilter(t)));
   const visibleProjectIds = new Set(visibleProjects.map((project) => project.id));
   const taskList = state.tasks.filter(
     (task) => visibleProjectIds.has(task.projectId) && matchesFilter(task) &&
@@ -1054,11 +1006,7 @@ export function layoutMap() {
       key: `project:${project.id}`,
       type: "project",
       id: project.id,
-      r: clamp(
-        calculateProjectRadius(taskList.filter(task => task.projectId === project.id)) / DPR,
-        48,
-        196
-      ) * DPR,
+      r: PROJECT_RADIUS * DPR,
     }));
     const groupRadius = independentTasks.length
       ? clamp(42 + Math.sqrt(independentTasks.length) * 10, 48, 82) * DPR
@@ -1071,61 +1019,23 @@ export function layoutMap() {
         r: groupRadius,
       });
     }
-    // Sizing and placement come from one decision (fitDomainChildren), so the
-    // Domain, its ring and the radius each child is drawn with cannot disagree.
-    // Sizing the Domain around the children's centres (the previous formula) left
-    // a single child sitting exactly on the Domain centre, covering all of it.
-    const fit = fitDomainChildren(children.map(childDrawRadius));
     const meta = {
       domain,
       projects,
       independentTasks,
       children,
       groupRadius,
-      orbit: fit.orbit,
-      r: fit.radius,
     };
     domainMeta.set(domain.id, meta);
     return meta;
   });
 
-  // Greedy centered rows keep the overview useful on medium and narrow widths.
-  const columns = Math.max(1, Math.round(Math.sqrt(domainLayout.length * W / Math.max(H, 1))));
-  const widest = Math.max(0, ...domainLayout.map(item => item.r * 2));
-  const availableWidth = Math.max(320 * DPR, W - 56 * DPR, columns * widest + (columns - 1) * gap);
-  const rows = [];
-  let row = [];
-  let rowWidth = 0;
-  domainLayout.forEach(item => {
-    const width = item.r * 2;
-    const nextWidth = row.length ? rowWidth + gap + width : width;
-    if (row.length && nextWidth > availableWidth) {
-      rows.push(row);
-      row = [];
-      rowWidth = 0;
-    }
-    row.push(item);
-    rowWidth += (row.length > 1 ? gap : 0) + width;
-  });
-  if (row.length) rows.push(row);
-  const rowHeights = rows.map(items => Math.max(...items.map(item => item.r * 2)));
-  const contentHeight = rowHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, rows.length - 1) * gap;
-  let rowY = (H - contentHeight) / 2;
-  const domainPositions = new Map();
-  rows.forEach((items, rowIndex) => {
-    const width = items.reduce((sum, item) => sum + item.r * 2, 0) + Math.max(0, items.length - 1) * gap;
-    let x = (W - width) / 2;
-    items.forEach(item => {
-      domainPositions.set(item.domain.id, {
-        x: x + item.r,
-        y: rowY + rowHeights[rowIndex] / 2,
-        r: item.r,
-      });
-      x += item.r * 2 + gap;
-    });
-    rowY += rowHeights[rowIndex] + gap;
-  });
-
+  // Viewport independent addresses. Hidden spheres keep their reserved place.
+  const domainPositions = new Map(domains.map(d=>{
+    const slot=Number.isInteger(d.mapSlot)?d.mapSlot:state.domains.indexOf(d);
+    const point=gridAddress(slot);
+    return [d.id,{x:point.x*DPR,y:point.y*DPR,r:Math.min(DOMAIN_RADIUS, Math.max(235,...state.projects.filter(p=>p.domainId===d.id).map(p=>{const c=childAddress((p.mapSlot||0)%18+1);return Math.hypot(c.x,c.y)+210;})))*DPR}];
+  }));
   domains.forEach((d) => {
     const position = domainPositions.get(d.id);
     const meta = domainMeta.get(d.id);
@@ -1165,101 +1075,33 @@ export function layoutMap() {
   domainLayout.forEach((meta) => {
     const dNode = nodes.find(node => node._type === "domain" && node.id === meta.domain.id);
     if (!dNode || !meta.children.length) return;
-    const drawRadii = meta.children.map(childDrawRadius);
-    const orbit = Math.max(0, Math.min(meta.orbit, dNode.r - Math.max(...drawRadii) - CHILD_MARGIN()));
-    meta.children.forEach((child, index) => {
-      const angle = -Math.PI / 2 + (index / meta.children.length) * Math.PI * 2;
-      childRadii.set(child.key, drawRadii[index]);
-      childSlots.set(child.key, {
-        x: dNode.x + Math.cos(angle) * orbit,
-        y: dNode.y + Math.sin(angle) * orbit,
-        r: child.r,
-      });
+    meta.children.forEach(child=>{
+      const p=spatial.projects.find(p=>p.id===child.id);
+      const slot=child.type==='project' ? (p?.mapSlot||0)%18+1 : 0;
+      const point=childAddress(slot);
+      childRadii.set(child.key,childDrawRadius(child));
+      childSlots.set(child.key,{x:dNode.x+point.x*DPR,y:dNode.y+point.y*DPR,r:child.r});
     });
   });
-
-  visibleProjects.forEach((p) => {
-    const dNode = nodes.find(
-      (n) => n._type === "domain" && n.id === p.domainId
-    );
-    const slot = childSlots.get(`project:${p.id}`);
-    const saved = p.pos || p._pos;
-    const useSaved =
-      state.settings?.layoutMode === "manual" &&
-      saved &&
-      typeof saved.x === "number" &&
-      typeof saved.y === "number";
-    nodes.push({
-      _type: "project",
-      id: p.id,
-      title: p.title,
-      x: useSaved ? saved.x : slot.x,
-      y: useSaved ? saved.y : slot.y,
-      r: slot.r,
-      parent: dNode.id,
-    });
+  visibleProjects.forEach(p=>{
+    const slot=childSlots.get(`project:${p.id}`);
+    nodes.push({_type:'project',id:p.id,title:p.title,x:slot.x,y:slot.y,r:slot.r,parent:p.domainId});
   });
 
   const golden = Math.PI * (3 - Math.sqrt(5));
-  taskList.forEach((t) => {
-    if (t.projectId) {
-      const pNode = nodes.find(
-        (n) => n._type === "project" && n.id === t.projectId
-      );
-      if (!pNode) return;
-      const siblings = taskList.filter((x) => x.projectId === t.projectId);
-      const idx = siblings.indexOf(t);
-      // 1. Считаем максимальный радиус задачи
-      const maxSize = Math.max(
-        ...siblings.map((s) => sizeByImportance(s) * DPR)
-      );
-      // 2. Минимальное расстояние между центрами задач
-      const minDist = maxSize * 2.2 + 10 * DPR;
-      // 3. Максимальный радиус для размещения
-      const maxR = pNode.r - maxSize - 8 * DPR;
-      // 4. Группируем задачи по кольцам
-      let rings = [];
-      let placed = 0;
-      let currentRadius = minDist;
-      while (placed < siblings.length && currentRadius <= maxR) {
-        const tasksInRing = Math.floor((2 * Math.PI * currentRadius) / minDist);
-        const ringTasks = siblings.slice(placed, placed + tasksInRing);
-        rings.push({ radius: currentRadius, tasks: ringTasks });
-        placed += tasksInRing;
-        currentRadius += minDist;
-      }
-      // Если задач больше, чем поместилось на кольцах, докладываем в «последнее кольцо»
-      if (placed < siblings.length) {
-        // ГАРД: могло не создаться ни одного кольца (узкий maxR и т.п.)
-        if (rings.length === 0) {
-          rings.push({ radius: currentRadius, tasks: [] });
-        }
-        const last = rings[rings.length - 1];
-        last.tasks = (last.tasks || []).concat(siblings.slice(placed));
-      }
-
-      // 5. Для каждой задачи определяем её позицию
-      let found = false;
-      for (let r = 0; r < rings.length; r++) {
-        const ring = rings[r] || { radius: minDist, tasks: [] };
-        const tasks = (ring && ring.tasks) || [];
-        const radius = ring.radius;
-        for (let k = 0; k < tasks.length; k++) {
-          if (tasks[k].id === t.id) {
-            const angle = (k / tasks.length) * 2 * Math.PI;
-            const x = pNode.x + Math.cos(angle) * radius;
-            const y = pNode.y + Math.sin(angle) * radius;
-            const savedTask = t.pos || t._pos;
-            const useSaved = state.settings?.layoutMode === "manual" && savedTask && typeof savedTask.x === "number" && typeof savedTask.y === "number";
-            nodes.push(taskNode(t, useSaved ? savedTask.x : x, useSaved ? savedTask.y : y));
-            found = true;
-            break;
-          }
-        }
-        if (found) break;
-      }
-    }
-  });
+  for(const p of visibleProjects){
+    const parent=nodes.find(n=>n.id===p.id);
+    const all=taskList.filter(t=>t.projectId===p.id).sort(taskDisplayOrder);
+    const preferred=all.filter(t=>t.id===revealedTaskId || currentTaskVisibility(t)).sort((a,b)=>(a.id===revealedTaskId?-1:0)-(b.id===revealedTaskId?-1:0));
+    const shown=[...preferred,...all.filter(t=>!preferred.includes(t))].slice(0,GROUP_ORB_LIMIT);
+    parent.hidden=all.length-shown.length;
+    shown.forEach((t,i)=>{
+      const angle=i*golden;
+      const orbit=shown.length===1 ? 55*DPR : Math.sqrt((i+.5)/shown.length)*80*DPR;
+      nodes.push(taskNode(t,parent.x+Math.cos(angle)*orbit,parent.y+Math.sin(angle)*orbit,p.id));
+    });
+    separateGroup(nodes,p.id,parent.x,parent.y,parent.r,{maxRadius:parent.r});
+  }
 
   // Independent tasks: render in the shared child slot reserved for the
   // virtual "Без проекта" group (auto), or at saved positions (manual).
@@ -1295,7 +1137,7 @@ export function layoutMap() {
       const fittedRadius = childRadii.get(`unassigned:${d.id}`) ?? slot?.r ?? 0;
       // A packed group of twenty dots explains nothing: draw the most
       // decision-relevant ones and report the rest as a count.
-      const sorted = [...list].sort(taskDisplayOrder);
+      const sorted = [...list].sort((a,b)=>(a.id===revealedTaskId?-2:currentTaskVisibility(a)?-1:0)-(b.id===revealedTaskId?-2:currentTaskVisibility(b)?-1:0) || taskDisplayOrder(a,b));
       const shown = sorted.slice(0, GROUP_ORB_LIMIT);
       const hiddenCount = total - shown.length;
       nodes.push({
@@ -1310,12 +1152,6 @@ export function layoutMap() {
         r: groupRadius,
       });
       shown.forEach((t, idx) => {
-        const savedT = t.pos || t._pos;
-        const useSaved = state.settings?.layoutMode === "manual" && savedT && typeof savedT.x === "number" && typeof savedT.y === "number";
-        if (useSaved) {
-          // Используем сохраненную позицию (куда перетащил пользователь)
-          nodes.push(taskNode(t, savedT.x, savedT.y, `unassigned:${d.id}`));
-        } else {
           const taskRadius = sizeByImportance(t) * DPR;
           // Orbs are packed inside the radius the group was fitted with, not the
           // one enlarged for the «+N» chip: that allowance is not orb space.
@@ -1325,7 +1161,6 @@ export function layoutMap() {
           const x = groupX + Math.cos(angle) * orbit;
           const y = groupY + Math.sin(angle) * orbit;
           nodes.push(taskNode(t, x, y, `unassigned:${d.id}`));
-        }
       });
       // The golden-angle spiral packs tasks by angle only, so orbs of different
       // radii end up overlapping and their labels collide. Separate them after
@@ -1335,12 +1170,6 @@ export function layoutMap() {
     
     // Полностью независимые задачи размещаем там, куда их перетащили
     fullyIndependent.forEach((t, idx) => {
-      const savedT = t.pos || t._pos;
-      if (savedT && typeof savedT.x === "number" && typeof savedT.y === "number") {
-        // Используем сохраненную позицию (куда перетащил пользователь)
-        nodes.push(taskNode(t, savedT.x, savedT.y));
-      } else {
-        // Только если нет сохраненной позиции - размещаем справа от всех доменов
         const maxDomainX = domains.length
           ? Math.max(...domains.map(d => {
               const dNode = nodes.find(n => n._type === 'domain' && n.id === d.id);
@@ -1350,9 +1179,8 @@ export function layoutMap() {
         const startX = maxDomainX + 100 * DPR;
         const spacing = 80 * DPR;
         const x = startX + (idx % 3) * spacing;
-        const y = H * 0.3 + Math.floor(idx / 3) * spacing;
+        const y = Math.floor(idx / 3) * spacing;
         nodes.push(taskNode(t, x, y));
-      }
     });
   } catch (_) {
     /* ignore */
@@ -1387,6 +1215,7 @@ export function layoutMap() {
     const cap = Math.min(state.maxEdges || 300, dynamicEdgeCap || 300);
     edges = edges.slice(0, cap);
   }
+  if(wasEmpty && nodes.length && W>0 && H>0)fitAll();
 }
 
 export function drawMap() {
@@ -1927,14 +1756,7 @@ window.addEventListener("mouseup", (e) => {
   if (draggedNode._type === "task") {
     const t = state.tasks.find((x) => x.id === draggedNode.id);
     if (t && !taskMoveDeferred && !taskMoveCommitted && !t.projectId) {
-      const result = moveTask(t.id, {
-        projectId: null,
-        domainId: t.domainId ?? null,
-        pos: { x: draggedNode.x, y: draggedNode.y },
-      }, { reason: "map.reposition" });
-      taskMoveCommitted = rememberTaskMove(result);
-      requestSyncNow(); // C2: routed Task placement follows immediately
-      moved = taskMoveCommitted;
+      showProjectMoveNotice('Место задачи определяется сферой. Для переноса отпустите её в другом проекте или сфере.');
     }
     if (t?.projectId && !taskMoveDeferred && !taskMoveCommitted) {
       showProjectMoveNotice('Внутри проекта задачи раскладываются автоматически. Для переноса отпустите задачу в другом проекте или сфере.');
@@ -2084,7 +1906,7 @@ function confirmDetach() {
     const result = moveTask(t.id, {
       projectId: null,
       domainId: insideDomain,
-      pos: state.settings?.layoutMode === "auto" ? null : taskPos,
+      pos: null,
     }, { reason: "map.detach_project" });
     if (!result) {
       pendingDetach = null;
@@ -2195,7 +2017,7 @@ function getScale() {
   return Math.round(viewState.scale * 100);
 }
 function setZoom(percent) {
-  const p = clamp(percent / 100, 0.1, 2.2);
+  const p = clamp(percent / 100, 0.025, 2.2);
   // keep center unchanged (zoom about center of canvas)
   const cx = W * 0.5;
   const cy = H * 0.5;
@@ -2268,7 +2090,7 @@ function openMoveTaskModal(task, targetDomainId, dropPosition = null) {
         ? {
           projectId: null,
           domainId: targetDomainId,
-          pos: state.settings?.layoutMode === "auto" ? null : dropPosition,
+          pos: null,
         }
         : { projectId: val };
       const result = moveTask(task.id, destination, {
@@ -2303,10 +2125,11 @@ function fitMembers(members) {
   if (!members.length) return false;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   members.forEach((m) => {
-    minX = Math.min(minX, m.x - m.r);
-    minY = Math.min(minY, m.y - m.r);
-    maxX = Math.max(maxX, m.x + m.r);
-    maxY = Math.max(maxY, m.y + m.r);
+    const radius=m._type==='project' ? projectRadius(m,DPR)+24*DPR : m.r;
+    minX = Math.min(minX, m.x - radius);
+    minY = Math.min(minY, m.y - radius);
+    maxX = Math.max(maxX, m.x + radius);
+    maxY = Math.max(maxY, m.y + radius);
   });
   fitToBBox({ minX, minY, maxX, maxY });
   return true;
@@ -2320,6 +2143,8 @@ export function fitGroup(groupId) {
 }
 
 export function fitProject(projectId) {
+  const owner=state.projects.find(p=>p.id===projectId);
+  if(owner){revealProjectPage(owner);setDomainVisible(owner.domainId,true,state.domains);layoutMap();}
   const ids = new Set(state.tasks.filter(t => t.projectId === projectId).map(t => t.id));
   fitMembers(nodes.filter(n => (n._type === 'project' && n.id === projectId) || (n._type === 'task' && ids.has(n.id))));
 }

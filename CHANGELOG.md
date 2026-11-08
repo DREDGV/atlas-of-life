@@ -2,6 +2,12 @@
 
 История версий (релизы) + дорожная карта (планы/идеи). Актуальная версия UI берётся из `js/version.js`.
 
+## 0.13.0-alpha.6 — Stable Atlas
+
+- Stable Core-owned sphere/project addresses; viewport-independent map, paged project territories and semantic zoom.
+- Processing can create a new sphere in an existing Atlas; Task routing shows an immediate result receipt.
+- Real browser shopping, repair and technical-note flows; 12 spheres / 60 projects / 361 tasks and persistence checks.
+
 ## 0.13.0-alpha.5 — Осмысленное состояние проекта
 
 - Результат, следующий шаг, активность/осознанная пауза/завершение проекта в Inspector и на карте.

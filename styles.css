@@ -750,3 +750,4 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .project-review button { margin:4px 5px 4px 0; }
 .project-review-status,.project-evidence { font-size:12px; line-height:1.5; }
 .project-review [hidden] { display:none; }
+.inbox-route-receipt { padding:12px; margin:10px 0; border:1px solid var(--border, #425a73); border-radius:10px; }

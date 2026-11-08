@@ -1,3 +1,4 @@
+import { withSpatialAddresses } from './core/spatial-address.js';
 // js/storage.js
 import { state, normalizeTags } from './state.js';
 import adapter from './storageAdapter.js';
@@ -5,7 +6,7 @@ import { projectDefaults, validateProjectContext } from './core/project-context.
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
@@ -186,6 +187,7 @@ const MIGRATIONS = [
   },
   // 10 -> 11: explicit project intention; no invented activity/review dates.
   data => ({ ...data, projects:data.projects.map(p => ({ ...projectDefaults(), ...p })) }),
+  data => withSpatialAddresses(data),
 ];
 
 function normalizeEntities(entities, options = {}){
@@ -232,6 +234,7 @@ export function prepareState(raw){
     }
   }
   for (let cur = version; cur < SCHEMA_VERSION; cur++) data = MIGRATIONS[cur](data);
+  data = withSpatialAddresses(data);
   data.projects = data.projects.map(p => ({ ...projectDefaults(), ...p }));
   for (const project of data.projects) validateProjectContext(project, data.tasks);
   return {
@@ -288,8 +291,8 @@ export function loadState(){
 function serializeState(){
   return {
     schema:SCHEMA_VERSION, exportedAt:Date.now(),
-    domains:normalizeEntities(state.domains, { tags:false }),
-    projects:normalizeEntities(state.projects.map(p => ({ ...projectDefaults(), ...p }))), tasks:normalizeEntities(state.tasks),
+    domains:normalizeEntities(withSpatialAddresses(state).domains, { tags:false }),
+    projects:normalizeEntities(withSpatialAddresses(state).projects.map(p => ({ ...projectDefaults(), ...p }))), tasks:normalizeEntities(state.tasks),
     knowledge:normalizeKnowledge(state.knowledge), inbox:normalizeInboxEntries(state.inbox),
     operationLog:normalizeOperationLog(state.operationLog),
     taskProjections:normalizeTaskProjections(state.taskProjections),

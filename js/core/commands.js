@@ -1,3 +1,4 @@
+import { nextMapSlot, withSpatialAddresses } from './spatial-address.js';
 import { state, normalizeTags, FOCUS_LIMIT } from '../state.js';
 import { projectDefaults, validateProjectContext } from './project-context.js';
 import { saveState, prepareState, replaceStoredState } from '../storage.js';
@@ -194,6 +195,9 @@ function runAtomicCommand(execute){
   let result;
   let persist = false;
   try {
+    const spatial=withSpatialAddresses(state);
+    state.domains.forEach((d,i)=>{d.mapSlot=spatial.domains[i].mapSlot;});
+    state.projects.forEach((p,i)=>{p.mapSlot=spatial.projects[i].mapSlot;});
     result = execute();
     // All Task paths (including routing, revert and promotion) share this boundary.
     for (const project of state.projects) {
@@ -1581,6 +1585,7 @@ function createProjectMutation(input, options){
   const now = options.now ?? Date.now();
   const project = {
     ...projectDefaults(),
+    mapSlot:nextMapSlot(state.projects.filter(p => p.domainId === (input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null))),
     id: input.id || options.projectId || generateProjectId(),
     domainId: input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
     title: String(input.title || '').trim() || 'Новый проект',
@@ -1644,6 +1649,7 @@ function createDomainMutation(input, options){
   if (!title) throw new Error('Domain title cannot be empty');
   const domain = {
     id: input?.id || options.domainId || generateDomainId(),
+    mapSlot:nextMapSlot(state.domains),
     title,
     color: input?.color ?? null,
     createdAt: now,
@@ -1774,9 +1780,13 @@ export function moveProject(projectId, domainId, options = {}){
     }
     const before = snapshot(project);
     if (project.domainId === domainId) return { project, before, operation: null };
+    if(options.restoreMapSlot !== undefined && state.projects.some(p=>p.id!==project.id && p.domainId===domainId && p.mapSlot===options.restoreMapSlot)) {
+      throw new Error('Прежнее место проекта уже занято. Отмена не переместит другие проекты.');
+    }
     if (options.restorePosition && (!Number.isFinite(options.restorePosition.x) || !Number.isFinite(options.restorePosition.y))) {
       throw new Error('Некорректная позиция проекта.');
     }
+    project.mapSlot = options.restoreMapSlot ?? nextMapSlot(state.projects.filter(p => p.domainId === domainId));
     project.domainId = domainId;
     // Old absolute coordinates belong to the old territory, not the new one.
     delete project.pos;
@@ -1804,6 +1814,7 @@ export function undoProjectMove(result, options = {}){
   if (JSON.stringify(current) !== JSON.stringify(after)) throw new Error('Проект изменился после переноса. Отмена не затронет новые изменения.');
   return moveProject(operation.entityId, before.domainId, {
     ...options, expectedUpdatedAt: after.updatedAt, sourceOperationId: operation.id,
+    restoreMapSlot: before.mapSlot,
     restorePosition: before.pos || before._pos || null,
   });
 }
@@ -1827,6 +1838,7 @@ function mergeDomainMutation(sourceDomainId, targetDomainId, options){
   state.projects.forEach(project => {
     if (project.domainId !== sourceDomainId) return;
     movedProjects.push(snapshot(project));
+    project.mapSlot = nextMapSlot(state.projects.filter(p => p.domainId === targetDomainId));
     project.domainId = targetDomainId;
     project.updatedAt = now;
   });

@@ -57,7 +57,7 @@ export function drawAtlasScene(ctx, scene) {
     ctx.strokeStyle=chosen?accent:n.color+(light?'80':'70');ctx.lineWidth=px(chosen?2:1);ctx.stroke();
     contour(n,1.04);ctx.strokeStyle=n.color+'20';ctx.lineWidth=px(1);ctx.stroke();
     const stats=facts.get(`domain:${n.id}`);
-    text(n.title,n.x,n.y-n.r-px(24),17,ink,240,650);
+    text(n.title,n.x,n.y-n.r-px(24),17,ink,Math.min(240,n.r*2*camera.scale/dpr+40),650);
     if(stats) {
       const color=stats.primary.kind==='overdue'?red:['load','stale'].includes(stats.primary.kind)?warning:muted;
       text(stats.primary.label,n.x,n.y-n.r-px(7),11,color,210);
@@ -93,7 +93,7 @@ export function drawAtlasScene(ctx, scene) {
       ctx.setLineDash([px(3),px(5)]);circle(n,radius,null,color+'70');ctx.setLineDash([]);
     }
     const headerY=n.y-radius-px(9);
-    text(isProject?n.title:'Без проекта',n.x,headerY,isProject?13:11,ink,Math.max(100,Math.min(220,radius*2*camera.scale/dpr)),650);
+    if(camera.scale>=.4 || active)text(isProject?n.title:'Без проекта',n.x,headerY,isProject?13:11,ink,Math.max(100,Math.min(220,radius*2*camera.scale/dpr)),650);
     if(isProject) {
       // The diamond remains the project's handle. It is distinct from task states.
       ctx.save();ctx.translate(n.x,n.y);ctx.rotate(Math.PI/4);
@@ -102,8 +102,9 @@ export function drawAtlasScene(ctx, scene) {
     const count=knowledgeCounts[`${n._type}:${n.id}`]||0;
     const stat=facts.get(`${n._type}:${n.id}`);
     const caption=count?`▱ ${count} ${plural(count,'материал','материала','материалов')}` : stat ? `${stat.open} открыто / ${stat.done} готово` : n.hidden?`+${n.hidden} задач`:'';
-    if(caption)text(caption,n.x,n.y+radius+px(17),10,muted,180);
-    if(isProject && stat?.context) {
+    const hiddenLabel=n.hidden ? ` · ещё ${n.hidden} в Inspector` : "";
+    if(caption && (camera.scale>=.4 || active))text(caption+hiddenLabel,n.x,n.y+radius+px(17),10,muted,180);
+    if(isProject && stat?.context && (camera.scale>=.4 || active)) {
       const c=stat.context;
       const label=c.lifecycle==='paused' ? (c.signals[0]?.label || 'Пауза') : c.lifecycle==='completed' ? '✓ Завершён' : c.nextAction ? `→ ${c.nextAction.title}` : '→ Выберите следующий шаг';
       text(label,n.x,n.y+radius+px(33),11,c.lifecycle==='paused'?warning:c.lifecycle==='completed'?green:accent,200);
@@ -122,6 +123,7 @@ export function drawAtlasScene(ctx, scene) {
     const dim=emphasis(n)<.5;
     const statusColor=n.due==='overdue'&&n.status!=='done'?red:n.status==='done'?green:n.status==='doing'?accent:n.status==='today'||n.focus?warning:muted;
     const r=n.r;
+    if(camera.scale<.4 && !active){circle(n,r,muted,null);continue;}
     ctx.globalAlpha=dim ? .18 : n.status==='done' ? .65 : 1;
     if(scene.showGlow&&active){ctx.shadowColor=accent;ctx.shadowBlur=8*dpr;}
     // A solid but quiet object, with a legible symbol; glow no longer encodes status.
@@ -148,6 +150,7 @@ export function drawAtlasScene(ctx, scene) {
     if(n.focus){text('Ф',n.x+r+px(5),n.y-r,9,accent,20,700);}
     ctx.globalAlpha=1;
     if(dim)continue;
+    if(!active && camera.scale<.65)continue;
     const near=tasks.filter(t=>t.id!==n.id).reduce((distance,t)=>Math.min(distance,Math.hypot(t.x-n.x,t.y-n.y)),Infinity)*camera.scale/dpr;
     const budget=active?180:Math.min(150,near*.88);
     if(!active&&(camera.scale<.65||budget<48))continue;

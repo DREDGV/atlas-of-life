@@ -64,13 +64,13 @@ try {
     return {
       scale: snap.scale,
       size: snap.size,
-      nodes: snap.nodes.map(n => ({ id: n.id, _type: n._type, title: n.title, x: n.x, y: n.y, r: n.r, parent: n.parent, domainId: n.domainId, groupId: n.groupId })),
+      nodes: snap.nodes.map(n => ({ id: n.id, _type: n._type, title: n.title, x: n.x, y: n.y, r: n.r, parent: n.parent, domainId: n.domainId, groupId: n.groupId, projectId:n.projectId })),
     };
   });
 
   const project = snapshot.nodes.find(n => n._type === 'project');
   const domain = snapshot.nodes.find(n => n._type === 'domain');
-  const projectTasks = snapshot.nodes.filter(n => n._type === 'task' && !n.groupId);
+  const projectTasks = snapshot.nodes.filter(n => n._type === 'task' && n.projectId);
   assert.ok(project && domain, 'the seed must produce a Domain and a Project');
   assert.ok(projectTasks.length >= 3, `the seed must put tasks inside the Project (got ${projectTasks.length})`);
 

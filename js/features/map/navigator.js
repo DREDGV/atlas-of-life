@@ -1,7 +1,8 @@
 import { updateTask, createTask, createProject } from '../../core/commands.js';
 import { localDay } from '../today/model.js';
 import { requestSyncNow } from '../../sync/runtime.js';
-import { expandedCompletedProjects } from '../../ui/map-session.js';
+import { expandedCompletedProjects, setMapQuery } from '../../ui/map-session.js';
+import { domainPages, projectPage } from './spatial-layout.js';
 
 let lastSignature = '';
 export function renderMapNavigator({ state, selected, type, nodes, camera, width, height, dpr, open, fit, overview, pan }) {
@@ -11,7 +12,9 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
   const project=state.projects.find(p=>p.id===(task?.projectId||(type==='project'?selected:null)));
   const domain=state.domains.find(d=>d.id===(project?.domainId||task?.domainId||(type==='domain'?selected:null)));
   const entity=task||project||domain;
-  const signature=JSON.stringify([type,entity,domain?.title,project?.title,state.domains.length]);
+  const pages=domain ? [...new Set(state.projects.filter(p=>p.domainId===domain.id).map(projectPage))].sort((a,b)=>a-b) : [];
+  const page=domainPages.get(domain?.id)||0;
+  const signature=JSON.stringify([type,entity,domain?.title,project?.title,state.domains.length,pages,page]);
   const make=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;};
   if(signature!==lastSignature||!host.childElementCount){
     lastSignature=signature;
@@ -32,6 +35,10 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
       catch(error){const s=document.querySelector('.atlas-action-status');if(s)s.textContent=error.message;}
     },key));
     if(entity)act('Приблизить',()=>fit(entity.id,type),'fit');
+    if(domain && pages.length>1){
+      const change=delta=>{const index=pages.indexOf(page);setMapQuery('');const search=document.getElementById('mapSearch');if(search)search.value='';domainPages.set(domain.id,pages[(index+delta+pages.length)%pages.length]);lastSignature='';window.mapApi?.refresh?.({layout:true});open(domain,'domain');fit(domain.id,'domain');};
+      actions.append(button('← Проекты',()=>change(-1),'previous-page'),make('span',`Страница ${pages.indexOf(page)+1} из ${pages.length}`),button('Проекты →',()=>change(1),'next-page'));
+    }
     if(task){
       act(task.status==='done'?'Вернуть в работу':'✓ Завершить',()=>{
         updateTask(task.id,{status:task.status==='done'?'backlog':'done'});

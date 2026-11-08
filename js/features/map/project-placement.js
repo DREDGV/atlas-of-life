@@ -2,8 +2,10 @@ import { state } from '../../state.js';
 import { moveProject, undoProjectMove } from '../../core/commands.js';
 import { setDomainVisible } from '../../ui/map-session.js';
 import { requestSyncNow } from '../../sync/runtime.js';
+import { revealProjectPage } from './spatial-layout.js';
 
 export function revealProject(project) {
+  revealProjectPage(project);
   setDomainVisible(project.domainId, true, state.domains);
   window.renderSidebar?.();
   window.mapApi?.layoutMap?.();
