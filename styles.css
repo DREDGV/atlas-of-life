@@ -743,3 +743,10 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .knowledge-library-tools input[type="search"] { width: 100%; box-sizing: border-box; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 8px; color: var(--text); padding: 7px 8px; font: inherit; }
 .knowledge-library-tools input[type="search"]:focus { border-color: var(--accent); outline: none; }
 .knowledge-filter { display: flex; gap: 6px; flex-wrap: wrap; }
+.project-review { margin:14px 0; padding:12px; border:1px solid var(--border, #425a73); border-radius:12px; }
+.project-review h3 { margin:0 0 12px; }
+.project-review label { display:block; margin:10px 0; font-size:12px; }
+.project-review textarea,.project-review select,.project-review input { display:block; box-sizing:border-box; width:100%; margin-top:5px; padding:8px; color:inherit; background:var(--panel, #142033); border:1px solid var(--border, #425a73); border-radius:6px; font:inherit; }
+.project-review button { margin:4px 5px 4px 0; }
+.project-review-status,.project-evidence { font-size:12px; line-height:1.5; }
+.project-review [hidden] { display:none; }

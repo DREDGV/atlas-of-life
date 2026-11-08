@@ -29,6 +29,17 @@ Android и ПК не должны изменять данные разными �
 
 ## Текущая реализация
 
+- Schema **11** добавляет Project `outcome`, `lifecycle` (active/paused/completed),
+  `pauseReason`, `reviewOn`, `reviewedAt`, `completedAt`, `nextActionId`.
+  `setProjectOutcome`, `setProjectNextAction`, `reviewProject` и составная
+  `saveProjectDecision` пишут через Core. Составное решение — одна транзакция,
+  включая rollback журнала при сбое storage. expectedUpdatedAt защищает draft.
+  Завершение с открытыми Tasks запрещено; reopen Task требует сначала вернуть
+  проект в active. Очистка nextActionId проверяется на общей командной границе
+  и журналируется. Импорт отвергает недействительную ссылку/состояние.
+  Подробности: `docs/PROJECT_DECISIONS.md`. Упоминание schema 10 ниже описывает
+  предыдущие миграции; текущая версия — 11.
+
 - `js/core/device.js` выдаёт стабильный локальный `deviceId`. Он хранится отдельно от пользовательского экспорта, чтобы импорт на новое устройство не клонировал идентичность старого устройства.
 - `js/core/operations.js` создаёт неизменяемые снимки операций и ограничивает журнал последними 1000 записями.
 - `js/core/commands.js` содержит первые команды и сохраняет состояние после успешного изменения.

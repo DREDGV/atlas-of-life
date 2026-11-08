@@ -1,6 +1,7 @@
 import { updateTask, createTask, createProject } from '../../core/commands.js';
 import { localDay } from '../today/model.js';
 import { requestSyncNow } from '../../sync/runtime.js';
+import { expandedCompletedProjects } from '../../ui/map-session.js';
 
 let lastSignature = '';
 export function renderMapNavigator({ state, selected, type, nodes, camera, width, height, dpr, open, fit, overview, pan }) {
@@ -44,7 +45,11 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
         if(material)open(material,'knowledge');
       },'source');
     }else if(project){
-      act('+ Задача',()=>{const title=prompt('Новая задача проекта:');if(title?.trim()){const t=createTask({title,projectId:project.id});open(t,'task');fit(t.id,'task');}},'create');
+      if(project.lifecycle==='completed')act(expandedCompletedProjects.has(project.id)?'Свернуть задачи':'Показать задачи',()=>{
+        if(expandedCompletedProjects.has(project.id))expandedCompletedProjects.delete(project.id);else expandedCompletedProjects.add(project.id);
+        lastSignature='';window.mapApi?.refresh?.({layout:true});
+      },'expand');
+      if(project.lifecycle!=='completed')act('+ Задача',()=>{const title=prompt('Новая задача проекта:');if(title?.trim()){const t=createTask({title,projectId:project.id});open(t,'task');fit(t.id,'task');}},'create');
     }else if(domain){
       act('+ Проект',()=>{const title=prompt('Название проекта:');if(title?.trim()){const p=createProject({title,domainId:domain.id});open(p,'project');fit(p.id,'project');}},'create');
     }else{

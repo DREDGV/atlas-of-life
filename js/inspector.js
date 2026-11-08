@@ -12,6 +12,7 @@ import {
 } from "./state.js";
 import { requestSyncNow } from "./sync/runtime.js";
 import { appendProjectPlacement } from './features/map/project-placement.js';
+import { appendProjectReview } from './features/map/project-review.js';
 import { dueLabel, dueState, localDay, plannedDayOf, stepDay } from "./features/today/model.js";
 import { formatDay } from "./ui/status-language.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
@@ -361,6 +362,11 @@ export function openInspectorFor(obj) {
         .join("")}</div>
     `;
     appendProjectPlacement(ins, { ...obj }, next => openInspectorFor({ ...next, _type: 'project' }));
+    appendProjectReview(ins, obj, () => openInspectorFor({ ...state.projects.find(p => p.id === obj.id), _type:'project' }));
+    if (obj.lifecycle === 'completed') {
+      document.getElementById('addTask').disabled = true;
+      document.getElementById('addTask').title = 'Сначала верните проект в активное состояние';
+    }
     document.getElementById("addTask").onclick = () => {
       const title = prompt("Название задачи:", "Новая задача");
       if (!title) return;

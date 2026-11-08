@@ -1,4 +1,5 @@
 import { state, normalizeTags, FOCUS_LIMIT } from '../state.js';
+import { projectDefaults, validateProjectContext } from './project-context.js';
 import { saveState, prepareState, replaceStoredState } from '../storage.js';
 import { appendOperation } from './operations.js';
 import { enqueueSyncOperation } from '../sync/outbox.js';
@@ -194,6 +195,16 @@ function runAtomicCommand(execute){
   let persist = false;
   try {
     result = execute();
+    // All Task paths (including routing, revert and promotion) share this boundary.
+    for (const project of state.projects) {
+      if (project.nextActionId && !state.tasks.some(t => t.id === project.nextActionId && t.projectId === project.id && t.status !== 'done')) {
+        const before = snapshot(project);
+        project.nextActionId = null;
+        project.updatedAt = Date.now();
+        appendOperation({ type:'project.next_action.clear', entityType:'project', entityId:project.id, payload:{ before, after:project } });
+      }
+      if (project.lifecycle) validateProjectContext({ ...projectDefaults(), ...project }, state.tasks);
+    }
     state.pendingSyncOperations.push(...commandTransaction.outbound);
     persist = commandTransaction.persist;
     if (commandTransaction.persist) saveState();
@@ -1569,6 +1580,7 @@ export function deleteTask(taskId, options = {}){
 function createProjectMutation(input, options){
   const now = options.now ?? Date.now();
   const project = {
+    ...projectDefaults(),
     id: input.id || options.projectId || generateProjectId(),
     domainId: input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
     title: String(input.title || '').trim() || 'Новый проект',
@@ -1590,6 +1602,40 @@ function createProjectMutation(input, options){
 
 export function createProject(input, options = {}){
   return runAtomicCommand(() => createProjectMutation(input, options));
+}
+
+function changeProjectContext(id, patch, type, options) {
+  return runAtomicCommand(() => {
+    const project = state.projects.find(p => p.id === id);
+    if (!project) throw new Error('Проект не найден');
+    if (options.expectedUpdatedAt !== undefined && options.expectedUpdatedAt !== project.updatedAt) throw new Error('Проект изменился. Откройте его заново перед сохранением.');
+    const before = snapshot(project);
+    const after = { ...projectDefaults(), ...project, ...patch };
+    validateProjectContext(after, state.tasks);
+    Object.assign(project, after, { updatedAt:Math.max(options.now ?? Date.now(), (project.updatedAt || 0)+1) });
+    const operation = appendOperation({ type, entityType:'project', entityId:id, baseVersion:before.updatedAt, payload:{ before, after:project } }, { timestamp:options.now ?? Date.now(), deviceId:options.deviceId });
+    finish(options);
+    return { project, before, operation };
+  });
+}
+export function setProjectOutcome(id, outcome, options = {}) {
+  return changeProjectContext(id, { outcome:String(outcome ?? '').trim() }, 'project.outcome', options);
+}
+export function setProjectNextAction(id, taskIdOrNull, options = {}) {
+  return changeProjectContext(id, { nextActionId:taskIdOrNull || null }, 'project.next_action', options);
+}
+export function reviewProject(id, { lifecycle, pauseReason = '', reviewOn = null }, options = {}) {
+  return changeProjectContext(id, { lifecycle, pauseReason:lifecycle === 'paused' ? String(pauseReason).trim() : '',
+    reviewOn:lifecycle === 'paused' ? (reviewOn || null) : null, reviewedAt:options.now ?? Date.now(),
+    completedAt:lifecycle === 'completed' ? (options.now ?? Date.now()) : null }, 'project.review', options);
+}
+export function saveProjectDecision(id, decision, options = {}) {
+  return runAtomicCommand(() => {
+    setProjectOutcome(id, decision.outcome, options);
+    const nextOptions = { ...options }; delete nextOptions.expectedUpdatedAt;
+    setProjectNextAction(id, decision.nextActionId, nextOptions);
+    return reviewProject(id, decision, nextOptions);
+  });
 }
 
 function createDomainMutation(input, options){

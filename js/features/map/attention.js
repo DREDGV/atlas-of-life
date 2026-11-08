@@ -1,5 +1,6 @@
 // Derived observations, never a persisted assessment of a person's life.
 import { dueState, localDay } from '../today/model.js';
+import { buildProjectContext } from '../../core/project-context.js';
 
 export const ATTENTION_RULES = Object.freeze({ staleDays: 30, doingCount: 4 });
 
@@ -42,6 +43,13 @@ export function buildAttention(atlas, now = Date.now()) {
       if (!open.length) signals.push({ kind: 'empty', label: 'Нет следующего шага',
         reason: 'Нет открытых задач. Возможно, здесь сейчас всё в порядке.', taskIds: [] });
       const ages = tasks.map(t => ageInDays(t, now)).filter(n => n !== null);
+      const context = type === 'project' ? buildProjectContext(atlas, entity.id, now) : null;
+      if (context) {
+        if (context.lifecycle !== 'active') {
+          for (let i=signals.length-1;i>=0;i--) if (signals[i].kind !== 'overdue') signals.splice(i,1);
+        }
+        signals.push(...context.signals);
+      }
       entries.set(key, { id: entity.id, type, title: entity.title, domainId: type === 'domain' ? entity.id : entity.domainId,
         total: tasks.length, open: open.length, done: tasks.length - open.length,
         overdue: overdue.length, doing: doing.length, stale: stale.length,
@@ -50,7 +58,7 @@ export function buildAttention(atlas, now = Date.now()) {
         doneRatio: tasks.length ? (tasks.length - open.length) / tasks.length : 0,
         overdueRatio: tasks.length ? overdue.length / tasks.length : 0,
         lastActivityDays: ages.length ? Math.min(...ages) : null,
-        signals, primary: signals[0] || { kind: 'calm', label: `${open.length} открыто`, reason: 'Нет сигналов по текущим правилам.' },
+        context, signals, primary: signals[0] || { kind: 'calm', label: `${open.length} открыто`, reason: 'Нет сигналов по текущим правилам.' },
       });
     }
   }

@@ -31,6 +31,7 @@ import { renderAttention } from "./features/map/attention-view.js";
 import { drawAtlasScene } from "./features/map/scene.js";
 import { renderMapNavigator } from "./features/map/navigator.js";
 import { containsTerritory, projectRadius } from "./features/map/geometry.js";
+import { expandedCompletedProjects } from './ui/map-session.js';
 
 let attentionSnapshot = new Map();
 let attentionDay = '';
@@ -1019,7 +1020,8 @@ export function layoutMap() {
     );
   const visibleProjectIds = new Set(visibleProjects.map((project) => project.id));
   const taskList = state.tasks.filter(
-    (task) => visibleProjectIds.has(task.projectId) && matchesFilter(task)
+    (task) => visibleProjectIds.has(task.projectId) && matchesFilter(task) &&
+      (project(task.projectId)?.lifecycle !== 'completed' || expandedCompletedProjects.has(task.projectId) || getMapQuery() || getMapLens() !== 'all')
   );
 
   // Lenses and search do not remove anything from the map: they decide what is

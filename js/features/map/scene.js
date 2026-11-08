@@ -103,6 +103,11 @@ export function drawAtlasScene(ctx, scene) {
     const stat=facts.get(`${n._type}:${n.id}`);
     const caption=count?`▱ ${count} ${plural(count,'материал','материала','материалов')}` : stat ? `${stat.open} открыто / ${stat.done} готово` : n.hidden?`+${n.hidden} задач`:'';
     if(caption)text(caption,n.x,n.y+radius+px(17),10,muted,180);
+    if(isProject && stat?.context) {
+      const c=stat.context;
+      const label=c.lifecycle==='paused' ? (c.signals[0]?.label || 'Пауза') : c.lifecycle==='completed' ? '✓ Завершён' : c.nextAction ? `→ ${c.nextAction.title}` : '→ Выберите следующий шаг';
+      text(label,n.x,n.y+radius+px(33),11,c.lifecycle==='paused'?warning:c.lifecycle==='completed'?green:accent,200);
+    }
     if(selectedNode?._type==='task'&&selectedNode.groupId===n.id)line(n,selectedNode,color+'99');
   }
   // Direct materials on a domain are not lost behind its project totals.
