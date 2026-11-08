@@ -96,6 +96,61 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .tag{font-size:12px;border:1px solid var(--panel-2);padding:3px 8px;border-radius:999px;color:var(--muted)}
 .tag.active{border-color:var(--accent);color:var(--text)}
 #canvasWrap{position:relative;background:radial-gradient(1200px 600px at 60% -100px, var(--gradient-1), var(--gradient-2) 60%, var(--gradient-3) 100%);height:100%}
+#canvasWrap{min-height:0;min-width:0;overflow:hidden}
+.atlas-navigator{position:absolute;z-index:4;inset:12px 16px auto;pointer-events:none;color:var(--text)}
+.atlas-navigator{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--bg) 94%,transparent);border-bottom:1px solid color-mix(in srgb,var(--muted) 16%,transparent)}
+.atlas-path{display:flex;align-items:center;gap:7px;min-width:0;font-size:12px;color:var(--muted)}
+.atlas-path button{border:0;background:var(--panel);color:var(--text);padding:5px 8px;border-radius:6px;font:inherit;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;pointer-events:auto}
+.atlas-path button:first-child{color:var(--accent)}
+.atlas-selection{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin-top:8px}
+.atlas-selection-title{font-size:18px;font-weight:650;letter-spacing:-.3px;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.atlas-actions{display:flex;flex-wrap:wrap;gap:5px;pointer-events:auto}
+.atlas-actions button{font:500 12px/1.4 inherit;color:var(--text);background:var(--panel-2);border:1px solid color-mix(in srgb,var(--muted) 35%,transparent);border-radius:7px;padding:6px 9px;cursor:pointer}
+.atlas-actions button:hover{border-color:var(--accent);color:var(--accent)}
+.atlas-help{font-size:11px;color:var(--muted)}
+.atlas-action-status{display:block;color:var(--danger);font-size:12px;margin-top:5px}
+.atlas-navigator button:focus-visible,.atlas-minimap canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.atlas-minimap{position:absolute;bottom:16px;right:16px;z-index:3;width:162px;border:1px solid color-mix(in srgb,var(--muted) 24%,transparent);border-radius:10px;background:color-mix(in srgb,var(--panel) 94%,transparent);overflow:hidden}
+.atlas-minimap>span{display:block;padding:7px 10px 0;font:10px ui-monospace,monospace;letter-spacing:1px;color:var(--muted)}
+.atlas-minimap canvas{width:160px;height:96px;cursor:crosshair}
+.app:has([data-view="today"].active) :is(.atlas-navigator,.atlas-minimap),.app:has([data-view="knowledge"].active) :is(.atlas-navigator,.atlas-minimap){display:none}
+#mapHud{top:auto;bottom:16px;left:16px}
+@media(max-width:1100px){.atlas-selection-title{font-size:15px;max-width:190px}.atlas-help{display:none}.atlas-path button{max-width:130px}.atlas-minimap{width:114px;bottom:10px;right:10px}.atlas-minimap canvas{width:112px;height:67px}}
+main{grid-template-rows:minmax(0,1fr)}
+.map-attention{padding:16px 12px;border-block:1px solid var(--panel-2)}
+.map-attention h3{margin:0 0 5px;font-size:13px;font-weight:650;color:var(--text)}
+.attention-intro{color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 12px}
+.attention-area{border-left:2px solid var(--muted);margin:9px 0;padding:0 0 0 10px}
+.attention-area summary{cursor:pointer;padding:6px 0;list-style:none;display:grid;grid-template-columns:1fr auto;gap:3px 5px}
+.attention-area summary::after{content:'+';grid-column:2;grid-row:1;color:var(--muted)}
+.attention-area[open]>summary::after,.attention-project[open]>summary::after{content:'−'}
+.attention-name{font-weight:650;overflow-wrap:anywhere;font-size:13px}
+.attention-state{grid-column:1/-1;font-size:12px;color:var(--muted);display:block}
+.attention-overdue{border-color:var(--danger)}
+.attention-overdue>.attention-state,.attention-overdue>summary>.attention-state{color:var(--danger)}
+.attention-load,.attention-stale{border-color:var(--warn)}
+.attention-load>summary>.attention-state,.attention-stale>summary>.attention-state{color:var(--warn)}
+.attention-open,.attention-task{border:0;background:transparent;color:var(--accent);text-align:left;font:inherit;font-size:12px;cursor:pointer;padding:6px 0;display:block;max-width:100%;overflow-wrap:anywhere}
+.attention-open:hover,.attention-task:hover{text-decoration:underline}
+.map-attention :is(button,summary):focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+.attention-reason{font-size:12px;line-height:1.5;color:var(--muted);margin:8px 0 0}
+.attention-reason strong{color:var(--text);font-weight:600}
+.attention-project{border-top:1px solid color-mix(in srgb,var(--muted) 20%,transparent);padding:5px 0}
+.attention-rules{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.5}
+.attention-rules summary{cursor:pointer}
+.project-placement{margin-top:18px;padding-top:14px;border-top:1px solid var(--muted)}
+.project-placement label{display:grid;gap:8px;font-size:13px;font-weight:600}
+.project-placement select{width:100%;padding:9px;border:1px solid var(--muted);border-radius:7px;background:var(--panel-2);color:var(--text);font:inherit}
+.project-placement p,.project-move-receipt p{font-size:12px;line-height:1.5;color:var(--muted)}
+.project-move-receipt{border-left:2px solid var(--accent);padding-left:10px;margin-bottom:16px}
+[data-theme="light"] .map-attention{--warn:#825500;--danger:#b42323}
+.domain-row .domain-counts{grid-column:3;grid-row:2;font-size:10px}
+.domain-row{grid-template-columns:16px 10px minmax(0,1fr) 26px 24px}
+.domain-row .domain-focus{grid-column:4;grid-row:1}
+.domain-row .domain-actions{grid-column:5;grid-row:1}
+.app{grid-template-rows:auto minmax(0,1fr) auto}
+.app>header{flex-wrap:wrap;padding-block:6px}
+.app:has([data-view="today"].active) .map-attention,.app:has([data-view="knowledge"].active) .map-attention{display:none}
 /* The map is reachable from the keyboard: the canvas is focusable, and the
    focused orb gets a dashed ring (drawn in js/view_map.js) plus this outline. */
 #canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
@@ -688,3 +743,11 @@ header button:hover, header .btn:hover, header .btn-ics:hover{background:var(--a
 .knowledge-library-tools input[type="search"] { width: 100%; box-sizing: border-box; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 8px; color: var(--text); padding: 7px 8px; font: inherit; }
 .knowledge-library-tools input[type="search"]:focus { border-color: var(--accent); outline: none; }
 .knowledge-filter { display: flex; gap: 6px; flex-wrap: wrap; }
+.project-review { margin:14px 0; padding:12px; border:1px solid var(--border, #425a73); border-radius:12px; }
+.project-review h3 { margin:0 0 12px; }
+.project-review label { display:block; margin:10px 0; font-size:12px; }
+.project-review textarea,.project-review select,.project-review input { display:block; box-sizing:border-box; width:100%; margin-top:5px; padding:8px; color:inherit; background:var(--panel, #142033); border:1px solid var(--border, #425a73); border-radius:6px; font:inherit; }
+.project-review button { margin:4px 5px 4px 0; }
+.project-review-status,.project-evidence { font-size:12px; line-height:1.5; }
+.project-review [hidden] { display:none; }
+.inbox-route-receipt { padding:12px; margin:10px 0; border:1px solid var(--border, #425a73); border-radius:10px; }

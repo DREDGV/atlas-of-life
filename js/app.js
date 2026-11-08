@@ -1317,8 +1317,13 @@ function initMapFilterControls() {
     };
   });
 
+  let timer = null;
+  window.addEventListener('atlas:map-reveal', () => {
+    clearTimeout(timer);
+    if (search) search.value = getMapFilterState().query;
+    renderState();
+  });
   if (search) {
-    let timer = null;
     const apply = () => {
       setMapFilter({ query: search.value });
       renderState();

@@ -105,7 +105,7 @@ reset();
   const task = createTask({ id:'t-persist', title:'Сохранить', domainId:'d1', status:'today' });
   updateTask(task.id, { focus:true });
   saveState();
-  assert.equal(JSON.parse(memory.get(adapter.key)).schema, 10);
+  assert.equal(JSON.parse(memory.get(adapter.key)).schema, 12);
   state.tasks = [];
   assert.equal(loadState(), true);
   const restored = state.tasks.find(t => t.id === task.id);

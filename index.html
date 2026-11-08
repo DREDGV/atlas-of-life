@@ -46,7 +46,7 @@
     <button class="chip" type="button" id="btnSync" title="Синхронизация между устройствами">Синхронизация</button>
     <div class="spacer"></div>
     <button class="chip header-quiet-action" type="button" id="btnFullscreen" title="Полный экран">Экран</button>
-    <label class="map-zoom" for="zoomSlider"><span>Масштаб</span><input id="zoomSlider" class="zoom-slider" type="range" min="50" max="220" step="1" value="100"></label>
+    <label class="map-zoom" for="zoomSlider"><span>Масштаб</span><input id="zoomSlider" class="zoom-slider" type="range" min="3" max="220" step="1" value="100"></label>
     <details class="header-popover">
       <summary>Вид карты</summary>
       <div class="header-popover-menu header-map-settings">
@@ -57,16 +57,17 @@
           <span class="pill pill-doing">в работе</span>
           <span class="pill pill-done">готово</span>
         </div>
-        <div class="popover-title">Что показывает орб</div>
+        <div class="popover-title">Знаки на карте</div>
         <div class="hint map-orb-legend">
-          <span><i class="orb-mark orb-size"></i>размер — важность и оценка</span>
-          <span><i class="orb-mark orb-overdue"></i>красное кольцо — срок истёк</span>
-          <span><i class="orb-mark orb-focus"></i>крестик — Фокус дня</span>
-          <span><i class="orb-mark orb-doing"></i>пунктир — в работе</span>
-          <span><i class="orb-mark orb-age"></i>дуга — давность</span>
+          <span>⬡ проект · мягкий контур — сфера</span>
+          <span>▶ в работе · ✓ выполнено</span>
+          <span>◆ выбрано на сегодня · Ф — фокус</span>
+          <span>! красный контур — срок истёк</span>
+          <span>дуга — без изменений 30+ дней</span>
+          <span>размер задачи — важность и оценка</span>
         </div>
         <div class="popover-title">Слои</div>
-        <label><input type="checkbox" id="tgLinks" checked/> Связи</label>
+        <label><input type="checkbox" id="tgLinks" checked/> Связи выбранного объекта</label>
         <label><input type="checkbox" id="tgAging" checked/> Давность</label>
         <label><input type="checkbox" id="tgGlow" checked/> Свечение</label>
       </div>
@@ -87,6 +88,7 @@
     <aside class="left">
       <div class="section"><h3>Домены</h3></div>
       <div class="domains" id="domainsList"></div>
+      <section id="mapAttention" class="map-attention" aria-label="Обзор внимания"></section>
       <div class="section"><button class="btn" id="btnKnowledge" type="button">Мысли и заметки</button></div>
       <div class="section"><h3>Фильтры</h3></div>
       <div class="filters" id="tagsList"></div>
@@ -96,6 +98,8 @@
     </aside>
 
     <section id="canvasWrap">
+      <section id="atlasNavigator" class="atlas-navigator" aria-label="Навигация и действия карты"></section>
+      <div class="atlas-minimap"><span>ОБЗОР</span><canvas id="atlasMinimap" width="160" height="96" tabindex="0" role="img" aria-label="Мини-карта. Нажмите для перемещения; стрелки перемещают камеру, Home возвращает обзор."></canvas></div>
       <canvas id="canvas"></canvas>
       <section class="map-hud" id="mapHud" hidden aria-label="Сведения об объекте под курсором"></section>
       <div class="sr-only" id="mapLiveRegion" role="status" aria-live="polite"></div>
