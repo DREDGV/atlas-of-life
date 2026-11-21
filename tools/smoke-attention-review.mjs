@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { mkdirSync } from 'node:fs';
+import { startStaticServer, closeAll } from './smoke-shared.mjs';
+
+const server = await startStaticServer();
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+const errors = [];
+page.on('pageerror', error => errors.push(error.message));
+mkdirSync('output/attention-review', { recursive: true });
+const overview = () => page.getByRole('button', { name: 'Обзор изменений и внимания ↗', exact: true }).click();
+
+try {
+  await page.goto(server.origin);
+  await page.evaluate(async () => {
+    const core = await import('/js/core/commands.js');
+    const old = { now: Date.now() - 20 * 86400000 };
+    core.createTask({ title: 'Купить молоко и батарейки', due: { date: '2020-01-01' } }, old);
+    const home = core.createDomain({ title: 'Дом и быт', color: '#56b4a2' }, old);
+    const health = core.createDomain({ title: 'Здоровье', color: '#83b97d' }, old);
+    const work = core.createDomain({ title: 'Мастерская', color: '#e4ae61' }, old);
+    core.saveDomainAttention(health.id, { intention: 'Регулярно двигаться и высыпаться', reviewEveryDays: 7 }, old);
+    const repair = core.createProject({ title: 'Ремонт велосипеда', domainId: work.id }, old);
+    core.setProjectOutcome(repair.id, 'Велосипед безопасен и готов к поездкам', old);
+    const waiting = core.createProject({ title: 'Обновить рабочее место', domainId: home.id }, old);
+    core.reviewProject(waiting.id, { lifecycle: 'paused', pauseReason: 'Жду размеры новой столешницы', reviewOn: '2020-01-01' }, old);
+    const fixed = core.createTask({ title: 'Заменить крепление', projectId: repair.id });
+    core.updateTask(fixed.id, { status: 'done' });
+    const map = await import('/js/view_map.js'); map.layoutMap(); map.fitAll();
+  });
+  await overview();
+  assert.match(await page.locator('.atlas-review').innerText(), /Пора вернуться к сфере/);
+  assert.match(await page.locator('.atlas-review').innerText(), /Пересмотреть паузу/);
+  await page.screenshot({ path: 'output/attention-review/overview-dark-before-review.png' });
+  await page.locator('.review-action').filter({ hasText: 'Здоровье' }).click();
+  await page.getByLabel('Что важно поддерживать', { exact: true }).fill('Гулять каждый день, высыпаться и следить за самочувствием');
+  await page.evaluate(async () => {
+    const adapter = (await import('/js/storageAdapter.js')).default;
+    window.originalReviewSave = adapter.save;
+    adapter.save = () => { throw Error('Тест — хранилище недоступно'); };
+  });
+  await page.getByRole('button', { name: 'Отметить обзор', exact: true }).click();
+  assert.match(await page.locator('.domain-review-status').innerText(), /недоступно/);
+  assert.match(await page.getByLabel('Что важно поддерживать', { exact: true }).inputValue(), /Гулять/);
+  await page.evaluate(async () => { (await import('/js/storageAdapter.js')).default.save = window.originalReviewSave; });
+  await page.getByRole('button', { name: 'Отметить обзор', exact: true }).click();
+  assert.match(await page.locator('.domain-review-status').innerText(), /Обзор отмечен/);
+  await page.screenshot({ path: 'output/attention-review/domain-reviewed.png' });
+  await page.reload();
+  await overview();
+  assert.equal(await page.locator('.review-action').filter({ hasText: 'Здоровье' }).count(), 0);
+  assert.match(await page.locator('.review-events').innerText(), /Сфера просмотрена/);
+  await page.getByLabel('Период обзора', { exact: true }).selectOption('30');
+  assert.match(await page.locator('.review-coverage').innerText(), /неполная/);
+  await page.getByLabel('Период обзора', { exact: true }).selectOption('7');
+  assert.match(await page.locator('.review-coverage').innerText(), /покрывает/);
+  await page.getByRole('button', { name: 'Открыть Заменить крепление', exact: true }).click();
+  await page.locator('[data-st=backlog]').click();
+  await overview();
+  assert.match(await page.locator('.review-events').innerText(), /Задача возвращена в работу/);
+  assert.match(await page.locator('.review-totals').innerText(), /1\s+Возвраты/);
+  await page.locator('.review-action').filter({ hasText: 'Ремонт велосипеда' }).click();
+  await page.getByLabel('Следующий шаг', { exact: true }).selectOption({ label: 'Заменить крепление' });
+  await page.getByRole('button', { name: 'Сохранить решение', exact: true }).click();
+  await page.reload(); await overview();
+  assert.equal(await page.locator('.review-action').filter({ hasText: 'Ремонт велосипеда' }).count(), 0);
+  assert.match(await page.locator('.review-events').innerText(), /Следующий шаг — Заменить крепление/);
+  const shopping = page.locator('.review-action').filter({ hasText: 'Купить молоко и батарейки' });
+  assert.match(await shopping.innerText(), /Проверить срок.*Без контекста/s);
+  await shopping.click();
+  await page.locator('#atlasNavigator [data-action=complete]').click();
+  await page.reload();
+  await overview();
+  assert.equal(await shopping.count(), 0);
+  assert.match(await page.locator('.review-events').innerText(), /Задача выполнена\s+Купить молоко и батарейки\s+Без контекста/);
+  await page.screenshot({ path: 'output/attention-review/overview-dark.png' });
+  await page.locator('.review-changes h3').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'output/attention-review/history-dark.png' });
+  await page.getByLabel('Период обзора', { exact: true }).evaluate(element => element.closest('dialog').scrollTop = 0);
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.screenshot({ path: 'output/attention-review/overview-light-compact.png' });
+  assert.equal(await page.locator('.atlas-review').evaluate(element => element.scrollWidth > element.clientWidth), false);
+  await page.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  const evidence = await page.evaluate(async () => {
+    const { state } = await import('/js/state.js');
+    return { history: state.reviewHistory, health: state.domains.find(domain => domain.title === 'Здоровье') };
+  });
+  assert.ok(evidence.health.attentionReviewedAt);
+  assert.equal(evidence.history.events.filter(event => event.kind === 'domain.review').length, 1, 'failed save creates no event');
+  assert.deepEqual(errors, []);
+  console.log('PASS browser review: overdue purchase without context, empty sphere due, failed save/retry, reload, coverage, task reopen, project next step and themes');
+} finally {
+  await browser.close(); await closeAll(server);
+}

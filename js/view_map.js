@@ -29,6 +29,7 @@ import { dueState, dueLabel, localDay } from "./features/today/model.js";
 import { statusLabel, plural } from "./ui/status-language.js";
 import { buildAttention } from "./features/map/attention.js";
 import { renderAttention } from "./features/map/attention-view.js";
+import { renderReviewEntry } from './features/map/review-view.js';
 import { drawAtlasScene } from "./features/map/scene.js";
 import { renderMapNavigator } from "./features/map/navigator.js";
 import { containsTerritory, projectRadius } from "./features/map/geometry.js";
@@ -51,7 +52,8 @@ function openAttentionArea(area) {
   const entity = (area.type === 'project' ? state.projects : state.domains).find(e => e.id === area.id);
   if (!entity) return;
   openInspectorFor({ ...entity, _type: area.type });
-  fitDomain(area.domainId);
+  if (area.type === 'project') fitProject(area.id);
+  else fitDomain(area.domainId);
   window.dispatchEvent(new Event('atlas:map-reveal'));
   drawMap();
 }
@@ -946,6 +948,9 @@ export function layoutMap() {
   const spatial = withSpatialAddresses(state);
   attentionSnapshot = buildAttention(state);
   attentionDay = localDay();
+  renderReviewEntry(document.getElementById('mapReviewEntry'), {
+    openArea: openAttentionArea, openTask: openAttentionTask,
+  });
   renderAttention(document.getElementById('mapAttention'), attentionSnapshot, {
     openArea: openAttentionArea, openTask: openAttentionTask,
   });

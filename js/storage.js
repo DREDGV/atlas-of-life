@@ -1,4 +1,5 @@
 import { withSpatialAddresses } from './core/spatial-address.js';
+import { prepareReviewHistory, validateDomainAttention } from './core/review-history.js';
 // js/storage.js
 import { state, normalizeTags } from './state.js';
 import adapter from './storageAdapter.js';
@@ -6,7 +7,7 @@ import { projectDefaults, validateProjectContext } from './core/project-context.
 import { logEvent } from './utils/analytics.js';
 
 // Schema versioning + migrations
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 const OPERATION_LOG_LIMIT = 1000;
 
 function normalizeOperationLog(entries){
@@ -188,6 +189,8 @@ const MIGRATIONS = [
   // 10 -> 11: explicit project intention; no invented activity/review dates.
   data => ({ ...data, projects:data.projects.map(p => ({ ...projectDefaults(), ...p })) }),
   data => withSpatialAddresses(data),
+  // 12 -> 13: observation begins now; old operations cannot prove coverage.
+  data => ({ ...data, reviewHistory: prepareReviewHistory(data.reviewHistory) }),
 ];
 
 function normalizeEntities(entities, options = {}){
@@ -237,6 +240,7 @@ export function prepareState(raw){
   data = withSpatialAddresses(data);
   data.projects = data.projects.map(p => ({ ...projectDefaults(), ...p }));
   for (const project of data.projects) validateProjectContext(project, data.tasks);
+  for (const domain of data.domains) validateDomainAttention(domain);
   return {
     schema: SCHEMA_VERSION,
     domains: normalizeEntities(data.domains, { tags:false }),
@@ -245,6 +249,7 @@ export function prepareState(raw){
     knowledge: normalizeKnowledge(data.knowledge),
     inbox: normalizeInboxEntries(data.inbox),
     operationLog: normalizeOperationLog(data.operationLog),
+    reviewHistory: prepareReviewHistory(data.reviewHistory),
     taskProjections: normalizeTaskProjections(data.taskProjections),
     inboxTombstones: normalizeInboxTombstones(data.inboxTombstones),
     pendingSyncOperations: Array.isArray(data.pendingSyncOperations) ? data.pendingSyncOperations : [],
@@ -271,10 +276,6 @@ export function loadState(){
       return false;
     }
     const data = prepareState(raw);
-    const firstDom = data.domains[0]?.id || null;
-    data.tasks.forEach(task => {
-      if (!task.projectId && !task.domainId) task.domainId = firstDom;
-    });
     if ((JSON.parse(raw).schema ?? 0) < SCHEMA_VERSION) {
       localStorage.setItem(BACKUP_KEY, raw);
       adapter.save(JSON.stringify(data));
@@ -295,6 +296,7 @@ function serializeState(){
     projects:normalizeEntities(withSpatialAddresses(state).projects.map(p => ({ ...projectDefaults(), ...p }))), tasks:normalizeEntities(state.tasks),
     knowledge:normalizeKnowledge(state.knowledge), inbox:normalizeInboxEntries(state.inbox),
     operationLog:normalizeOperationLog(state.operationLog),
+    reviewHistory:prepareReviewHistory(state.reviewHistory),
     taskProjections:normalizeTaskProjections(state.taskProjections),
     inboxTombstones:normalizeInboxTombstones(state.inboxTombstones),
     pendingSyncOperations:state.pendingSyncOperations,
@@ -346,6 +348,9 @@ export function exportJson(){
 // the original before replacing; a failed write never changes the in-memory Atlas.
 export function replaceStoredState(raw, operation, options = {}){
   const candidate = prepareState(raw);
+  // Restoring a snapshot can omit events recorded after that snapshot. Keep
+  // its facts, but only claim continuous coverage from this explicit restore.
+  candidate.reviewHistory.since = Math.max(candidate.reviewHistory.since, operation.timestamp);
   candidate.pendingSyncOperations = [...new Map([
     ...(options.localBackup ? candidate.pendingSyncOperations : []),
     ...state.pendingSyncOperations,

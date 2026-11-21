@@ -15,7 +15,12 @@ export function appendProjectReview(host, project, reopen) {
   const make = (tag, text) => { const el=document.createElement(tag); if(text)el.textContent=text; return el; };
   section.append(make('h3','Состояние и решение'));
   const form = make('form');
-  const field = (title, input) => { const label=make('label',title); label.append(input); form.append(label); return input; };
+  const field = (title, input) => {
+    const label = make('label', title);
+    input.setAttribute('aria-label', title);
+    label.append(input); form.append(label);
+    return input;
+  };
   const outcome=field('Желаемый результат', make('textarea'));outcome.name='outcome';outcome.rows=2;outcome.value=draft.outcome;
   const next=field('Следующий шаг',make('select'));next.name='nextActionId';next.append(new Option('Пока не выбран',''));
   state.tasks.filter(t=>t.projectId===project.id&&t.status!=='done').forEach(t=>next.append(new Option(t.title,t.id)));

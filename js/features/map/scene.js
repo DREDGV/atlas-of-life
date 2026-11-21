@@ -59,7 +59,7 @@ export function drawAtlasScene(ctx, scene) {
     const stats=facts.get(`domain:${n.id}`);
     text(n.title,n.x,n.y-n.r-px(24),17,ink,Math.min(240,n.r*2*camera.scale/dpr+40),650);
     if(stats) {
-      const color=stats.primary.kind==='overdue'?red:['load','stale'].includes(stats.primary.kind)?warning:muted;
+      const color=stats.primary.kind==='overdue'?red:['load','stale','review'].includes(stats.primary.kind)?warning:muted;
       text(stats.primary.label,n.x,n.y-n.r-px(7),11,color,210);
       const y=n.y+n.r+px(23);
       if(camera.scale>=.85)text(`${n.projectCount} ${plural(n.projectCount,'проект','проекта','проектов')} · ${stats.open} открыто · ${stats.done} готово`,n.x,y,11,muted,250);

@@ -1,6 +1,7 @@
 // Derived observations, never a persisted assessment of a person's life.
 import { dueState, localDay } from '../today/model.js';
 import { buildProjectContext } from '../../core/project-context.js';
+import { domainAttention } from '../../core/review-history.js';
 
 export const ATTENTION_RULES = Object.freeze({ staleDays: 30, doingCount: 4 });
 
@@ -36,11 +37,14 @@ export function buildAttention(atlas, now = Date.now()) {
       const signals = [];
       if (overdue.length) signals.push({ kind: 'overdue', label: `${overdue.length} просрочено`,
         reason: 'Срок прошёл, задача ещё не завершена.', taskIds: overdue.map(t => t.id) });
+      if (type === 'domain' && domainAttention(entity, now).due) signals.push({
+        kind: 'review', label: 'Пора вернуться к сфере',
+        reason: `Вы выбрали обзор каждые ${entity.reviewEveryDays} дней. Последний обзор или начало ритма были раньше этого срока.`, taskIds: [] });
       if (doing.length >= ATTENTION_RULES.doingCount) signals.push({ kind: 'load', label: `${doing.length} начато`,
         reason: 'Одновременно в работе 4 или больше задач. Проверьте, посильна ли нагрузка.', taskIds: doing.map(t => t.id) });
       if (stale.length) signals.push({ kind: 'stale', label: `${stale.length} без движения`,
         reason: 'Открытые задачи не менялись в Atlas 30 дней или дольше.', taskIds: stale.map(t => t.id) });
-      if (!open.length) signals.push({ kind: 'empty', label: 'Нет следующего шага',
+      if (!open.length && type === 'domain') signals.push({ kind: 'empty', label: 'Нет открытых задач',
         reason: 'Нет открытых задач. Возможно, здесь сейчас всё в порядке.', taskIds: [] });
       const ages = tasks.map(t => ageInDays(t, now)).filter(n => n !== null);
       const context = type === 'project' ? buildProjectContext(atlas, entity.id, now) : null;

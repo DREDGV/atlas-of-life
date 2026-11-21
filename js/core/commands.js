@@ -1,6 +1,7 @@
 import { nextMapSlot, withSpatialAddresses } from './spatial-address.js';
 import { state, normalizeTags, FOCUS_LIMIT } from '../state.js';
 import { projectDefaults, validateProjectContext } from './project-context.js';
+import { validateDomainAttention } from './review-history.js';
 import { saveState, prepareState, replaceStoredState } from '../storage.js';
 import { appendOperation } from './operations.js';
 import { enqueueSyncOperation } from '../sync/outbox.js';
@@ -162,6 +163,7 @@ function captureCommandState(){
       snapshot: cloneCommandValue(state.settings),
     },
     activeDomain: state.activeDomain,
+    reviewHistory: cloneCommandValue(state.reviewHistory),
   };
 }
 
@@ -186,6 +188,7 @@ function restoreCommandState(checkpoint){
     state.settings = cloneCommandValue(checkpoint.settings.snapshot);
   }
   state.activeDomain = checkpoint.activeDomain;
+  state.reviewHistory = checkpoint.reviewHistory;
 }
 
 function runAtomicCommand(execute){
@@ -1668,6 +1671,31 @@ function createDomainMutation(input, options){
 
 export function createDomain(input, options = {}){
   return runAtomicCommand(() => createDomainMutation(input, options));
+}
+
+export function saveDomainAttention(id, input, options = {}) {
+  return runAtomicCommand(() => {
+    const domain = state.domains.find(entry => entry.id === id);
+    if (!domain) throw new Error('Сфера не найдена');
+    if (options.expectedUpdatedAt !== undefined && options.expectedUpdatedAt !== domain.updatedAt) {
+      throw new Error('Сфера изменилась. Откройте её заново перед сохранением.');
+    }
+    const before = snapshot(domain);
+    const now = options.now ?? Date.now();
+    const reviewEveryDays = Number(input.reviewEveryDays);
+    const after = { ...domain, intention: String(input.intention || '').trim(),
+      reviewEveryDays,
+      attentionSince: reviewEveryDays ? (domain.reviewEveryDays ? domain.attentionSince || now : now) : null,
+      attentionReviewedAt: options.review === true ? now : (domain.attentionReviewedAt || null),
+      updatedAt: Math.max(now, (domain.updatedAt || 0) + 1) };
+    validateDomainAttention(after);
+    Object.assign(domain, after);
+    const operation = appendOperation({ type: options.review === true ? 'domain.review' : 'domain.attention',
+      entityType: 'domain', entityId: id, baseVersion: before.updatedAt, payload: { before, after } },
+    { timestamp: now, deviceId: options.deviceId });
+    finish(options);
+    return { domain, operation };
+  });
 }
 
 // ---------------------------------------------------------------------------

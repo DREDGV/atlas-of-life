@@ -13,6 +13,7 @@ import {
 import { requestSyncNow } from "./sync/runtime.js";
 import { appendProjectPlacement } from './features/map/project-placement.js';
 import { appendProjectReview } from './features/map/project-review.js';
+import { appendDomainReview } from './features/map/domain-review.js';
 import { dueLabel, dueState, localDay, plannedDayOf, stepDay } from "./features/today/model.js";
 import { formatDay } from "./ui/status-language.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
@@ -290,6 +291,7 @@ export function openInspectorFor(obj) {
       refreshMap({ layout: true });
       openInspectorFor(obj);
     };
+    appendDomainReview(ins, state.domains.find(domain => domain.id === obj.id), () => openInspectorFor(obj));
     ins.querySelectorAll("[data-project-id]").forEach((card) => {
       card.onclick = () => {
         const projectItem = state.projects.find(
