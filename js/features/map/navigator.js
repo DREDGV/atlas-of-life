@@ -3,6 +3,8 @@ import { localDay } from '../today/model.js';
 import { requestSyncNow } from '../../sync/runtime.js';
 import { expandedCompletedProjects, setMapQuery } from '../../ui/map-session.js';
 import { domainPages, projectPage } from './spatial-layout.js';
+import { openDayRow } from './map-day-view.js';
+import { formatDay } from '../../ui/status-language.js';
 
 let lastSignature = '';
 export function renderMapNavigator({ state, selected, type, nodes, camera, width, height, dpr, open, fit, overview, pan }) {
@@ -14,7 +16,9 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
   const entity=task||project||domain;
   const pages=domain ? [...new Set(state.projects.filter(p=>p.domainId===domain.id).map(projectPage))].sort((a,b)=>a-b) : [];
   const page=domainPages.get(domain?.id)||0;
-  const signature=JSON.stringify([type,entity,domain?.title,project?.title,state.domains.length,pages,page]);
+  const day = localDay();
+  const suggestion = task && nodes.find(node => node.id === task.id && node._type === 'task')?.suggestion;
+  const signature=JSON.stringify([type,entity,domain?.title,project?.title,state.domains.length,pages,page,day,suggestion]);
   const make=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;};
   if(signature!==lastSignature||!host.childElementCount){
     lastSignature=signature;
@@ -28,6 +32,7 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
     host.append(path);
     const row=make('div',undefined,'atlas-selection');
     row.append(make('div',entity?.title||'Вся жизнь в поле зрения','atlas-selection-title'));
+    if (suggestion) row.append(make('span', suggestion.reason, 'atlas-day-reason'));
     const actions=make('div',undefined,'atlas-actions');
     const status=make('span','','atlas-action-status');status.setAttribute('role','status');
     const act=(label,run,key)=>actions.append(button(label,()=>{
@@ -44,7 +49,11 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
         updateTask(task.id,{status:task.status==='done'?'backlog':'done'});
         open(state.tasks.find(t=>t.id===task.id),'task');
       },'complete');
-      if(task.status!=='done'&&task.plannedDay!==localDay())act('На сегодня',()=>{
+      const planLabel = task.plannedDay ? 'Перенести на сегодня (' + formatDay(task.plannedDay, day) + ')' : 'На сегодня';
+      if (task.status !== 'done' && task.plannedDay === day) {
+        actions.append(button('Открыть в «Сегодня»', () => openDayRow(task.id), 'open-today'));
+      }
+      if(task.status!=='done'&&task.plannedDay!==day)act(planLabel,()=>{
         updateTask(task.id,{plannedDay:localDay()});open(state.tasks.find(t=>t.id===task.id),'task');
       },'today');
       if(task.sourceKnowledgeId)act('↗ Материал-источник',()=>{

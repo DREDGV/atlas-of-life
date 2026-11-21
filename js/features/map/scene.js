@@ -62,6 +62,10 @@ export function drawAtlasScene(ctx, scene) {
       const color=stats.primary.kind==='overdue'?red:['load','stale','review'].includes(stats.primary.kind)?warning:muted;
       text(stats.primary.label,n.x,n.y-n.r-px(7),11,color,210);
       const y=n.y+n.r+px(23);
+      if (stats.plannedToday && camera.scale < .85) {
+        const focus = stats.focus ? ' · фокус ' + stats.focus : '';
+        text('На сегодня ' + stats.plannedToday + focus, n.x, y, 11, accent, 175);
+      }
       if(camera.scale>=.85)text(`${n.projectCount} ${plural(n.projectCount,'проект','проекта','проектов')} · ${stats.open} открыто · ${stats.done} готово`,n.x,y,11,muted,250);
       const w=Math.min(n.r,px(64));
       if(camera.scale>=.85){
@@ -94,6 +98,9 @@ export function drawAtlasScene(ctx, scene) {
     }
     const headerY=n.y-radius-px(9);
     if(camera.scale>=.4 || active)text(isProject?n.title:'Без проекта',n.x,headerY,isProject?13:11,ink,Math.max(100,Math.min(220,radius*2*camera.scale/dpr)),650);
+    else if (isProject && radius / px(1) >= 31) {
+      text(n.title, n.x, n.y + radius * .59, 10, ink, radius * 1.45 / px(1), 600);
+    }
     if(isProject) {
       // The diamond remains the project's handle. It is distinct from task states.
       ctx.save();ctx.translate(n.x,n.y);ctx.rotate(Math.PI/4);
@@ -121,9 +128,9 @@ export function drawAtlasScene(ctx, scene) {
   for(const n of ordered) {
     const active=n.id===selected||n.id===hovered||n.id===keyboard;
     const dim=emphasis(n)<.5;
-    const statusColor=n.due==='overdue'&&n.status!=='done'?red:n.status==='done'?green:n.status==='doing'?accent:n.status==='today'||n.focus?warning:muted;
+    const statusColor=n.due==='overdue'&&n.status!=='done'?red:n.status==='done'?green:n.status==='doing'?accent:n.plannedToday||n.due==='today'?warning:muted;
     const r=n.r;
-    if(camera.scale<.4 && !active){circle(n,r,muted,null);continue;}
+    if(camera.scale<.4 && !active){circle(n,r,n.plannedToday ? accent : muted,null);continue;}
     ctx.globalAlpha=dim ? .18 : n.status==='done' ? .65 : 1;
     if(scene.showGlow&&active){ctx.shadowColor=accent;ctx.shadowBlur=8*dpr;}
     // A solid but quiet object, with a legible symbol; glow no longer encodes status.
@@ -144,10 +151,15 @@ export function drawAtlasScene(ctx, scene) {
       ctx.moveTo(n.x-size*.6,n.y-size);ctx.lineTo(n.x+size,n.y);ctx.lineTo(n.x-size*.6,n.y+size);ctx.closePath();ctx.fill();
     } else if(n.due==='overdue') {
       ctx.moveTo(n.x,n.y-size);ctx.lineTo(n.x,n.y+size*.3);ctx.stroke();circle({x:n.x,y:n.y+size},px(1),statusColor,null);
-    } else if(n.focus||n.status==='today') {
+    } else if(n.plannedToday) {
       ctx.moveTo(n.x,n.y-size);ctx.lineTo(n.x+size,n.y);ctx.lineTo(n.x,n.y+size);ctx.lineTo(n.x-size,n.y);ctx.closePath();ctx.fill();
     } else circle(n,Math.max(px(2),r*.15),statusColor,null);
     if(n.focus){text('Ф',n.x+r+px(5),n.y-r,9,accent,20,700);}
+    if (n.suggestion && !dim && (camera.scale >= .65 || active)) {
+      const badge = { x: n.x + r * .8, y: n.y - r * .8 };
+      circle(badge, px(8), accent, panel, 1.5);
+      text(String(n.suggestion.rank), badge.x, badge.y + px(3.5), 10, panel, 15, 700);
+    }
     ctx.globalAlpha=1;
     if(dim)continue;
     if(!active && camera.scale<.65)continue;
@@ -164,7 +176,7 @@ export function drawAtlasScene(ctx, scene) {
     ctx.fillStyle=panel;ctx.beginPath();ctx.roundRect(box.x,box.y,box.w,box.h,px(4));ctx.fill();
     ctx.fillStyle=active?ink:muted;ctx.textAlign='center';ctx.fillText(title,x,y);
     if(active){
-      const details=[n.due==='overdue'&&n.status!=='done'?'Срок прошёл':statusLabel(n.status),n.estimateMin?`${n.estimateMin} мин`:null].filter(Boolean).join(' · ');
+      const details=[n.suggestion?.reason || (n.due==='overdue'&&n.status!=='done'?'Срок прошёл':statusLabel(n.status)),n.estimateMin?`${n.estimateMin} мин`:null].filter(Boolean).join(' · ');
       text(details,x,y+px(18),11,n.due==='overdue'&&n.status!=='done'?red:muted,180);
     }
   }

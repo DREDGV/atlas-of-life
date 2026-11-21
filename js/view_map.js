@@ -30,6 +30,8 @@ import { statusLabel, plural } from "./ui/status-language.js";
 import { buildAttention } from "./features/map/attention.js";
 import { renderAttention } from "./features/map/attention-view.js";
 import { renderReviewEntry } from './features/map/review-view.js';
+import { buildMapDay } from './features/map/today-suggestions.js';
+import { renderMapDay } from './features/map/map-day-view.js';
 import { drawAtlasScene } from "./features/map/scene.js";
 import { renderMapNavigator } from "./features/map/navigator.js";
 import { containsTerritory, projectRadius } from "./features/map/geometry.js";
@@ -38,6 +40,7 @@ import { withSpatialAddresses } from './core/spatial-address.js';
 
 let attentionSnapshot = new Map();
 let attentionDay = '';
+let dayMarkers = new Map();
 let skipClickUntil = 0;
 
 function openAttentionArea(area) {
@@ -58,13 +61,13 @@ function openAttentionArea(area) {
   drawMap();
 }
 
-function openAttentionTask(id) {
+function openAttentionTask(id, options) {
   const task = state.tasks.find(t => t.id === id);
   if (!task) return;
   const domainId = task.projectId ? state.projects.find(p => p.id === task.projectId)?.domainId : task.domainId;
   openAttentionArea({ type: 'domain', id: domainId, domainId });
   openInspectorFor({ ...task, _type: 'task' });
-  fitTask(id);
+  fitTask(id, options);
 }
 
 // A task orb carries its meaning explicitly instead of leaving the renderer to
@@ -185,7 +188,9 @@ function taskNode(task, x, y, groupId = null) {
     priority: Number(task.priority) || 2,
     estimateMin: Number(task.estimateMin) || 0,
     ageDays: daysSince(task.updatedAt),
-    focus: task.focus === true,
+    focus: task.status !== 'done' && task.focus === true && task.plannedDay === attentionDay,
+    plannedToday: task.status !== 'done' && task.plannedDay === attentionDay,
+    suggestion: dayMarkers.get(task.id),
     due: due.kind,
     dueDay: due.day,
     dueInDays: due.days,
@@ -229,9 +234,10 @@ export function knowledgeCountFor(nodesList, knowledge) {
 // Deterministic, so the same state always draws the same picture.
 function taskDisplayOrder(a, b) {
   const score = (task) => {
+    if (dayMarkers.has(task.id)) return dayMarkers.get(task.id).rank - 4;
     const due = dueState(task);
     if (due.kind === 'overdue') return 0;
-    if (task.focus === true) return 1;
+    if (task.focus === true && task.plannedDay === attentionDay) return 1;
     if (due.kind === 'today') return 2;
     if (due.kind === 'soon') return 3;
     if (task.status === 'doing') return 4;
@@ -615,6 +621,16 @@ function onKeyDown(e) {
 
 export function initMap(canvasEl) {
   canvas = canvasEl;
+  const refreshDay = () => {
+    if (state.view === 'map' && attentionDay !== localDay()) drawMap();
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDay(); });
+  const scheduleDayChange = () => {
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    window.setTimeout(() => { refreshDay(); scheduleDayChange(); }, Math.max(1, midnight - Date.now()));
+  };
+  scheduleDayChange();
   emptyStateEl = document.getElementById("mapEmpty");
   // Keyboard and screen-reader access: the canvas itself cannot be read, so it
   // is focusable, labelled, and announces the focused task through a live
@@ -859,7 +875,7 @@ export function fitActiveProject() {
   fitToBBox({ minX, minY, maxX, maxY });
 }
 
-export function fitTask(taskId) {
+export function fitTask(taskId, { includeDomain = true } = {}) {
   revealTask(taskId);
   const owner=state.projects.find(p=>state.tasks.some(t=>t.id===taskId && t.projectId===p.id));
   if(owner){revealProjectPage(owner);expandedCompletedProjects.add(owner.id);}
@@ -907,7 +923,7 @@ export function fitTask(taskId) {
       maxX = Math.max(maxX, pNode.x + pNode.r);
       maxY = Math.max(maxY, pNode.y + pNode.r);
       const dNode = nodes.find((n) => n._type === "domain" && n.id === pNode.parent);
-      if (dNode) {
+      if (dNode && includeDomain) {
         minX = Math.min(minX, dNode.x - dNode.r);
         minY = Math.min(minY, dNode.y - dNode.r);
         maxX = Math.max(maxX, dNode.x + dNode.r);
@@ -948,6 +964,9 @@ export function layoutMap() {
   const spatial = withSpatialAddresses(state);
   attentionSnapshot = buildAttention(state);
   attentionDay = localDay();
+  const day = buildMapDay(state);
+  dayMarkers = new Map(day.suggestions.slice(0, 3).map((row, index) => [row.id, { rank: index + 1, reason: row.reason }]));
+  renderMapDay(document.getElementById('mapDay'), day, id => openAttentionTask(id, { includeDomain: false }));
   renderReviewEntry(document.getElementById('mapReviewEntry'), {
     openArea: openAttentionArea, openTask: openAttentionTask,
   });
@@ -1246,7 +1265,7 @@ export function drawMap() {
   );
 
   // empty-state overlay: nothing to show on the map yet
-  if (emptyStateEl) emptyStateEl.hidden = nodes.length > 0;
+  if (emptyStateEl) emptyStateEl.hidden = nodes.length > 0 || state.domains.length > 0 || state.tasks.length > 0;
 
   drawAtlasScene(ctx, {
     nodes, facts: attentionSnapshot, camera: viewState, dpr: DPR,

@@ -24,7 +24,7 @@ import { renderKnowledge } from './features/knowledge/view.js';
 import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
-import { refreshInboxAfterRemoteApply } from "./features/inbox/view.js";
+import { openInboxCapture, openProcessingItem, refreshInboxAfterRemoteApply } from "./features/inbox/view.js";
 import { openInspectorFor } from "./inspector.js";
 import {
   captureInbox,
@@ -149,7 +149,19 @@ function escapeHtml(value) {
 // expose globally for addons/other modules
 try { window.showToast = showToast; } catch (_) {}
 
+function updateFirstStep() {
+  const action = document.getElementById('mapStartAction');
+  const pending = state.inbox.find(item => item.status === 'new' || item.status === 'reviewed');
+  document.getElementById('mapStartTitle').textContent = pending ? 'Продолжить с Входящих' : 'С какого дела начнём?';
+  document.getElementById('mapStartHint').textContent = pending
+    ? 'У вас есть запись «' + pending.text + '». Выберите её тип и сохраните результат на карте.'
+    : 'Запишите одно дело своими словами, например «Купить батарейки». Во Входящих вы сможете превратить его в задачу и выбрать место на карте.';
+  action.textContent = pending ? 'Разобрать запись' : 'Записать первое дело';
+  action.onclick = pending ? () => openProcessingItem(pending.id) : openInboxCapture;
+}
+
 function renderSidebar() {
+  updateFirstStep();
   const dWrap = document.getElementById("domainsList");
   const visibleIds = getVisibleDomainIds(state.domains);
   let html = "";
@@ -871,6 +883,7 @@ function setupQuickAdd() {
         if (!created.length) throw new Error("Не удалось сохранить запись");
         qa.value = "";
         showQuickResult("Добавлено во Входящие", "inbox", created[0].id);
+        updateFirstStep();
       } else {
         const parsed = parseQuick(rawText);
         const resolved = resolveQuickDraft(parsed, {
@@ -1018,6 +1031,24 @@ async function init() {
   };
   const ok = loadState();
   if (!ok && getStorageStatus().status === 'error') { showStorageRecovery(); return; }
+  const firstSteps = document.getElementById('firstSteps');
+  let guideTrigger;
+  function showFirstSteps(event) {
+    guideTrigger = event.currentTarget;
+    const menu = guideTrigger.closest('details');
+    if (menu) {
+      menu.open = false;
+      guideTrigger = menu.querySelector('summary');
+    }
+    firstSteps.returnValue = '';
+    firstSteps.showModal();
+  }
+  document.getElementById('mapStartHelp').onclick = showFirstSteps;
+  document.getElementById('btnFirstSteps').onclick = showFirstSteps;
+  firstSteps.addEventListener('close', () => {
+    if (firstSteps.returnValue === 'capture') openInboxCapture();
+    else guideTrigger?.focus();
+  });
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
   if (brandEl) brandEl.textContent = APP_LABEL;

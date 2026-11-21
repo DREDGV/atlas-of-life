@@ -229,7 +229,7 @@ function buildRoutingControls(item){
   if (domains.length === 0) {
     const empty = document.createElement('span');
     empty.className = 'inbox-empty-state';
-    empty.textContent = isKnowledge ? 'Без контекста' : 'Нет доменов';
+    empty.textContent = isKnowledge ? 'Без контекста' : 'Можно сохранить без сферы или создать свою, например «Дом».';
     domainRow.append(empty);
   } else {
     const draftDomainValid = domains.some(domain => domain.id === draft.domainId);
@@ -415,7 +415,7 @@ function buildRoutingControls(item){
 
   const dueRow = document.createElement('div');
   dueRow.className = 'inbox-route-row inbox-route-row--due';
-  dueRow.append(makeLabel('Когда'), dueDateWrap, dueTimeWrap);
+  dueRow.append(makeLabel('Срок задачи'), dueDateWrap, dueTimeWrap);
 
   // "Дополнительно" is collapsed by default: priority and due only take the
   // screen when the user actually needs them. Draft values survive.
@@ -1003,7 +1003,8 @@ export function openInboxCapture(){
       <button type="button" class="inbox-button secondary" id="inboxCaptureRefine">+ Уточнить</button>
       <button type="button" class="inbox-button primary" id="inboxCaptureSave">Сохранить</button>
     </div>
-    <div class="inbox-saved-banner" id="inboxSavedBanner" hidden></div>`;
+    <div class="inbox-saved-banner" id="inboxSavedBanner" hidden></div>
+    <div role="alert" id="inboxCaptureError"></div>`;
 
   const input = document.getElementById('inboxCaptureText');
   const extras = document.querySelector('#inboxDialogBody .inbox-capture-extras');
@@ -1087,18 +1088,24 @@ export function openInboxCapture(){
     goButton.textContent = 'Разобрать сейчас';
     goButton.addEventListener('click', () => {
       savedBannerCount = 0;
-      queueFilter = 'review';
-      openInboxList();
+      openProcessingItem(activeProcessingId);
     });
     savedBanner.append(text, goButton);
     savedBanner.hidden = false;
   }
 
   const save = () => {
-    const created = captureInbox(input.value, {
-      userHint: captureUserHint,
-      domainHintId: captureDomainHintId,
-    });
+    let created;
+    try {
+      created = captureInbox(input.value, {
+        userHint: captureUserHint,
+        domainHintId: captureDomainHintId,
+      });
+    } catch (error) {
+      document.getElementById('inboxCaptureError').textContent = 'Не удалось сохранить запись. ' + error.message;
+      input.focus();
+      return;
+    }
     if (!created.length) {
       input.focus();
       return;
@@ -1106,6 +1113,7 @@ export function openInboxCapture(){
     commit('inbox:capture');
     resetCaptureHints();
     savedBannerCount = created.length;
+    activeProcessingId = created[0].id;
     input.value = '';
     updateHintUI();
     openInboxCapture();

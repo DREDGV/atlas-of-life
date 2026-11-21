@@ -118,6 +118,22 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 @media(max-width:1100px){.atlas-selection-title{font-size:15px;max-width:190px}.atlas-help{display:none}.atlas-path button{max-width:130px}.atlas-minimap{width:114px;bottom:10px;right:10px}.atlas-minimap canvas{width:112px;height:67px}}
 main{grid-template-rows:minmax(0,1fr)}
 .map-attention{padding:16px 12px;border-block:1px solid var(--panel-2)}
+.app:not(:has([data-view="map"].active)) :is(#mapDay,#mapReviewEntry,#mapEmpty){display:none}
+.map-day{padding:12px;border-bottom:1px solid color-mix(in srgb,var(--muted) 25%,transparent);color:var(--text);background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 7%,var(--panel)),var(--panel) 65%)}
+.map-day h3{margin:0 0 6px;font-size:15px;letter-spacing:-.02em}
+.map-day h4,.map-day summary,.map-day-context{font-size:12px;color:var(--muted)}
+.map-day h4{margin:12px 0 0;font-weight:600}
+.map-day summary{cursor:pointer;padding:4px 0}
+.map-day p{margin:4px 0}
+.map-day-row{display:grid;justify-items:start;gap:3px;padding:8px 0;overflow-wrap:anywhere;border-bottom:1px solid color-mix(in srgb,var(--muted) 16%,transparent)}
+.map-day-name{color:var(--text);background:none;border:0;padding:0;cursor:pointer;font:600 13px/1.4 system-ui;text-align:left;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+.map-day-name:hover{text-decoration:underline}
+.map-day-mark{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:50%;background:var(--accent);color:var(--panel);margin-right:6px;font-size:11px}
+.map-day-reason,.atlas-day-reason{color:var(--text);font-size:12px}
+.map-day-action{cursor:pointer;margin-top:2px;padding:3px 7px;color:var(--accent);background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:6px;font:600 12px/1.4 system-ui;white-space:normal;text-align:left}
+.map-day-error{color:var(--text);font-size:12px}
+.map-day-error:empty{display:none}
+.map-day :is(button,summary):focus-visible,#viewToday .today-task-title:focus{outline:2px solid var(--accent);outline-offset:2px}
 .map-attention h3{margin:0 0 5px;font-size:13px;font-weight:650;color:var(--text)}
 .attention-intro{color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 12px}
 .attention-area{border-left:2px solid var(--muted);margin:9px 0;padding:0 0 0 10px}
@@ -195,6 +211,18 @@ canvas{display:block;width:100%;height:100%}
 .map-empty-kicker,.inspector-section-label{text-transform:uppercase}
 .map-empty .map-empty-title{font-size:20px;font-weight:750;color:var(--text)}
 .map-empty .hint{max-width:340px;line-height:1.55}
+.map-empty-title{margin:0}
+.start-link{background:none;border:0;color:var(--accent);text-decoration:underline;cursor:pointer;padding:6px}
+.start-links{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#mapStartHint{overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.map-empty-card{min-width:0;max-width:100%;box-sizing:border-box}
+.first-steps{max-width:min(430px,90vw);max-height:85vh;overflow:auto;box-sizing:border-box;padding:24px;color:var(--text);background:var(--panel);border:1px solid var(--muted);border-radius:16px}
+.first-steps::backdrop{background:rgb(7 14 25 / .7)}
+.first-steps h2{margin:0;font-size:20px}
+.first-steps ol{padding-inline-start:1.5em}
+.first-steps li{margin:14px 0;padding-inline-start:4px;line-height:1.5}
+.first-steps li::marker{color:var(--accent);font-weight:700}
+.first-steps form{display:flex;gap:8px;flex-wrap:wrap}
 .inspector{padding:12px;overflow:auto;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word}
 .inspector-heading{margin:-1px 0 12px;padding:0 0 12px;border-bottom:1px solid color-mix(in srgb,var(--muted) 13%,transparent)}
 .inspector h2{margin:4px 0 6px;font-size:18px;line-height:1.25;word-wrap:break-word;word-break:break-word}

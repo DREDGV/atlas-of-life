@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { chromium } from 'playwright';
+import { startStaticServer, closeAll } from './smoke-shared.mjs';
+
+const server = await startStaticServer();
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const errors = [];
+page.on('pageerror', error => errors.push(error.message));
+page.setDefaultTimeout(8000);
+const button = name => page.getByRole('button', { name, exact: true });
+const title = 'Купить батарейки для фонаря';
+try {
+  await page.goto(server.origin);
+  await button('Записать первое дело').waitFor();
+  mkdirSync('output/map-day', { recursive: true });
+  await page.screenshot({ path: 'output/map-day/first-steps.png' });
+  await button('Записать первое дело').click();
+  await page.locator('#inboxCaptureText').fill(title);
+  await page.locator('#inboxCaptureSave').click();
+  await button('Разобрать сейчас').waitFor();
+  await page.reload();
+  await button('Разобрать запись').click();
+  await page.locator('[data-item-type=task]').click();
+  page.once('dialog', dialog => dialog.accept('Дом'));
+  await button('+ Создать домен').click();
+  await button('Создать задачу').click();
+  await button('Открыть задачу').click();
+  assert.match(await page.locator('#inspector').innerText(), /Купить батарейки для фонаря/);
+  await page.locator('#atlasNavigator [data-action=today]').click();
+  await page.locator('#atlasNavigator [data-action=open-today]').click();
+  await page.locator('#viewToday .todo').getByRole('button', { name: 'Выполнено', exact: true }).click();
+  await page.reload();
+  await page.locator('.chip[data-view=map]').click();
+  await page.locator('#mapReviewEntry button').click();
+  assert.match(await page.locator('.review-events').innerText(), /Задача выполнена\s+Купить батарейки для фонаря/);
+  await button('Закрыть').click();
+  const snapshot = await page.evaluate(() => localStorage.getItem('atlas_v2_data'));
+  const data = JSON.parse(snapshot);
+  assert.equal(data.tasks.length, 1);
+  assert.equal(data.inbox[0].rawText, title);
+  assert.equal(data.inbox[0].resultRef.id, data.tasks[0].id);
+  assert.equal(data.tasks[0].domainId, data.domains[0].id);
+  assert.equal(data.tasks[0].due, null);
+  await page.locator('.header-popover-secondary summary').click();
+  await button('Первые шаги').click();
+  await page.locator('#firstSteps[open]').waitFor();
+  await button('Записать дело').click();
+  await page.locator('#inboxCaptureText').waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('atlas_v2_data')), snapshot);
+  assert.deepEqual(errors, []);
+  console.log('PASS first steps: capture, resume after reload, sphere, task, map, Today, completion history and reusable help');
+} finally {
+  await browser.close();
+  await closeAll(server);
+}
