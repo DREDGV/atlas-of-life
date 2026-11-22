@@ -32,7 +32,7 @@
     </div>
     <div class="studio-tools" id="studioTools">
     <button class="studio-panel-close chip" type="button">Закрыть настройки</button>
-    <div class="chip-group" role="group" aria-label="Камера карты">
+    <div class="chip-group map-camera" role="group" aria-label="Камера карты">
       <button class="chip" type="button" id="btnCenter" title="Показать всю карту (C)">Всё</button>
       <button class="chip" type="button" id="btnFitDomain" title="Показать активную сферу (F)">Сфера</button>
       <button class="chip" type="button" id="btnFitProject" title="Подогнать активный проект (P)">Проект</button>
@@ -54,7 +54,7 @@
     <div class="spacer"></div>
     <button class="chip header-quiet-action" type="button" id="btnFullscreen" title="Полный экран">Экран</button>
     <label class="map-zoom" for="zoomSlider"><span>Масштаб</span><input id="zoomSlider" class="zoom-slider" type="range" min="3" max="220" step="1" value="100"></label>
-    <details class="header-popover">
+    <details class="header-popover studio-map-view">
       <summary>Вид карты</summary>
       <div class="header-popover-menu header-map-settings">
         <div class="popover-title">Статусы задач</div>
@@ -84,6 +84,7 @@
       <summary>Ещё</summary>
       <div class="header-popover-menu header-secondary-actions">
         <button class="header-action" type="button" id="btnFirstSteps">Первые шаги</button>
+        <label class="header-action" for="tgTheme"><input type="checkbox" id="tgTheme"> Светлая тема</label>
         <button class="header-action" type="button" id="btnExport">Экспорт JSON</button>
         <button class="header-action" type="button" id="btnRecovery">Резервные данные</button>
         <label class="header-action" for="fileImport">Импорт JSON</label>
@@ -176,10 +177,11 @@
   <form method="dialog"><button class="btn primary" value="capture">Записать дело</button><button class="btn" value="close" autofocus>Закрыть</button></form>
 </dialog>
 <!-- simple modal -->
-<div id="modal" class="modal">
+<div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="box">
     <div class="title" id="modalTitle">Диалог</div>
     <div class="body" id="modalBody"></div>
+    <p id="modalError" class="modal-error" role="alert"></p>
     <div class="buttons">
       <button class="btn" id="modalCancel">Отмена</button>
       <button class="btn primary" id="modalOk">Ок</button>

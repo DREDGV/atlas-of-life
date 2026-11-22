@@ -32,8 +32,12 @@ try {
   assert.match(await overview.innerText(), /1 просрочено/);
   assert.match(await overview.innerText(), /4 начато/);
   assert.match(await overview.innerText(), /1 без движения/);
-  assert.match(await overview.innerText(), /Нет следующего шага/);
+  const nextStep = page.locator('#mapDay .map-day-return .map-day-row')
+    .filter({ hasText: 'Ремонт кухни' });
+  assert.match(await nextStep.innerText(), /нет следующего шага/);
   await page.screenshot({ path: 'output/map-attention/overview-dark.png', animations: 'disabled' });
+  await nextStep.getByRole('button', { name: 'Выбрать шаг', exact: true }).click();
+  assert.match(await page.locator('#inspector').innerText(), /Ремонт кухни/);
   // Hidden domain + filtering must not make an attention destination unreachable.
   await page.evaluate(async id => {
     const { state } = await import('/js/state.js');

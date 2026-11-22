@@ -1501,6 +1501,21 @@ export function updateTask(taskId, patch, options = {}){
   return runAtomicCommand(() => updateTaskMutation(taskId, patch, options));
 }
 
+function taskMoveAddress(task){
+  const project = state.projects.find(item => item.id === task.projectId);
+  const domainId = project?.domainId ?? task.domainId ?? null;
+  return {
+    domainId,
+    domainTitle: state.domains.find(item => item.id === domainId)?.title ?? null,
+    projectId: task.projectId ?? null,
+    projectTitle: project?.title ?? null,
+  };
+}
+
+function sameTaskMoveAddress(a, b) {
+  return a.domainId === b.domainId && a.projectId === b.projectId;
+}
+
 function moveTaskMutation(taskId, destination, options){
   const task = state.tasks.find(item => item.id === taskId);
   if (!task) return null;
@@ -1518,7 +1533,7 @@ function moveTaskMutation(taskId, destination, options){
     JSON.stringify(before.pos ?? null) !== JSON.stringify(task.pos ?? null);
   if (!placementChanged) return { task, before, operation: null };
 
-  task.updatedAt = options.now ?? Date.now();
+  task.updatedAt = Math.max(options.now ?? Date.now(), (before.updatedAt || 0) + 1);
   const operation = appendOperation({
     type: options.operationType || 'task.move',
     entityType: 'task',
@@ -1527,6 +1542,8 @@ function moveTaskMutation(taskId, destination, options){
     payload: {
       before,
       after: task,
+      from: taskMoveAddress(before),
+      to: taskMoveAddress(task),
       reason: options.reason || null,
       sourceOperationId: options.sourceOperationId || null,
     },
@@ -1548,6 +1565,18 @@ export function undoTaskMove(moveResult, options = {}){
   const before = moveResult?.before || operation?.payload?.before;
   const taskId = moveResult?.task?.id || operation?.entityId || before?.id;
   if (!taskId || !before) return null;
+  const task = state.tasks.find(item => item.id === taskId);
+  if (!task) return null;
+  const { from, to, after } = operation?.payload || {};
+  if (to && (!sameTaskMoveAddress(taskMoveAddress(task), to)
+      || JSON.stringify(task.pos ?? null) !== JSON.stringify(after?.pos ?? null))) {
+    throw new Error('Место задачи уже изменилось. Проверьте её текущий адрес.');
+  }
+  if (from && (!sameTaskMoveAddress(taskMoveAddress(before), from)
+      || (from.domainId && !state.domains.some(item => item.id === from.domainId))
+      || (from.projectId && !state.projects.some(item => item.id === from.projectId)))) {
+    throw new Error('Прежний адрес изменился или недоступен. Выберите место задачи вручную.');
+  }
   return moveTask(taskId, {
     projectId: before.projectId ?? null,
     domainId: before.domainId ?? null,

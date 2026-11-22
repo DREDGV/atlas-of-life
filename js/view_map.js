@@ -410,7 +410,7 @@ let dropTargetDomainId = null;
 // drag threshold (px, screen space before scale/DPR)
 let pendingDragNode = null;
 let pendingDragStart = { x: 0, y: 0 };
-// simple undo stack for moves: store { type: 'task'|'project', id, fromProjectId, toProjectId, fromPos, toPos }
+// Session undo history for committed moves from the canvas and Inspector.
 let undoStack = [];
 function rememberTaskMove(result) {
   if (!result?.operation) return false;
@@ -422,6 +422,28 @@ function rememberTaskMove(result) {
     },
   });
   if (undoStack.length > 50) undoStack.shift();
+  return true;
+}
+
+function taskMoveReceipt(taskId) {
+  return undoStack.findLast(entry => entry.type === 'task.move' && entry.moveResult.operation.entityId === taskId)
+    ?.moveResult.operation;
+}
+
+function revealTaskMove(taskId) {
+  const detailsWereOpen = document.querySelector('.app')?.dataset.studioPanel === 'details';
+  openAttentionTask(taskId, { includeDomain: false });
+  if (detailsWereOpen) showStudioPanel('details', { focus: false });
+  requestSyncNow();
+}
+
+function undoMapTaskMove(operationId) {
+  const index = undoStack.findIndex(entry => entry.type === 'task.move' && entry.moveResult.operation.id === operationId);
+  if (index < 0) return false;
+  const result = undoTaskMove(undoStack[index].moveResult, { reason: 'map.undo' });
+  if (!result) throw new Error('Задача уже удалена.');
+  undoStack.splice(index, 1);
+  revealTaskMove(result.task.id);
   return true;
 }
 // transient pending attach: { taskId, fromProjectId, toProjectId, pos }
@@ -1871,16 +1893,7 @@ export function undoLastMove() {
     openInspectorFor({ ...result.project, _type: 'project' });
     return true;
   }
-  const item = undoStack.pop();
-  if (!item) return false;
-  if (item.type === "task.move") {
-    const result = undoTaskMove(item.moveResult, { reason: "map.undo" });
-    if (!result) return false;
-    layoutMap();
-    drawMap();
-    return true;
-  }
-  return false;
+  return latest?.type === 'task.move' ? undoMapTaskMove(latest.moveResult.operation.id) : false;
 }
 
 export function confirmAttach() {
@@ -2050,6 +2063,10 @@ window.mapApi.fitAll = fitAll;
 window.mapApi.fitDomain = fitDomain;
 window.mapApi.fitTask = fitTask;
 window.mapApi.openTask = openAttentionTask;
+window.mapApi.rememberTaskMove = rememberTaskMove;
+window.mapApi.revealTaskMove = revealTaskMove;
+window.mapApi.taskMoveReceipt = taskMoveReceipt;
+window.mapApi.undoMapTaskMove = undoMapTaskMove;
 window.mapApi.openArea = openAttentionArea;
 window.mapApi.layoutMap = layoutMap;
 window.mapApi.refresh = refreshMap;

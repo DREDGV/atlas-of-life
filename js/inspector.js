@@ -46,8 +46,8 @@ import {
   createProject,
   createTask,
   deleteTask,
-  moveTask,
   promoteTaskToProject,
+  updateProject,
   updateTask,
   updateKnowledge,
   revertInboxRoute,
@@ -56,6 +56,7 @@ import { renderToday } from "./view_today.js";
 import { getVisibleDomainIds } from "./ui/map-session.js";
 import { appendKnowledgeActions } from './features/knowledge/actions.js';
 import { rememberWork } from './ui/work-resume.js';
+import { wireTaskPlacement } from './features/map/task-placement.js';
 
 function forInspector(obj, type) {
   return obj ? { ...obj, _type: type } : null;
@@ -116,6 +117,8 @@ function appendMaterials(ins, context){
 
 export function openInspectorFor(obj) {
   const ins = document.getElementById("inspector");
+  ins.dataset.objectId = obj?.id || '';
+  ins.dataset.objectType = obj?._type || '';
   if (obj?._type === 'task' && state.tasks.some(task => task.id === obj.id && task.status !== 'done')) {
     rememberWork('task', obj.id);
   }
@@ -350,6 +353,15 @@ export function openInspectorFor(obj) {
     const projectDomain = domainOf(obj);
     ins.innerHTML = `
       ${inspectorHeading("Проект", escapeKnowledge(obj.title), [escapeKnowledge(projectDomain?.title || ''), escapeKnowledge(obj.title)])}
+      <details id="projectNameEditor" class="task-place">
+        <summary>Переименовать проект</summary>
+        <form class="inspector-form">
+          <label for="projectEditTitle">Название проекта</label>
+          <input id="projectEditTitle" maxlength="240" required>
+          <div class="hint" role="alert"></div>
+          <button class="btn" type="submit">Сохранить название</button>
+        </form>
+      </details>
       <div class="kv">Сфера: ${escapeKnowledge(projectDomain?.title || "Без сферы")}</div>
       <div class="kv">Теги: #${escapeKnowledge((obj.tags || []).join(" #"))}</div>
       <div class="btns">
@@ -368,6 +380,22 @@ export function openInspectorFor(obj) {
         )
         .join("")}</div>
     `;
+    const nameForm = ins.querySelector('#projectNameEditor form');
+    const nameInput = nameForm.querySelector('input');
+    nameInput.value = obj.title;
+    nameForm.onsubmit = event => {
+      event.preventDefault();
+      try {
+        const result = updateProject(obj.id, { title: nameInput.value });
+        if (!result) throw new Error('Проект больше недоступен.');
+        refreshMap({ layout: true });
+        requestSyncNow();
+        openInspectorFor(forInspector(result.project, 'project'));
+        ins.querySelector('#projectNameEditor summary').focus();
+      } catch (error) {
+        nameForm.querySelector('[role=alert]').textContent = error.message;
+      }
+    };
     appendProjectPlacement(ins, { ...obj }, next => openInspectorFor({ ...next, _type: 'project' }));
     appendProjectReview(ins, obj, () => openInspectorFor({ ...state.projects.find(p => p.id === obj.id), _type:'project' }));
     if (obj.lifecycle === 'completed') {
@@ -471,6 +499,7 @@ export function openInspectorFor(obj) {
           <button class="btn" type="submit">Сохранить место</button>
         </form>
       </details>
+      <p id="taskMoveMessage" class="hint" role="status"></p>
       ${
         pendForThis
           ? `<div class="kv hint">Ожидает привязки к проекту: ${
@@ -526,32 +555,7 @@ export function openInspectorFor(obj) {
       }
     };
 
-    const place = ins.querySelector('#taskPlace');
-    const placeDomain = place.querySelector('#taskPlaceDomain');
-    const placeProject = place.querySelector('#taskPlaceProject');
-    placeDomain.append(new Option('Без сферы', ''), ...state.domains.map(domain => new Option(domain.title, domain.id)));
-    placeDomain.value = taskDomainId || '';
-    const fillPlaces = () => {
-      const projects = state.projects.filter(project => project.domainId === placeDomain.value
-        && (project.lifecycle !== 'completed' || project.id === obj.projectId));
-      placeProject.replaceChildren(new Option('Без проекта', ''), ...projects.map(project => new Option(project.title, project.id)));
-      placeProject.disabled = !placeDomain.value;
-    };
-    fillPlaces();
-    placeProject.value = obj.projectId || '';
-    placeDomain.onchange = fillPlaces;
-    place.querySelector('form').onsubmit = event => {
-      event.preventDefault();
-      try {
-        const moved = moveTask(obj.id, { domainId: placeDomain.value || null, projectId: placeProject.value || null, pos: null });
-        if (!moved) return;
-        requestSyncNow();
-        window.mapApi?.openTask?.(obj.id);
-        ins.querySelector('#taskPlace summary')?.focus({ preventScroll: true });
-      } catch (error) {
-        place.querySelector('[role=alert]').textContent = error.message;
-      }
-    };
+    wireTaskPlacement(ins, obj, taskDomainId);
 
     // Day plan: the Inspector can move a task to any day, not only to today.
     // Every change goes through Core; invalid ones are reported, not swallowed.
@@ -622,11 +626,15 @@ export function openInspectorFor(obj) {
     });
     document.getElementById("delTask").onclick = () => {
       if (confirm("Удалить задачу?")) {
-        deleteTask(obj.id);
-        requestSyncNow(); // C2: routed result removal follows immediately
-        drawMap();
-        renderToday();
-        openInspectorFor(null);
+        try {
+          deleteTask(obj.id);
+          requestSyncNow(); // C2: routed result removal follows immediately
+          refreshMap({ layout: true });
+          renderToday();
+          openInspectorFor(null);
+        } catch (error) {
+          window.showToast?.(error.message, 'warn');
+        }
       }
     };
     // Add "Make project" button. It belongs to the status row, not to the plan

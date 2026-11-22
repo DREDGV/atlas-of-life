@@ -75,10 +75,12 @@ try {
   }, { timeout: 45000, label: 'B received the capture' });
 
   await pageB.evaluate(async () => {
-    const { updateInbox, routeInboxToTask } = await import('/js/core/commands.js');
+    const { createDomain, createProject, updateInbox, routeInboxToTask } = await import('/js/core/commands.js');
+    const domain = createDomain({ title: 'Мастерская' });
+    const project = createProject({ title: 'Ремонт', domainId: domain.id });
     const item = window.state.inbox[0];
     updateInbox(item.id, { itemType: 'task' });
-    routeInboxToTask(item.id, { projectId: 'p3', priority: 3, due: { date: '2026-08-24', time: '10:00' } });
+    routeInboxToTask(item.id, { projectId: project.id, priority: 3, due: { date: '2026-08-24', time: '10:00' } });
     window.atlasSync.requestSync();
   });
   await waitFor(async () => {

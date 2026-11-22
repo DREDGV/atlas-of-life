@@ -1,4 +1,5 @@
 import { state } from '../js/state.js';
+import assertNode from 'node:assert/strict';
 import {
   captureInbox,
   convertInboxToTask,
@@ -117,5 +118,14 @@ assert(deletion?.task.id === 'task-from-inbox', 'Delete command must return the 
 assert(!state.tasks.some(task => task.id === 'task-from-inbox'), 'Delete command must remove the task');
 assert(state.operationLog.at(-1).type === 'task.delete', 'Task deletion must be journaled');
 assert(state.operationLog.length === 13, 'The extended command scenario must produce thirteen operations');
+
+const detachedAgain = moveTask('task-quick', { projectId: null, domainId: null }, { ...commandOptions, now: 1810 });
+assertNode.equal(detachedAgain.operation.payload.from.domainTitle, 'Test domain');
+assertNode.equal(detachedAgain.operation.payload.to.domainId, null);
+moveTask('task-quick', { projectId: 'project-command' }, { ...commandOptions, now: 1820 });
+const beforeStaleUndo = state.operationLog.length;
+assertNode.throws(() => undoTaskMove(detachedAgain, commandOptions), /Место задачи уже изменилось/);
+assertNode.equal(state.operationLog.length, beforeStaleUndo);
+assertNode.equal(state.tasks.find(task => task.id === 'task-quick').projectId, 'project-command');
 
 console.log('Command layer test passed.');

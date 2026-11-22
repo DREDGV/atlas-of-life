@@ -45,6 +45,37 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
       try{run();requestSyncNow();}
       catch(error){const s=document.querySelector('.atlas-action-status');if(s)s.textContent=error.message;}
     },key));
+    const addInspectorActions = choices => {
+      const menu = make('details', undefined, 'atlas-object-tools');
+      const toggle = make('summary', 'Действия');
+      toggle.dataset.action = 'manage';
+      menu.onkeydown = event => {
+        if (event.key !== 'Escape' || !menu.open) return;
+        event.preventDefault();
+        menu.open = false;
+        toggle.focus();
+      };
+      menu.onfocusout = event => {
+        if (!menu.contains(event.relatedTarget)) menu.open = false;
+      };
+      const options = make('div', undefined, 'atlas-object-options');
+      for (const [label, selector, confirmAction] of choices) {
+        options.append(button(label, () => {
+          menu.open = false;
+          const inspector = document.getElementById('inspector');
+          if (inspector.dataset.objectId !== String(entity.id) || inspector.dataset.objectType !== type) open(entity, type);
+          showStudioPanel('details', { focus: false });
+          const target = inspector.querySelector(selector);
+          if (!target) return;
+          const disclosure = target.closest('details');
+          if (disclosure) disclosure.open = true;
+          target.focus();
+          if (confirmAction) target.click();
+        }));
+      }
+      menu.append(toggle, options);
+      actions.append(menu);
+    };
     if(entity)act('Приблизить',()=>fit(entity.id,type),'fit');
     if(domain && pages.length>1){
       const change=delta=>{const index=pages.indexOf(page);setMapQuery('');const search=document.getElementById('mapSearch');if(search)search.value='';domainPages.set(domain.id,pages[(index+delta+pages.length)%pages.length]);lastSignature='';window.mapApi?.refresh?.({layout:true});open(domain,'domain');fit(domain.id,'domain');};
@@ -79,12 +110,21 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
           showStudioPanel('details');
         }
       },'source');
+      addInspectorActions([
+        ['Править задачу', '#taskEditTitle'],
+        ['Перенести задачу', '#taskPlaceDomain'],
+        ['Удалить задачу…', '#delTask', true],
+      ]);
     }else if(project){
       if(project.lifecycle==='completed')act(expandedCompletedProjects.has(project.id)?'Свернуть задачи':'Показать задачи',()=>{
         if(expandedCompletedProjects.has(project.id))expandedCompletedProjects.delete(project.id);else expandedCompletedProjects.add(project.id);
         lastSignature='';window.mapApi?.refresh?.({layout:true});
       },'expand');
       if(project.lifecycle!=='completed')act('+ Задача',()=>{const title=prompt('Новая задача проекта:');if(title?.trim()){const t=createTask({title,projectId:project.id});open(t,'task');fit(t.id,'task');}},'create');
+      addInspectorActions([
+        ['Переименовать проект', '#projectEditTitle'],
+        ['Перенести проект', '[name="projectDestination"]'],
+      ]);
     }else if(domain){
       act('+ Проект',()=>{const title=prompt('Название проекта:');if(title?.trim()){const p=createProject({title,domainId:domain.id});open(p,'project');fit(p.id,'project');}},'create');
     }else if(resume){

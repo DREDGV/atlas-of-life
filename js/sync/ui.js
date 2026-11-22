@@ -346,12 +346,19 @@ export function createSyncPanel({ runtime, mount }){
 // ---------------------------------------------------------------------------
 
 export function openSyncModal({ runtime, title = 'Синхронизация' }){
+  const opener = document.activeElement;
+  const studio = opener?.closest('.app');
+  const wasInert = studio?.inert;
   const overlay = el('div', 'atlas-sync-modal-overlay');
   const modal = el('div', 'atlas-sync-modal');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', title);
   const header = el('div', 'atlas-sync-modal-header');
   header.appendChild(el('h3', null, title));
   const closeBtn = el('button', 'atlas-sync-modal-close', '✕');
   closeBtn.type = 'button';
+  closeBtn.setAttribute('aria-label', 'Закрыть');
   header.appendChild(closeBtn);
   const body = el('div', 'atlas-sync-modal-body');
 
@@ -374,12 +381,16 @@ export function openSyncModal({ runtime, title = 'Синхронизация' })
     document.removeEventListener('keydown', onKey);
     if (panel) panel.destroy();
     overlay.remove();
+    if (studio) studio.inert = wasInert;
+    opener?.focus({ preventScroll: true });
   }
 
   modal.append(header, body);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  if (studio) studio.inert = true;
   open();
+  closeBtn.focus({ preventScroll: true });
   return { close, el: overlay };
 }
 
