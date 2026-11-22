@@ -55,6 +55,7 @@ import {
 import { renderToday } from "./view_today.js";
 import { getVisibleDomainIds } from "./ui/map-session.js";
 import { appendKnowledgeActions } from './features/knowledge/actions.js';
+import { rememberWork } from './ui/work-resume.js';
 
 function forInspector(obj, type) {
   return obj ? { ...obj, _type: type } : null;
@@ -115,6 +116,9 @@ function appendMaterials(ins, context){
 
 export function openInspectorFor(obj) {
   const ins = document.getElementById("inspector");
+  if (obj?._type === 'task' && state.tasks.some(task => task.id === obj.id && task.status !== 'done')) {
+    rememberWork('task', obj.id);
+  }
   // The map and the Inspector always share the same active object: highlight
   // the node (or clear the highlight) so the ring matches what is shown here.
   try {

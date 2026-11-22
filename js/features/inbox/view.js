@@ -4,6 +4,7 @@ import { createEditState } from './edit-state.js';
 import { createRoutingDraftState } from './routing-draft.js';
 import { openInspectorFor } from '../../inspector.js';
 import { showStudioPanel } from '../../ui/studio-panels.js';
+import { isPendingInbox, rememberWork } from '../../ui/work-resume.js';
 import {
   captureInbox,
   createDomain,
@@ -792,7 +793,10 @@ function renderDisplayRow(item){
     button.addEventListener('click', () => {
       if ((item.itemType ?? null) === value) return;
       try {
-        if (updateInbox(item.id, { itemType: value })) commit('inbox:update');
+        if (updateInbox(item.id, { itemType: value })) {
+          rememberWork('inbox', item.id);
+          commit('inbox:update');
+        }
         openInboxList();
         root.querySelector(`[data-item-type="${value || 'task'}"]`)?.focus({ preventScroll: true });
       } catch (error) {
@@ -986,7 +990,7 @@ function renderCompactRow(item){
     // (the draft stays preserved) and collapses the previous active card.
     editState.exit();
     activeProcessingId = item.id;
-    openInboxList();
+    openInboxList({ remember: true });
   });
   return row;
 }
@@ -1409,7 +1413,7 @@ function renderBatchRows(container, items){
   container.appendChild(list);
 }
 
-export function openInboxList(){
+export function openInboxList({ remember = false } = {}){
   const wasClosed = showInbox();
   setBodyTitle('Входящие');
   savedBannerCount = 0;
@@ -1513,7 +1517,7 @@ export function openInboxList(){
     '<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> тип · <kbd>J</kbd>/<kbd>K</kbd> запись · <kbd>Enter</kbd> готово · <kbd>Esc</kbd> свернуть';
   if (!batchMode) tools.append(kbdHint);
 
-  const renderQueue = () => {
+  const renderQueue = (track = false) => {
     listWrap.replaceChildren();
     const items = computeVisibleItems();
 
@@ -1524,6 +1528,7 @@ export function openInboxList(){
         activeProcessingId = items[0]?.id ?? null;
       }
       const activeItem = items.find(item => item.id === activeProcessingId) || items[0] || null;
+      if (track && activeItem && isPendingInbox(activeItem)) rememberWork('inbox', activeItem.id);
       // Started actually processing -> reviewed (automatic, Core command).
       if (activeItem && activeItem.status === 'new' && !activeItem.resultRef) {
         try { updateInbox(activeItem.id, { status: 'reviewed' }); }
@@ -1598,10 +1603,10 @@ export function openInboxList(){
     searchQuery = searchInput.value;
     if (batchMode) batchSelection.clear();
     if (routeReceipt) routeReceipt.hidden = batchMode || Boolean(searchQuery.trim());
-    renderQueue();
+    renderQueue(true);
   });
 
-  renderQueue();
+  renderQueue(wasClosed || remember);
   if (wasClosed) root.querySelector('.inbox-icon-button').focus({ preventScroll: true });
 }
 
@@ -1660,7 +1665,7 @@ export function initInbox(options = {}){
       if (next && next.id !== activeProcessingId) {
         editState.exit();
         activeProcessingId = next.id;
-        openInboxList();
+        openInboxList({ remember: true });
       }
       event.preventDefault();
       return;
@@ -1696,6 +1701,6 @@ export function openProcessingItem(id){
   searchQuery = '';
   batchMode = false;
   activeProcessingId = id;
-  openInboxList();
+  openInboxList({ remember: true });
   root.querySelector('.inbox-row--active [data-item-type]')?.focus({ preventScroll: true });
 }

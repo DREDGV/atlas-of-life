@@ -26,6 +26,7 @@ import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
 import { openInboxCapture, openProcessingItem, refreshInboxAfterRemoteApply, updateInboxCounter } from "./features/inbox/view.js";
 import { setupStudioPanels, showStudioPanel } from "./ui/studio-panels.js";
+import { workToResume } from "./ui/work-resume.js";
 import { openInspectorFor } from "./inspector.js";
 import {
   captureInbox,
@@ -152,10 +153,11 @@ try { window.showToast = showToast; } catch (_) {}
 
 function updateFirstStep() {
   const action = document.getElementById('mapStartAction');
-  const pending = state.inbox.find(item => item.status === 'new' || item.status === 'reviewed');
-  document.getElementById('mapStartTitle').textContent = pending ? 'Продолжить с Входящих' : 'С какого дела начнём?';
+  const resume = workToResume(state);
+  const pending = resume?.kind === 'inbox' ? resume : null;
+  document.getElementById('mapStartTitle').textContent = pending ? 'Продолжить работу' : 'С какого дела начнём?';
   document.getElementById('mapStartHint').textContent = pending
-    ? 'У вас есть запись «' + pending.text + '». Выберите её тип и сохраните результат на карте.'
+    ? 'У вас есть запись «' + pending.title + '». Выберите её тип и сохраните результат на карте.'
     : 'Запишите одно дело своими словами, например «Купить батарейки». Во Входящих вы сможете превратить его в задачу и выбрать место на карте.';
   action.textContent = pending ? 'Разобрать запись' : 'Записать первое дело';
   action.onclick = pending ? () => openProcessingItem(pending.id) : openInboxCapture;
@@ -847,7 +849,7 @@ function setupQuickAdd() {
       <button type="button" data-quick-action="undo">Отменить</button>`;
     result.querySelector('[data-quick-action="open"]').onclick = () => {
       if (type === "inbox") document.getElementById("btnInbox")?.click();
-      else window.mapApi?.fitTask?.(id);
+      else window.mapApi?.openTask?.(id);
     };
     result.querySelector('[data-quick-action="undo"]').onclick = () => {
       try {
@@ -1148,6 +1150,10 @@ async function init() {
   });
   const canvas = document.getElementById("canvas");
   initMap(canvas);
+  window.addEventListener('atlas:resume-work', () => {
+    updateFirstStep();
+    drawMap();
+  });
   initMapFilterControls();
   updateWip();
 }

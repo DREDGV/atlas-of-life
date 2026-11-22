@@ -8,7 +8,7 @@ import { formatDay } from '../../ui/status-language.js';
 import { showStudioPanel } from '../../ui/studio-panels.js';
 
 let lastSignature = '';
-export function renderMapNavigator({ state, selected, type, nodes, camera, width, height, dpr, open, fit, overview, pan }) {
+export function renderMapNavigator({ state, selected, type, nodes, camera, width, height, dpr, open, fit, overview, pan, resume, openResume }) {
   const host=document.getElementById('atlasNavigator');
   if(!host)return;
   const task=type==='task'?state.tasks.find(t=>t.id===selected):null;
@@ -19,7 +19,7 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
   const page=domainPages.get(domain?.id)||0;
   const day = localDay();
   const suggestion = task && nodes.find(node => node.id === task.id && node._type === 'task')?.suggestion;
-  const signature=JSON.stringify([type,entity,domain?.title,project?.title,project?.nextActionId,project?.lifecycle,state.domains.length,pages,page,day,suggestion]);
+  const signature=JSON.stringify([type,entity,domain?.title,project?.title,project?.nextActionId,project?.lifecycle,state.domains.length,pages,page,day,suggestion,resume]);
   const make=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;};
   if(signature!==lastSignature||!host.childElementCount){
     lastSignature=signature;
@@ -33,9 +33,11 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
     if(project){path.append(make('span','/'),button(project.title,()=>{open(project,'project');fit(project.id,'project');},'project'));}
     host.append(path);
     const row=make('div',undefined,'atlas-selection');
-    const title = make('div', entity?.title || 'Вся жизнь в поле зрения', 'atlas-selection-title');
-    title.classList.toggle('is-task', Boolean(task));
-    row.append(title);
+    if (!resume) {
+      const title = make('div', entity?.title || 'Вся жизнь в поле зрения', 'atlas-selection-title');
+      title.classList.toggle('is-task', Boolean(task));
+      row.append(title);
+    }
     if (suggestion) row.append(make('span', suggestion.reason, 'atlas-day-reason'));
     const actions=make('div',undefined,'atlas-actions');
     const status=make('span','','atlas-action-status');status.setAttribute('role','status');
@@ -85,6 +87,13 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
       if(project.lifecycle!=='completed')act('+ Задача',()=>{const title=prompt('Новая задача проекта:');if(title?.trim()){const t=createTask({title,projectId:project.id});open(t,'task');fit(t.id,'task');}},'create');
     }else if(domain){
       act('+ Проект',()=>{const title=prompt('Название проекта:');if(title?.trim()){const p=createProject({title,domainId:domain.id});open(p,'project');fit(p.id,'project');}},'create');
+    }else if(resume){
+      const action = button('Продолжить работу', () => openResume(resume), 'resume');
+      const caption = make('span', (resume.kind === 'task' ? 'Задача · ' : 'Разбор · ') + resume.title, 'atlas-resume-target');
+      caption.id = 'atlasResumeTarget';
+      action.setAttribute('aria-describedby', caption.id);
+      actions.classList.add('atlas-resume');
+      actions.append(action, caption);
     }else{
       actions.append(make('span','Выберите объект · колесо — масштаб · Alt + drag — перемещение','atlas-help'));
     }

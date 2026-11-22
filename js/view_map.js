@@ -37,6 +37,7 @@ import { renderMapNavigator } from "./features/map/navigator.js";
 import { containsTerritory, projectRadius } from "./features/map/geometry.js";
 import { expandedCompletedProjects } from './ui/map-session.js';
 import { showStudioPanel } from './ui/studio-panels.js';
+import { workToResume } from './ui/work-resume.js';
 import { withSpatialAddresses } from './core/spatial-address.js';
 
 let attentionSnapshot = new Map();
@@ -69,6 +70,21 @@ function openAttentionTask(id, options) {
   openAttentionArea({ type: 'domain', id: domainId, domainId });
   openInspectorFor({ ...task, _type: 'task' });
   fitTask(id, options);
+}
+
+function resumeWork(target) {
+  const current = workToResume(state);
+  if (current?.id !== target.id || current.kind !== target.kind) {
+    drawMap();
+    return;
+  }
+  if (target.kind === 'task') {
+    openAttentionTask(target.id, { includeDomain: false });
+    document.querySelector('#atlasNavigator [data-action="today"], #atlasNavigator [data-action="open-today"]')
+      ?.focus({ preventScroll: true });
+  } else {
+    import('./features/inbox/view.js').then(({ openProcessingItem }) => openProcessingItem(target.id));
+  }
 }
 
 function openReturnSuggestion(visit) {
@@ -710,29 +726,7 @@ export function setShowFps() {
 
 // Camera helpers and fit animations
 export function centerView() {
-  // Center all visible content on screen
-  if (nodes && nodes.length > 0) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    nodes.forEach((n) => {
-      if (!n) return;
-      const r = n.r || 0;
-      minX = Math.min(minX, n.x - r);
-      minY = Math.min(minY, n.y - r);
-      maxX = Math.max(maxX, n.x + r);
-      maxY = Math.max(maxY, n.y + r);
-    });
-    
-    if (isFinite(minX)) {
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      viewState.tx = W * 0.5 - centerX;
-      viewState.ty = H * 0.5 - centerY;
-    }
-  } else {
-    viewState.tx = 0;
-    viewState.ty = 0;
-  }
-  drawMap();
+  fitAll();
 }
 export function resetView() {
   viewState.scale = 1;
@@ -1306,6 +1300,8 @@ export function drawMap() {
   });
   renderMapNavigator({
     state, selected: selectedNodeId, type: nodes.find(n => n.id === selectedNodeId)?._type,
+    resume: selectedNodeId || emptyStateEl?.hidden === false ? null : workToResume(state),
+    openResume: resumeWork,
     nodes, camera: viewState, width: W, height: H, dpr: DPR,
     open: (entity, type) => openInspectorFor({ ...entity, _type: type }),
     fit: (id, type) => {

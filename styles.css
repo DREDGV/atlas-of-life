@@ -112,6 +112,9 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .atlas-actions button:hover{border-color:var(--accent);color:var(--accent)}
 .atlas-actions [data-action="today"]{border-color:transparent;background:var(--accent);color:var(--panel);font-weight:650}
 .atlas-actions [data-action="today"]:hover{filter:brightness(1.1)}
+.atlas-resume{align-items:center;min-width:0;gap:6px 10px}
+.atlas-resume [data-action="resume"]{border-color:var(--accent);color:var(--accent);font-weight:650}
+.atlas-resume-target{color:var(--muted);font-size:12px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .atlas-help{font-size:11px;color:var(--muted)}
 .atlas-action-status{display:block;color:var(--danger);font-size:12px;margin-top:5px}
 .atlas-navigator button:focus-visible,.atlas-minimap canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
