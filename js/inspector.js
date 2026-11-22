@@ -46,6 +46,7 @@ import {
   createProject,
   createTask,
   deleteTask,
+  moveTask,
   promoteTaskToProject,
   updateTask,
   updateKnowledge,
@@ -457,6 +458,15 @@ export function openInspectorFor(obj) {
         <div class="hint" id="taskEditError" role="status"></div>
         <button class="btn primary" type="button" id="saveTask">Сохранить изменения</button>
       </div>
+      <details id="taskPlace" class="task-place">
+        <summary>Изменить место задачи</summary>
+        <form class="inspector-form">
+          <label for="taskPlaceDomain">Сфера</label><select id="taskPlaceDomain"></select>
+          <label for="taskPlaceProject">Проект</label><select id="taskPlaceProject"></select>
+          <div class="hint" role="alert"></div>
+          <button class="btn" type="submit">Сохранить место</button>
+        </form>
+      </details>
       ${
         pendForThis
           ? `<div class="kv hint">Ожидает привязки к проекту: ${
@@ -509,6 +519,33 @@ export function openInspectorFor(obj) {
         openInspectorFor(forInspector(result.task, "task"));
       } catch (err) {
         error.textContent = err?.message || "Не удалось сохранить задачу";
+      }
+    };
+
+    const place = ins.querySelector('#taskPlace');
+    const placeDomain = place.querySelector('#taskPlaceDomain');
+    const placeProject = place.querySelector('#taskPlaceProject');
+    placeDomain.append(new Option('Без сферы', ''), ...state.domains.map(domain => new Option(domain.title, domain.id)));
+    placeDomain.value = taskDomainId || '';
+    const fillPlaces = () => {
+      const projects = state.projects.filter(project => project.domainId === placeDomain.value
+        && (project.lifecycle !== 'completed' || project.id === obj.projectId));
+      placeProject.replaceChildren(new Option('Без проекта', ''), ...projects.map(project => new Option(project.title, project.id)));
+      placeProject.disabled = !placeDomain.value;
+    };
+    fillPlaces();
+    placeProject.value = obj.projectId || '';
+    placeDomain.onchange = fillPlaces;
+    place.querySelector('form').onsubmit = event => {
+      event.preventDefault();
+      try {
+        const moved = moveTask(obj.id, { domainId: placeDomain.value || null, projectId: placeProject.value || null, pos: null });
+        if (!moved) return;
+        requestSyncNow();
+        window.mapApi?.openTask?.(obj.id);
+        ins.querySelector('#taskPlace summary')?.focus({ preventScroll: true });
+      } catch (error) {
+        place.querySelector('[role=alert]').textContent = error.message;
       }
     };
 

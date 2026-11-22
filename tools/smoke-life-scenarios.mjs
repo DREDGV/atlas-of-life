@@ -11,9 +11,13 @@ try{
   await page.locator('#quickAdd').fill(text);await page.locator('#quickSubmit').click();await page.locator('#btnInbox').click();
   await page.locator('[data-queue-filter=review]').click();await page.locator(`[data-item-type=${type}]`).click();
  };
- const prompt=async(name,title)=>{page.once('dialog',d=>d.accept(title));await page.getByRole('button',{name,exact:true}).click();};
+ const createPlace=async(summary,field,button,title)=>{
+  await page.locator('.inbox-create-place summary').getByText(summary,{exact:true}).click();
+  await page.getByLabel(field,{exact:true}).fill(title);
+  await page.getByRole('button',{name:button,exact:true}).click();
+ };
  await capture('Не забыть купить молоко и батарейки');
- await prompt('+ Создать домен','Дом и быт');
+ await createPlace('+ Создать сферу','Название сферы','Создать сферу','Дом и быт');
  await page.getByRole('button',{name:'Создать задачу',exact:true}).click();
  await page.getByRole('button',{name:'Открыть задачу',exact:true}).click();
  await page.locator('#atlasNavigator [data-action=today]').click();
@@ -22,8 +26,8 @@ try{
  const buying=await page.evaluate(async()=>{const s=(await import('/js/state.js')).state;return s.tasks.find(t=>t.title.startsWith('Не забыть'));});
  assert.equal(buying.status,'done');assert.ok(buying.plannedDay);assert.equal(buying.due,null);
  await capture('Отремонтировать крепление на велосипеде');
- await prompt('+ Создать домен','Мастерская');
- await prompt('+ Создать проект','Ремонт велосипеда');
+ await createPlace('+ Создать сферу','Название сферы','Создать сферу','Мастерская');
+ await createPlace('+ Создать проект','Название проекта','Создать проект','Ремонт велосипеда');
  await page.getByRole('button',{name:'Создать задачу',exact:true}).click();
  await page.getByRole('button',{name:'Открыть задачу',exact:true}).click();
  const repair=await page.evaluate(async()=>{const s=(await import('/js/state.js')).state;return s.tasks.find(t=>t.title.startsWith('Отремонтировать'));});assert.ok(repair.projectId);

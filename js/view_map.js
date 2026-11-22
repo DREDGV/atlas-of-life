@@ -31,7 +31,7 @@ import { buildAttention } from "./features/map/attention.js";
 import { renderAttention } from "./features/map/attention-view.js";
 import { renderReviewEntry } from './features/map/review-view.js';
 import { buildMapDay } from './features/map/today-suggestions.js';
-import { renderMapDay } from './features/map/map-day-view.js';
+import { renderMapDay, renderUnassignedTasks } from './features/map/map-day-view.js';
 import { drawAtlasScene } from "./features/map/scene.js";
 import { renderMapNavigator } from "./features/map/navigator.js";
 import { containsTerritory, projectRadius } from "./features/map/geometry.js";
@@ -49,15 +49,15 @@ function openAttentionArea(area) {
   document.querySelector('#tagsList [data-tag=""]')?.click();
   setMapLens('all');
   setMapQuery('');
-  setDomainVisible(area.domainId, true, state.domains);
+  if (area.domainId) setDomainVisible(area.domainId, true, state.domains);
   window.renderSidebar?.();
   layoutMap();
+  window.dispatchEvent(new Event('atlas:map-reveal'));
   const entity = (area.type === 'project' ? state.projects : state.domains).find(e => e.id === area.id);
   if (!entity) return;
   openInspectorFor({ ...entity, _type: area.type });
   if (area.type === 'project') fitProject(area.id);
   else fitDomain(area.domainId);
-  window.dispatchEvent(new Event('atlas:map-reveal'));
   drawMap();
 }
 
@@ -68,6 +68,22 @@ function openAttentionTask(id, options) {
   openAttentionArea({ type: 'domain', id: domainId, domainId });
   openInspectorFor({ ...task, _type: 'task' });
   fitTask(id, options);
+}
+
+function openReturnSuggestion(visit) {
+  if (visit.type === 'task') {
+    openAttentionTask(visit.id, { includeDomain: false });
+    document.querySelector('#atlasNavigator [data-action="today"]')?.focus({ preventScroll: true });
+    return;
+  }
+  openAttentionArea(visit);
+  const project = visit.type === 'project' && state.projects.find(project => project.id === visit.id);
+  const selector = visit.type === 'domain' ? '#domainMarkReview'
+    : project?.lifecycle === 'paused' ? '[name="lifecycle"]' : '[name="nextActionId"]';
+  let target = document.querySelector('#inspector ' + selector);
+  if (target?.name === 'nextActionId' && target.options.length === 1) target = document.getElementById('addTask') || target;
+  target?.focus({ preventScroll: true });
+  target?.scrollIntoView({ block: 'nearest' });
 }
 
 // A task orb carries its meaning explicitly instead of leaving the renderer to
@@ -962,11 +978,13 @@ function childDrawRadius(child) {
 export function layoutMap() {
   const wasEmpty = nodes.length === 0;
   const spatial = withSpatialAddresses(state);
-  attentionSnapshot = buildAttention(state);
-  attentionDay = localDay();
-  const day = buildMapDay(state);
+  const now = Date.now();
+  attentionSnapshot = buildAttention(state, now);
+  const day = buildMapDay(state, now, attentionSnapshot);
+  attentionDay = day.day;
   dayMarkers = new Map(day.suggestions.slice(0, 3).map((row, index) => [row.id, { rank: index + 1, reason: row.reason }]));
-  renderMapDay(document.getElementById('mapDay'), day, id => openAttentionTask(id, { includeDomain: false }));
+  renderMapDay(document.getElementById('mapDay'), day, id => openAttentionTask(id, { includeDomain: false }), openReturnSuggestion);
+  renderUnassignedTasks(document.getElementById('mapUnassigned'), state.tasks, openAttentionTask);
   renderReviewEntry(document.getElementById('mapReviewEntry'), {
     openArea: openAttentionArea, openTask: openAttentionTask,
   });
@@ -2023,6 +2041,8 @@ window.mapApi.initMap = initMap;
 window.mapApi.fitAll = fitAll;
 window.mapApi.fitDomain = fitDomain;
 window.mapApi.fitTask = fitTask;
+window.mapApi.openTask = openAttentionTask;
+window.mapApi.openArea = openAttentionArea;
 window.mapApi.layoutMap = layoutMap;
 window.mapApi.refresh = refreshMap;
 window.mapApi.setSelectedNode = setSelectedNode;

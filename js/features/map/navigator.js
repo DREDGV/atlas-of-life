@@ -1,4 +1,4 @@
-import { updateTask, createTask, createProject } from '../../core/commands.js';
+import { updateTask, createTask, createProject, setProjectNextAction } from '../../core/commands.js';
 import { localDay } from '../today/model.js';
 import { requestSyncNow } from '../../sync/runtime.js';
 import { expandedCompletedProjects, setMapQuery } from '../../ui/map-session.js';
@@ -18,7 +18,7 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
   const page=domainPages.get(domain?.id)||0;
   const day = localDay();
   const suggestion = task && nodes.find(node => node.id === task.id && node._type === 'task')?.suggestion;
-  const signature=JSON.stringify([type,entity,domain?.title,project?.title,state.domains.length,pages,page,day,suggestion]);
+  const signature=JSON.stringify([type,entity,domain?.title,project?.title,project?.nextActionId,project?.lifecycle,state.domains.length,pages,page,day,suggestion]);
   const make=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;};
   if(signature!==lastSignature||!host.childElementCount){
     lastSignature=signature;
@@ -28,6 +28,7 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
     const button=(label,action,key)=>{const b=make('button',label);b.type='button';b.dataset.action=key||label;b.onclick=action;return b;};
     path.append(button('Атлас',overview,'overview'));
     if(domain){path.append(make('span','/'),button(domain.title,()=>{open(domain,'domain');fit(domain.id,'domain');},'domain'));}
+    else if (task) path.append(make('span', ' / Без сферы'));
     if(project){path.append(make('span','/'),button(project.title,()=>{open(project,'project');fit(project.id,'project');},'project'));}
     host.append(path);
     const row=make('div',undefined,'atlas-selection');
@@ -45,11 +46,19 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
       actions.append(button('← Проекты',()=>change(-1),'previous-page'),make('span',`Страница ${pages.indexOf(page)+1} из ${pages.length}`),button('Проекты →',()=>change(1),'next-page'));
     }
     if(task){
+      if (project && (project.lifecycle || 'active') === 'active' && !project.nextActionId && task.status !== 'done') {
+        act('Сделать следующим шагом', () => {
+          if (state.projects.find(item => item.id === project.id)?.nextActionId) throw new Error('У проекта уже выбран следующий шаг.');
+          setProjectNextAction(project.id, task.id);
+          window.mapApi?.refresh?.({ layout: true });
+          document.querySelector('.atlas-action-status').textContent = 'Следующий шаг выбран';
+        }, 'next-step');
+      }
       act(task.status==='done'?'Вернуть в работу':'✓ Завершить',()=>{
         updateTask(task.id,{status:task.status==='done'?'backlog':'done'});
         open(state.tasks.find(t=>t.id===task.id),'task');
       },'complete');
-      const planLabel = task.plannedDay ? 'Перенести на сегодня (' + formatDay(task.plannedDay, day) + ')' : 'На сегодня';
+      const planLabel = task.plannedDay ? 'Перенести на сегодня (' + (formatDay(task.plannedDay, day) || task.plannedDay) + ')' : 'На сегодня';
       if (task.status !== 'done' && task.plannedDay === day) {
         actions.append(button('Открыть в «Сегодня»', () => openDayRow(task.id), 'open-today'));
       }

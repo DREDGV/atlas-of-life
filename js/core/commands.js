@@ -515,7 +515,7 @@ function routeInboxToTaskMutation(id, options){
   // applyTaskPlacement validate the project and derive the domain from it.
   const destination = {
     projectId: options.projectId ?? null,
-    domainId: options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
+    domainId: options.domainId === null ? null : options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
   };
   if (Object.hasOwn(destination, 'domainId') && destination.domainId) {
     const domainExists = state.domains.some(domain => domain.id === destination.domainId);
@@ -1302,7 +1302,7 @@ function createTaskMutation(input, options){
   if (!title) throw new Error('Task title cannot be empty');
   if (input.sourceKnowledgeId && !state.knowledge.some(item => item.id === input.sourceKnowledgeId)) throw new Error('Материал-источник не найден');
   const projectId = input.projectId ?? null;
-  const domainId = projectId
+  const domainId = projectId || input.domainId === null
     ? null
     : (input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null);
   if (!projectId && domainId && !state.domains.some(domain => domain.id === domainId)) {
@@ -1357,8 +1357,7 @@ export function createTaskFromKnowledge(id, input = {}, options = {}){
     const material = state.knowledge.find(item => item.id === id);
     if (!material) throw new Error('Материал-источник не найден');
     const projectId = Object.hasOwn(input, 'projectId') ? input.projectId : material.projectId;
-    const domainId = Object.hasOwn(input, 'domainId') ? input.domainId : material.domainId;
-    if (!projectId && !domainId) throw new Error('Выберите домен для задачи');
+    const domainId = (Object.hasOwn(input, 'domainId') ? input.domainId : material.domainId) ?? null;
     return createTaskMutation({ ...input, title:input.title ?? material.title,
       projectId, domainId, sourceKnowledgeId:material.id }, options);
   });

@@ -5,7 +5,7 @@ import { domainAttention } from '../../core/review-history.js';
 
 export const ATTENTION_RULES = Object.freeze({ staleDays: 30, doingCount: 4 });
 
-function ageInDays(task, now) {
+export function ageInDays(task, now) {
   const raw = task.updatedAt ?? task.createdAt;
   const time = typeof raw === 'number' ? raw : Date.parse(raw);
   return Number.isFinite(time) && time > 0

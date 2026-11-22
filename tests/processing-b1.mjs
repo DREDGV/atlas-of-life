@@ -49,6 +49,13 @@ const opts = (extra = {}) => ({
   ...extra,
 });
 
+resetState();
+const [unassigned] = captureInbox('Купить батарейки', opts({ itemType: 'task' }));
+const routedWithoutDomain = routeInboxToTask(unassigned.id, { domainId: null, title: 'Купить две батарейки' });
+assert(routedWithoutDomain.task.domainId === null, 'Explicit no domain must override the active domain');
+assert(routedWithoutDomain.task.title === 'Купить две батарейки', 'Routing can name the result separately');
+assert(unassigned.rawText === 'Купить батарейки', 'Routing must keep the original text');
+
 // Test 1: safe routing creates a Task and links both directions
 resetState();
 const captured = captureInbox('Купить удобрение для сливы', opts({ itemType: 'task' }));

@@ -37,7 +37,7 @@ try {
   await page.locator('.inbox-route select').nth(0).selectOption('d2');
   await page.locator('.inbox-route select').nth(1).selectOption('p3');
   await page.getByRole('button', { name:'Сохранить как мысль', exact:true }).click();
-  assert.match(await page.locator('.inbox-result').innerText(), /Дача \/ Сад и огород/);
+  assert.match(await page.locator('.inbox-result').innerText(), /Дача → Сад и огород/);
   await waitFor(async () => {
     await page.evaluate(() => window.atlasSync.syncNow());
     await phone.evaluate(() => window.atlasSync.syncNow());

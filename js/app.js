@@ -24,7 +24,7 @@ import { renderKnowledge } from './features/knowledge/view.js';
 import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
-import { openInboxCapture, openProcessingItem, refreshInboxAfterRemoteApply } from "./features/inbox/view.js";
+import { openInboxCapture, openProcessingItem, refreshInboxAfterRemoteApply, updateInboxCounter } from "./features/inbox/view.js";
 import { openInspectorFor } from "./inspector.js";
 import {
   captureInbox,
@@ -161,6 +161,7 @@ function updateFirstStep() {
 }
 
 function renderSidebar() {
+  updateInboxCounter();
   updateFirstStep();
   const dWrap = document.getElementById("domainsList");
   const visibleIds = getVisibleDomainIds(state.domains);
@@ -883,6 +884,7 @@ function setupQuickAdd() {
         if (!created.length) throw new Error("Не удалось сохранить запись");
         qa.value = "";
         showQuickResult("Добавлено во Входящие", "inbox", created[0].id);
+        updateInboxCounter();
         updateFirstStep();
       } else {
         const parsed = parseQuick(rawText);

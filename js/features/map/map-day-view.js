@@ -11,6 +11,22 @@ function element(tag, className, text) {
   return node;
 }
 
+export function renderUnassignedTasks(host, tasks, reveal) {
+  if (!host) return;
+  const rows = tasks.filter(task => !task.domainId && !task.projectId);
+  host.hidden = rows.length === 0;
+  const key = JSON.stringify(rows.map(task => [task.id, task.title, task.status]));
+  if (host.dataset.rows === key) return;
+  host.dataset.rows = key;
+  host.querySelector('summary').textContent = 'Без сферы · ' + rows.length;
+  host.querySelector('div').replaceChildren(...rows.map(task => {
+    const button = element('button', 'map-day-name', task.status === 'done' ? '✓ ' + task.title : task.title);
+    button.type = 'button';
+    button.onclick = () => reveal(task.id);
+    return button;
+  }));
+}
+
 export function openDayRow(id) {
   document.querySelector('.chip[data-view="today"]').click();
   const title = document.querySelector('#viewToday .todo[data-id="' + CSS.escape(String(id)) + '"] .today-task-title');
@@ -22,7 +38,7 @@ export function openDayRow(id) {
 }
 
 let signature;
-export function renderMapDay(host, model, reveal) {
+export function renderMapDay(host, model, reveal, openReturn) {
   if (!host) return;
   const nextSignature = JSON.stringify(model);
   if (nextSignature === signature && host.childElementCount) return;
@@ -53,6 +69,7 @@ export function renderMapDay(host, model, reveal) {
     const name = element('button', 'map-day-name', row.title);
     name.type = 'button';
     name.title = 'Показать на карте';
+    name.setAttribute('aria-label', row.title);
     name.dataset.key = 'map-' + row.id;
     name.onclick = () => reveal(row.id);
     if (rank) {
@@ -99,6 +116,32 @@ export function renderMapDay(host, model, reveal) {
     for (const row of model.suggestions.slice(3)) addRow(more, row);
   } else if (!model.suggestions.length && !capacity.count) {
     host.append(element('p', 'map-day-context', 'Здесь появятся задачи со сроком и выбранные шаги проектов.'));
+  }
+  if (model.returnSuggestions.length) {
+    const section = element('section', 'map-day-return');
+    section.append(element('h4', '', 'К чему пора вернуться'));
+    const more = element('details');
+    more.dataset.group = 'return';
+    more.open = expanded.has('return');
+    if (model.returnSuggestions.length > 2) {
+      const summary = element('summary', '', 'Ещё ' + (model.returnSuggestions.length - 2));
+      summary.dataset.key = 'return-more';
+      more.append(summary);
+    }
+    model.returnSuggestions.forEach((visit, index) => {
+      const entry = element('div', 'map-day-row');
+      entry.append(element('strong', 'map-day-return-title', visit.title));
+      if (visit.context) entry.append(element('small', 'map-day-context', visit.context));
+      entry.append(element('span', 'map-day-reason', visit.reason));
+      const action = element('button', 'map-day-action', visit.action);
+      action.type = 'button';
+      action.dataset.key = 'return-' + visit.type + '-' + visit.id;
+      action.onclick = () => openReturn(visit);
+      entry.append(action);
+      (index < 2 ? section : more).append(entry);
+    });
+    if (more.childElementCount) section.append(more);
+    host.append(section);
   }
   host.append(alert);
   if (focused) [...host.querySelectorAll('[data-key]')].find(el => el.dataset.key === focused)?.focus({ preventScroll: true });

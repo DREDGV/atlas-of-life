@@ -34,6 +34,7 @@ export function appendDomainReview(host, domain, reopen) {
   form.addEventListener('input', remember); form.addEventListener('change', remember);
   const save = make('button', 'Сохранить ритм'); save.type = 'submit'; save.className = 'btn';
   const review = make('button', 'Отметить обзор'); review.type = 'submit'; review.className = 'btn primary';
+  review.id = 'domainMarkReview';
   const discard = make('button', 'Сбросить черновик'); discard.type = 'button'; discard.className = 'btn';
   discard.onclick = () => { drafts.delete(domain.id); reopen(); };
   const status = make('p'); status.className = 'domain-review-status'; status.setAttribute('role', 'status');

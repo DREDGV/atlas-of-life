@@ -3,7 +3,6 @@ import { getInboxItems } from './model.js';
 import { createEditState } from './edit-state.js';
 import { createRoutingDraftState } from './routing-draft.js';
 import { openInspectorFor } from '../../inspector.js';
-import { setDomainVisible } from '../../ui/map-session.js';
 import {
   captureInbox,
   createDomain,
@@ -31,6 +30,11 @@ const editState = createEditState();
 const routingDraftState = createRoutingDraftState();
 
 const ITEM_TYPE_LABELS = { task: 'Задача', thought: 'Мысль', note: 'Заметка' };
+const ITEM_TYPE_HELP = {
+  task: 'Задача — действие, которое можно запланировать и выполнить.',
+  thought: 'Мысль — идея, из которой позже можно создать связанную задачу.',
+  note: 'Заметка — справка, которую можно сохранить рядом с делом.',
+};
 const ITEM_TYPE_ICONS = { task: '✓', thought: '💭', note: '📝' };
 const PROCESSING_STATUS_LABELS = {
   new: 'Новая',
@@ -62,9 +66,7 @@ let captureUserHint = null;
 let captureDomainHintId = null;
 let savedBannerCount = 0;
 
-// Session defaults for sequential processing: the last explicit choice the
-// user made while routing. In-memory only; nothing is auto-confirmed, and
-// Capture domainHintId always wins over these defaults.
+// The last location can be suggested during the current session.
 const sessionDefaults = { domainId: null, projectId: null, priority: null };
 
 // Local search + batch selection state (ephemeral UI state).
@@ -93,8 +95,8 @@ function isTypingTarget(target){
   );
 }
 
-function updateCounter(){
-  const count = Array.isArray(state.inbox) ? state.inbox.length : 0;
+export function updateInboxCounter(){
+  const count = state.inbox.filter(item => QUEUE_FILTERS[0].matches(item.status)).length;
   const counter = document.getElementById('inboxCount');
   if (!counter) return;
   counter.textContent = count ? String(count) : '';
@@ -105,7 +107,7 @@ function updateCounter(){
 // applied. Never interrupts an open processing card — only the list refreshes,
 // so a user mid-processing is not yanked back to the queue.
 export function refreshInboxAfterRemoteApply(){
-  updateCounter();
+  updateInboxCounter();
   if (!root || root.hidden) return;
   if (currentDialogView !== 'list') return;
   openInboxList();
@@ -120,7 +122,7 @@ function closeInbox(){
 }
 
 function commit(reason){
-  updateCounter();
+  updateInboxCounter();
   onStateChange(reason);
 }
 
@@ -160,6 +162,36 @@ function makeLabel(text){
   return label;
 }
 
+function inlineCreation(kind, example, save) {
+  const box = document.createElement('details');
+  box.className = 'inbox-create-place';
+  const toggle = document.createElement('summary');
+  toggle.textContent = kind === 'домен' ? '+ Создать сферу' : '+ Создать проект';
+  const form = document.createElement('form');
+  const input = document.createElement('input');
+  input.className = 'inbox-input';
+  input.setAttribute('aria-label', kind === 'домен' ? 'Название сферы' : 'Название проекта');
+  input.placeholder = example;
+  input.required = true;
+  const submit = document.createElement('button');
+  submit.className = 'inbox-button secondary';
+  submit.textContent = kind === 'домен' ? 'Создать сферу' : 'Создать проект';
+  const error = document.createElement('p');
+  error.setAttribute('role', 'alert');
+  form.append(input, submit, error);
+  form.onsubmit = event => {
+    event.preventDefault();
+    if (!input.value.trim()) {
+      error.textContent = 'Введите название.';
+      return;
+    }
+    try { save(input.value.trim()); }
+    catch (err) { error.textContent = err.message; }
+  };
+  box.append(toggle, form);
+  return box;
+}
+
 function makeSelect(options, className = 'inbox-select'){
   const select = document.createElement('select');
   select.className = className;
@@ -185,146 +217,124 @@ function buildRoutingControls(item){
 
   const domains = Array.isArray(state.domains) ? state.domains : [];
   const draft = routingDraftState.get(item.id) || {};
-  // Initial proposal: Capture domain hint wins, then the session default.
-  if (!Object.hasOwn(draft, 'domainId') && item.domainHintId && domains.some(domain => domain.id === item.domainHintId)) {
-    draft.domainId = item.domainHintId;
-  } else if (!Object.hasOwn(draft, 'domainId') && sessionDefaults.domainId && domains.some(domain => domain.id === sessionDefaults.domainId)) {
-    draft.domainId = sessionDefaults.domainId;
-  }
 
   const stepLabel = document.createElement('div');
   stepLabel.className = 'inbox-step-label';
-  stepLabel.textContent = 'Куда?';
+  stepLabel.textContent = 'Где это будет?';
   wrap.appendChild(stepLabel);
-  if (isKnowledge) {
-    const explanation = document.createElement('div');
-    explanation.className = 'inbox-result-meta';
-    explanation.textContent = item.itemType === 'thought'
-      ? 'Идея для развития. Сохраните рядом с проектом или доменом.'
-      : 'Сведения, к которым можно вернуться. Сохраните в нужном контексте.';
-    wrap.append(explanation);
-  }
+  const explanation = document.createElement('div');
+  explanation.className = 'inbox-help';
+  explanation.textContent = 'Выберите область жизни, например «Дом». Место можно назначить позже.';
+  wrap.append(explanation);
 
-  let domainSelect = null;
-  let projectSelect = null;
+  const taskTitle = document.createElement('input');
+  taskTitle.className = 'inbox-input inbox-route-title';
+  taskTitle.setAttribute('aria-label', 'Название задачи');
+  taskTitle.value = draft.title ?? item.text.replace(/\r?\n/g, ' ');
+  const domainSelect = makeSelect([{ value: '', text: 'Без сферы' }, ...domains.map(domain => ({
+    value: domain.id, text: domain.title,
+  }))]);
+  domainSelect.setAttribute('aria-label', 'Домен назначения');
+  domainSelect.value = domains.some(domain => domain.id === draft.domainId) ? draft.domainId : '';
+  const projectSelect = makeSelect([]);
+  projectSelect.setAttribute('aria-label', 'Проект назначения');
+  const destination = document.createElement('p');
+  destination.className = 'inbox-route-destination';
+  destination.setAttribute('role', 'status');
   let priority = draft.priority ?? sessionDefaults.priority ?? DEFAULT_PRIORITY;
   let dueDate = null;
   let dueTime = null;
 
   const saveDraft = () => {
     routingDraftState.set(item.id, {
-      domainId: domainSelect ? domainSelect.value || null : null,
-      projectId: projectSelect ? projectSelect.value || null : null,
+      title: taskTitle.value,
+      domainId: domainSelect.value || null,
+      projectId: projectSelect.value || null,
       priority,
       dueDate: dueDate ? dueDate.value : '',
       dueTime: dueTime ? dueTime.value : '',
     });
   };
-
-  // ---- Domain ----
-  const domainRow = document.createElement('div');
-  domainRow.className = 'inbox-route-row';
-  domainRow.appendChild(makeLabel('Домен'));
-
-  if (domains.length === 0) {
-    const empty = document.createElement('span');
-    empty.className = 'inbox-empty-state';
-    empty.textContent = isKnowledge ? 'Без контекста' : 'Можно сохранить без сферы или создать свою, например «Дом».';
-    domainRow.append(empty);
-  } else {
-    const draftDomainValid = domains.some(domain => domain.id === draft.domainId);
-    const defaultDomainId = isKnowledge && draft.domainId === null ? null : draftDomainValid
-      ? draft.domainId
-      : (state.activeDomain || domains[0]?.id || null);
-    domainSelect = makeSelect(
-      [...(isKnowledge ? [{ value: '', text: 'Без контекста', selected: !defaultDomainId }] : []), ...domains.map(domain => ({
-        value: domain.id,
-        text: domain.title,
-        selected: domain.id === defaultDomainId,
-      }))]
-    );
-    domainRow.appendChild(domainSelect);
-    domainSelect.setAttribute('aria-label', 'Домен назначения');
-  }
-
-    const createDomainButton = document.createElement('button');
-    createDomainButton.type = 'button';
-    createDomainButton.className = 'inbox-button secondary';
-    createDomainButton.textContent = '+ Создать домен';
-    createDomainButton.addEventListener('click', () => {
-      const title = prompt('Название домена:');
-      if (!title || !title.trim()) return;
-      let domain;
-      try { domain = createDomain({ title: title.trim() }); }
-      catch(error){ alert(error.message); return; }
-      if (domain) {
-        routingDraftState.set(item.id, {
-          ...(routingDraftState.get(item.id) || {}),
-          domainId: domain.id,
-        });
-        commit('domain:create');
-        openInboxList();
-      }
-    });
-  domainRow.append(createDomainButton);
-  wrap.appendChild(domainRow);
-
-  // ---- Project (filtered by the chosen Domain) ----
+  const row = (label, control) => {
+    const field = document.createElement('label');
+    field.className = 'inbox-route-row';
+    field.append(makeLabel(label), control);
+    return field;
+  };
+  const restorePlace = (domainId, projectId, field, reason) => {
+    saveDraft();
+    routingDraftState.set(item.id, { ...routingDraftState.get(item.id), domainId, projectId });
+    if (reason) commit(reason);
+    openInboxList();
+    root.querySelector(`[aria-label="${field} назначения"]`)?.focus();
+  };
   const projectRow = document.createElement('div');
-  projectRow.className = 'inbox-route-row';
-  projectRow.appendChild(makeLabel('Проект'));
+  projectRow.className = 'inbox-place-fields';
+  const newProject = inlineCreation('проект', 'Например, «Скрытый люк»', title => {
+    const domainId = domainSelect.value;
+    const duplicate = state.projects.find(project => project.domainId === domainId
+      && project.title.toLocaleLowerCase('ru') === title.toLocaleLowerCase('ru'));
+    if (duplicate?.lifecycle === 'completed' && !isKnowledge) throw new Error('Проект с этим названием завершён.');
+    const project = duplicate || createProject({ domainId, title });
+    restorePlace(project.domainId, project.id, 'Проект', duplicate ? null : 'project:create');
+  });
+  projectRow.append(row('Проект', projectSelect), newProject);
+  const updatePath = () => {
+    const domain = domains.find(entry => entry.id === domainSelect.value);
+    const project = state.projects.find(entry => entry.id === projectSelect.value);
+    const path = [domain?.title, project?.title].filter(Boolean).join(' → ');
+    destination.textContent = 'Где найти · ' + (isKnowledge ? 'Материалы → ' : 'Карта → ') + (path || (isKnowledge ? 'Без контекста' : 'Без сферы'));
+    explanation.textContent = domain
+      ? 'Проект нужен, когда у одного результата несколько шагов.'
+      : 'Выберите область жизни, например «Дом». Место можно назначить позже.';
+  };
+  const setProjects = (selected = '') => {
+    const projects = state.projects.filter(project => project.domainId === domainSelect.value && (isKnowledge || project.lifecycle !== 'completed'));
+    projectSelect.replaceChildren(new Option('Без проекта', ''), ...projects.map(project => new Option(project.title, project.id)));
+    projectSelect.value = projects.some(project => project.id === selected) ? selected : '';
+    projectRow.hidden = !domainSelect.value;
+    newProject.open = false;
+    updatePath();
+  };
+  domainSelect.onchange = () => { setProjects(); saveDraft(); };
+  projectSelect.onchange = () => { updatePath(); saveDraft(); };
+  taskTitle.oninput = saveDraft;
+  setProjects(draft.projectId);
 
-  if (domains.length > 0) {
-    projectSelect = makeSelect([]);
-    projectSelect.setAttribute('aria-label', 'Проект назначения');
-    const repopulateProjects = () => {
-      projectSelect.replaceChildren();
-      projectSelect.appendChild(new Option('Без проекта', ''));
-      const domainId = domainSelect.value;
-      const projects = state.projects.filter(project => project.domainId === domainId && (isKnowledge || project.lifecycle !== 'completed'));
-      if (projects.length === 0) {
-        const none = new Option('Нет проектов', '');
-        none.disabled = true;
-        projectSelect.appendChild(none);
-      }
-      projects.forEach(project => projectSelect.appendChild(new Option(project.title, project.id)));
-      const effectiveProjectId = Object.hasOwn(draft, 'projectId') ? draft.projectId : sessionDefaults.projectId ?? null;
-      if (effectiveProjectId && projects.some(project => project.id === effectiveProjectId)) {
-        projectSelect.value = effectiveProjectId;
-      } else {
-        projectSelect.value = '';
-      }
-    };
-    domainSelect.addEventListener('change', () => {
-      repopulateProjects();
+  const newDomain = inlineCreation('домен', 'Например, «Дом и ремонт»', title => {
+    const duplicate = domains.find(domain => domain.title.toLocaleLowerCase('ru') === title.toLocaleLowerCase('ru'));
+    const domain = duplicate || createDomain({ title });
+    restorePlace(domain.id, null, 'Домен', duplicate ? null : 'domain:create');
+  });
+  wrap.append(row('Сфера', domainSelect), newDomain, projectRow);
+  if (!isKnowledge) {
+    const titleDetails = document.createElement('details');
+    titleDetails.className = 'inbox-create-place';
+    const titleSummary = document.createElement('summary');
+    titleSummary.textContent = 'Уточнить название задачи';
+    titleDetails.open = taskTitle.value !== item.text.replace(/\r?\n/g, ' ');
+    titleDetails.append(titleSummary, row('Название', taskTitle));
+    taskTitle.addEventListener('focus', () => { titleDetails.open = true; });
+    wrap.append(titleDetails);
+  }
+  const hintedDomain = domains.find(domain => domain.id === item.domainHintId);
+  const suggestedDomain = hintedDomain || domains.find(domain => domain.id === sessionDefaults.domainId);
+  if (!Object.hasOwn(draft, 'domainId') && suggestedDomain) {
+    const suggestedProject = !hintedDomain && state.projects.find(project => project.id === sessionDefaults.projectId
+      && project.domainId === suggestedDomain.id && (isKnowledge || project.lifecycle !== 'completed'));
+    const suggestion = document.createElement('button');
+    suggestion.type = 'button';
+    suggestion.className = 'inbox-button secondary inbox-place-suggestion';
+    suggestion.textContent = (hintedDomain ? 'Из захвата · ' : 'Прошлое назначение · ') + [suggestedDomain.title, suggestedProject?.title].filter(Boolean).join(' → ');
+    suggestion.onclick = () => {
+      domainSelect.value = suggestedDomain.id;
+      setProjects(suggestedProject?.id);
       saveDraft();
-    });
-    repopulateProjects();
-
-    const createProjectButton = document.createElement('button');
-    createProjectButton.type = 'button';
-    createProjectButton.className = 'inbox-button secondary';
-    createProjectButton.textContent = '+ Создать проект';
-    createProjectButton.disabled = !domainSelect.value;
-    domainSelect.addEventListener('change', () => { createProjectButton.disabled = !domainSelect.value; });
-    createProjectButton.addEventListener('click', () => {
-      const title = prompt('Название проекта:');
-      if (!title || !title.trim()) return;
-      let project;
-      try { project = createProject({ domainId:domainSelect.value, title:title.trim() }); }
-      catch(error){ alert(error.message); return; }
-      if (project) {
-        routingDraftState.set(item.id, {
-          ...(routingDraftState.get(item.id) || {}),
-          domainId: domainSelect.value,
-          projectId: project.id,
-        });
-        commit('project:create');
-        openInboxList();
-      }
-    });
-    projectRow.append(projectSelect, createProjectButton);
-    wrap.appendChild(projectRow);
+      domainSelect.focus();
+      suggestion.remove();
+    };
+    domainSelect.addEventListener('change', () => suggestion.remove(), { once: true });
+    wrap.insertBefore(suggestion, newDomain);
   }
 
   // ---- Priority ----
@@ -357,6 +367,7 @@ function buildRoutingControls(item){
   dueDateLabel.textContent = 'Дата';
   dueDate = document.createElement('input');
   dueDate.type = 'date';
+  dueDate.setAttribute('aria-label', 'Дата срока');
   dueDate.className = 'inbox-input inbox-input--date';
   if (draft.dueDate) dueDate.value = draft.dueDate;
   dueDate.addEventListener('input', saveDraft);
@@ -373,6 +384,7 @@ function buildRoutingControls(item){
   dueTimeLabel.appendChild(dueTimeOptional);
   dueTime = document.createElement('input');
   dueTime.type = 'time';
+  dueTime.setAttribute('aria-label', 'Время срока');
   dueTime.className = 'inbox-input inbox-input--time';
   if (draft.dueTime) dueTime.value = draft.dueTime;
   dueTime.addEventListener('input', saveDraft);
@@ -384,29 +396,42 @@ function buildRoutingControls(item){
   submit.className = 'inbox-button primary';
   submit.textContent = isKnowledge ? (item.itemType === 'thought' ? 'Сохранить как мысль' : 'Сохранить как заметку') : 'Создать задачу';
   submit.dataset.routeSubmit = 'true';
+  const routeError = document.createElement('p');
+  routeError.className = 'inbox-route-error';
+  routeError.setAttribute('role', 'alert');
   submit.addEventListener('click', () => {
     const due = dueDate.value
       ? { date: dueDate.value, time: dueTime.value || null }
       : null;
-    const projectId = projectSelect ? projectSelect.value || null : null;
-    const domainId = projectId ? undefined : (domainSelect ? domainSelect.value || null : null);
+    const projectId = projectSelect.value || null;
+    const domainId = domainSelect.value || null;
+    if (!isKnowledge && !taskTitle.value.trim()) {
+      routeError.textContent = 'Введите название задачи.';
+      taskTitle.focus();
+      return;
+    }
     try {
-      const result = (isKnowledge ? routeInboxToKnowledge : routeInboxToTask)(item.id, { projectId, domainId, priority, due });
+      const result = (isKnowledge ? routeInboxToKnowledge : routeInboxToTask)(item.id, {
+        projectId, domainId, priority, due, title: taskTitle.value.trim(),
+      });
       if (result) {
         routingDraftState.clear(item.id);
-        sessionDefaults.domainId = domainSelect ? domainSelect.value || null : null;
-        sessionDefaults.projectId = projectSelect ? projectSelect.value || null : null;
+        sessionDefaults.domainId = domainId;
+        sessionDefaults.projectId = projectId;
         sessionDefaults.priority = priority;
         commit('inbox:route');
         lastRouteId = item.id;
         if (isKnowledge) { queueFilter = 'done'; activeProcessingId = item.id; }
+      } else {
+        routeError.textContent = 'Запись больше недоступна.';
+        return;
       }
     } catch (error) {
-      if (typeof window.showToast === 'function') {
-        window.showToast(error?.message || 'Не удалось создать задачу', 'warn');
-      }
+      routeError.textContent = 'Не удалось сохранить. ' + error.message;
+      return;
     }
     openInboxList();
+    root.querySelector('.inbox-result button.primary')?.focus();
   });
 
   const priorityRow = document.createElement('div');
@@ -439,8 +464,9 @@ function buildRoutingControls(item){
   submitRow.append(submit);
 
   if (!isKnowledge) wrap.append(extraToggle, extraSection);
-  wrap.append(submitRow);
-  projectSelect?.addEventListener('change', saveDraft);
+  submitRow.classList.add('inbox-route-confirm');
+  submitRow.prepend(destination);
+  wrap.append(submitRow, routeError);
   return wrap;
 }
 
@@ -460,7 +486,7 @@ function buildLinkedResult(item, task){
   if (task) {
     const taskProject = state.projects.find(project => project.id === task.projectId);
     const taskDomain = state.domains.find(domain => domain.id === (task.domainId || taskProject?.domainId));
-    const location = [taskDomain?.title, taskProject?.title].filter(Boolean).join(' / ') || 'Без контекста';
+    const location = [taskDomain?.title, taskProject?.title].filter(Boolean).join(' → ') || (knowledge ? 'Материалы → Без контекста' : 'Карта → Без сферы');
     if (location) {
       const locSpan = document.createElement('span');
       locSpan.textContent = location;
@@ -492,29 +518,18 @@ function buildLinkedResult(item, task){
     open.textContent = knowledge ? 'Открыть результат' : 'Открыть задачу';
     open.addEventListener('click', () => {
       closeInbox();
-      // Reveal the task on the map and focus its inspector: switch to the map
-      // view, ensure its domain is visible, then center the camera on the task.
+      if (!knowledge) {
+        window.mapApi?.openTask?.(task.id);
+        return;
+      }
       const taskProject = state.projects.find(project => project.id === task.projectId);
       const domainId = task.domainId || taskProject?.domainId || null;
       if (domainId) {
-        state.activeDomain = domainId;
-        setDomainVisible(domainId, true, state.domains);
+        window.mapApi?.openArea?.({ type: taskProject ? 'project' : 'domain', id: taskProject?.id || domainId, domainId });
+      } else {
+        document.querySelector('.chip[data-view="knowledge"]')?.click();
       }
-      state.view = 'map';
-      window.renderKnowledge?.();
-      const canvasEl = document.getElementById('canvas');
-      const todayEl = document.getElementById('viewToday');
-      if (canvasEl) canvasEl.style.display = 'block';
-      if (todayEl) todayEl.style.display = 'none';
-      document.querySelectorAll('.chip[data-view]').forEach(chip => {
-        chip.classList.toggle('active', chip.dataset.view === 'map');
-      });
-      try { if (window.renderSidebar) window.renderSidebar(); } catch (_) {}
-      const mapApi = window.mapApi || {};
-      try { if (mapApi.layoutMap) mapApi.layoutMap(); } catch (_) {}
-      try { if (mapApi.drawMap) mapApi.drawMap(); } catch (_) {}
-      try { if (knowledge && domainId) mapApi.fitDomain?.(domainId); else if (!knowledge && mapApi.fitTask) mapApi.fitTask(task.id); } catch (_) {}
-      openInspectorFor({ ...task, _type: knowledge ? 'knowledge' : 'task' });
+      openInspectorFor({ ...task, _type: 'knowledge' });
     });
     actions.appendChild(open);
   }
@@ -746,6 +761,7 @@ function renderDisplayRow(item){
     { value: null, label: 'Без типа' },
   ];
   typeOptions.forEach(({ value, label }) => {
+    if (!value && !item.itemType) return;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'inbox-type-button';
@@ -756,34 +772,27 @@ function renderDisplayRow(item){
     button.textContent = label;
     button.addEventListener('click', () => {
       if ((item.itemType ?? null) === value) return;
-      if (updateInbox(item.id, { itemType: value })) commit('inbox:update');
-      openInboxList();
+      try {
+        if (updateInbox(item.id, { itemType: value })) commit('inbox:update');
+        openInboxList();
+        root.querySelector(`[data-item-type="${value || 'task'}"]`)?.focus({ preventScroll: true });
+      } catch (error) {
+        window.showToast?.(error.message, 'warn');
+      }
     });
     typeBar.appendChild(button);
   });
 
-  const isTask = item.itemType === 'task';
   const isRouted = !!item.resultRef;
   // Final states without a routed Task: processed Thought/Note or discarded.
   const isFinalized = !isRouted && (item.status === 'processed' || item.status === 'discarded');
 
-  body.append(text, meta);
-
-  // Capture hints are proposals, never confirmed routing.
-  const hintBits = [];
-  if (item.userHint) {
-    hintBits.push(`Подсказка: ${ITEM_TYPE_LABELS[item.userHint] || item.userHint}`);
-  }
-  if (item.domainHintId) {
-    const hintDomain = state.domains.find(domain => domain.id === item.domainHintId);
-    if (hintDomain) hintBits.push(`Предложенный домен: ${hintDomain.title}`);
-  }
-  if (hintBits.length > 0) {
-    const hintLine = document.createElement('div');
-    hintLine.className = 'inbox-hint-line';
-    hintLine.textContent = hintBits.join(' · ');
-    body.appendChild(hintLine);
-  }
+  body.append(text);
+  const details = document.createElement('details');
+  details.className = 'inbox-record-tools';
+  const detailsLabel = document.createElement('summary');
+  detailsLabel.textContent = 'Действия и исходник';
+  details.append(detailsLabel, meta);
 
   // Read-only provenance: rawText, source, input type, capture time.
   const provenanceToggle = document.createElement('button');
@@ -837,7 +846,7 @@ function renderDisplayRow(item){
     provenanceBlock.hidden = !open;
     provenanceToggle.textContent = open ? '▾ Исходник' : '▸ Исходник';
   });
-  body.append(provenanceToggle, provenanceBlock);
+  details.append(provenanceToggle, provenanceBlock);
 
   if (isRouted) {
     const resultTask = (item.resultRef.type === 'knowledge' ? state.knowledge : state.tasks).find(task => task.id === item.resultRef.id);
@@ -852,10 +861,15 @@ function renderDisplayRow(item){
     questionLabel.textContent = 'Что это?';
     body.appendChild(questionLabel);
     body.appendChild(typeBar);
+    const hint = document.createElement('p');
+    hint.className = 'inbox-type-help inbox-help';
+    hint.textContent = ITEM_TYPE_HELP[item.itemType] || 'Сделать дело, обдумать идею или сохранить справку.';
+    if (!item.itemType && item.userHint) {
+      hint.textContent += ' Подсказка из захвата · ' + (ITEM_TYPE_LABELS[item.userHint] || item.userHint) + '.';
+    }
+    body.append(hint);
 
-    if (isTask) {
-      body.appendChild(buildRoutingControls(item));
-    } else if (item.itemType === 'thought' || item.itemType === 'note') {
+    if (ITEM_TYPE_HELP[item.itemType]) {
       body.appendChild(buildRoutingControls(item));
     }
   }
@@ -903,10 +917,10 @@ function renderDisplayRow(item){
     });
     actions.appendChild(remove);
 
-    row.append(body, actions);
-  } else {
-    row.append(body);
+    details.append(actions);
   }
+  body.append(details);
+  row.append(body);
   return row;
 }
 
@@ -1137,12 +1151,15 @@ function computeVisibleItems(){
   const activeFilter = QUEUE_FILTERS.find(filter => filter.key === queueFilter) || QUEUE_FILTERS[QUEUE_FILTERS.length - 1];
   const allItems = getInboxItems();
   const query = searchQuery.trim().toLowerCase();
+  const resultTitles = new Map(query ? [...state.tasks, ...state.knowledge].map(item => [item.id, item.title]) : []);
   return allItems.filter(item => {
     if (!activeFilter.matches(item.status)) return false;
+    if (batchMode && !QUEUE_FILTERS[0].matches(item.status)) return false;
     if (!query) return true;
     const haystack = [
       item.text,
       item.rawText,
+      resultTitles.get(item.resultRef?.id) || item.resultRef?.title || '',
       item.itemType ? (ITEM_TYPE_LABELS[item.itemType] || item.itemType) : '',
       item.domainHintId ? (state.domains.find(domain => domain.id === item.domainHintId)?.title || '') : '',
     ].join(' ').toLowerCase();
@@ -1188,7 +1205,7 @@ function batchAssignDomain(domainId){
     applied += 1;
   }
   commit('batch:domain');
-  if (typeof window.showToast === 'function') window.showToast(`Домен назначен: ${applied}`, 'ok');
+  if (typeof window.showToast === 'function') window.showToast(`Подсказка сферы добавлена к записям: ${applied}`, 'ok');
   openInboxList();
 }
 
@@ -1205,10 +1222,11 @@ function batchCreateTasks(projectId, domainId, priority){
     try {
       routeInboxToTask(id, {
         projectId: projectId || undefined,
-        domainId: projectId ? undefined : (domainId || undefined),
+        domainId: projectId ? undefined : (domainId || null),
         priority,
       });
       created += 1;
+      batchSelection.delete(id);
     } catch (error) {
       commit('batch:route-partial');
       if (typeof window.showToast === 'function') {
@@ -1243,6 +1261,7 @@ function renderBatchBar(container){
     button.type = 'button';
     button.className = 'inbox-type-button';
     button.dataset.batchType = type;
+    button.disabled = !batchSelection.size;
     button.textContent = `${ITEM_TYPE_ICONS[type]} ${ITEM_TYPE_LABELS[type]}`;
     button.addEventListener('click', () => batchSetType(type));
     typeBar.appendChild(button);
@@ -1252,37 +1271,44 @@ function renderBatchBar(container){
   discardButton.type = 'button';
   discardButton.className = 'inbox-button secondary';
   discardButton.textContent = 'Отбросить';
+  discardButton.disabled = !batchSelection.size;
   discardButton.addEventListener('click', batchDiscard);
 
   const domainSelect = makeSelect([
-    { value: '', text: 'Домен: —', selected: batchDomainId === '' },
+    { value: '', text: 'Без сферы', selected: batchDomainId === '' },
     ...(Array.isArray(state.domains) ? state.domains : []).map(domain => ({
       value: domain.id,
       text: domain.title,
       selected: domain.id === batchDomainId,
     })),
   ]);
+  domainSelect.setAttribute('aria-label', 'Сфера для выбранных задач');
+  const hintButton = document.createElement('button');
+  hintButton.type = 'button';
+  hintButton.className = 'inbox-button secondary';
+  hintButton.textContent = 'Добавить подсказку сферы';
+  hintButton.addEventListener('click', () => batchAssignDomain(domainSelect.value));
   domainSelect.addEventListener('change', () => {
     batchDomainId = domainSelect.value;
-    batchAssignDomain(batchDomainId || '');
+    batchProjectId = '';
+    repopulate();
   });
 
-  const projectSelect = makeSelect([{ value: '', text: 'Проект: —', selected: true }]);
+  const projectSelect = makeSelect([]);
+  projectSelect.setAttribute('aria-label', 'Проект для выбранных задач');
   const repopulate = () => {
-    projectSelect.replaceChildren();
-    projectSelect.appendChild(new Option('Проект: —', ''));
+    projectSelect.replaceChildren(new Option('Без проекта', ''));
     state.projects
-      .filter(project => project.domainId === batchDomainId)
+      .filter(project => project.domainId === domainSelect.value && project.lifecycle !== 'completed')
       .forEach(project => {
         const option = new Option(project.title, project.id);
         if (project.id === batchProjectId) option.selected = true;
         projectSelect.appendChild(option);
       });
+    batchProjectId = projectSelect.value;
+    hintButton.disabled = !domainSelect.value || !batchSelection.size;
+    projectSelect.disabled = !domainSelect.value;
   };
-  domainSelect.addEventListener('change', () => {
-    batchProjectId = '';
-    repopulate();
-  });
   projectSelect.addEventListener('change', () => {
     batchProjectId = projectSelect.value;
   });
@@ -1314,13 +1340,13 @@ function renderBatchBar(container){
   const createButton = document.createElement('button');
   createButton.type = 'button';
   createButton.className = 'inbox-button primary';
-  createButton.textContent = `Создать ${taskCount} задач`;
+  createButton.textContent = `Создать ${taskCount} ${taskCount === 1 ? 'задачу' : taskCount >= 2 && taskCount <= 4 ? 'задачи' : 'задач'}`;
   createButton.disabled = taskCount === 0;
   createButton.addEventListener('click', () => {
     batchCreateTasks(batchProjectId || null, batchDomainId || null, batchPriority);
   });
 
-  bar.append(count, typeBar, discardButton, domainSelect, projectSelect, priorityBar, createButton);
+  bar.append(count, typeBar, discardButton, domainSelect, projectSelect, hintButton, priorityBar, createButton);
   container.appendChild(bar);
 }
 
@@ -1328,16 +1354,18 @@ function renderBatchRows(container, items){
   const list = document.createElement('div');
   list.className = 'inbox-list';
   items.forEach(item => {
-    const row = document.createElement('article');
+    const row = document.createElement('label');
     row.className = 'inbox-row inbox-row--batch';
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = batchSelection.has(item.id);
+    checkbox.dataset.batchId = item.id;
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) batchSelection.add(item.id);
       else batchSelection.delete(item.id);
       openInboxList();
+      root.querySelector(`[data-batch-id="${CSS.escape(item.id)}"]`)?.focus({ preventScroll: true });
     });
 
     const text = document.createElement('div');
@@ -1354,33 +1382,31 @@ function renderBatchRows(container, items){
 export function openInboxList(){
   createShell();
   root.hidden = false;
-  setBodyTitle('Входящие · разбор');
+  setBodyTitle('Входящие');
   savedBannerCount = 0;
   currentDialogView = 'list';
   const body = document.getElementById('inboxDialogBody');
+  const keepTools = body.querySelector('.inbox-queue-tools')?.open;
   body.innerHTML = '';
 
   const toolbar = document.createElement('div');
   toolbar.className = 'inbox-toolbar';
-  const summary = document.createElement('div');
-  summary.className = 'inbox-summary';
   const allItems = getInboxItems();
   const remainingCount = allItems.filter(item => item.status === 'new' || item.status === 'reviewed').length;
-  summary.textContent = allItems.length === 0
-    ? 'Здесь пусто.'
-    : `К разбору: ${remainingCount}`;
   const captureButton = document.createElement('button');
   captureButton.type = 'button';
   captureButton.className = 'inbox-button inbox-button--capture';
   captureButton.textContent = '+ Записать';
   captureButton.addEventListener('click', openInboxCapture);
-  toolbar.append(summary, captureButton);
   body.appendChild(toolbar);
+  let routeReceipt;
   if(queueFilter==='review' && lastRouteId){
     const item=state.inbox.find(i=>i.id===lastRouteId);
     const task=state.tasks.find(t=>t.id===item?.resultRef?.id);
     if(item?.resultRef && task){
       const receipt=document.createElement('section');receipt.className='inbox-route-receipt';
+      routeReceipt = receipt;
+      receipt.hidden = batchMode;
       const heading=document.createElement('strong');heading.textContent='Задача создана — можно открыть или продолжить разбор';
       const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='inbox-button secondary';dismiss.textContent='Скрыть результат';
       dismiss.onclick=()=>{lastRouteId=null;receipt.remove();};
@@ -1398,7 +1424,6 @@ export function openInboxList(){
   searchInput.value = searchQuery;
   searchInput.setAttribute('aria-label', 'Найти во входящих');
   searchRow.appendChild(searchInput);
-  body.appendChild(searchRow);
 
   // One control strip: queue filters on the left, batch mode switch on the right.
   const batchToggle = document.createElement('button');
@@ -1410,6 +1435,7 @@ export function openInboxList(){
     batchMode = !batchMode;
     if (!batchMode) batchSelection.clear();
     openInboxList();
+    root.querySelector('.inbox-mode-toggle')?.focus();
   });
 
   // Processing queue filters, mapped onto the existing statuses.
@@ -1422,18 +1448,31 @@ export function openInboxList(){
     button.dataset.queueFilter = filter.key;
     if (filter.key === queueFilter) button.classList.add('is-active');
     button.textContent = filter.label;
+    button.setAttribute('aria-pressed', String(filter.key === queueFilter));
+    if (filter.key === 'review' && remainingCount) {
+      const count = document.createElement('span');
+      count.className = 'inbox-queue-count';
+      count.textContent = remainingCount;
+      button.append(count);
+    }
     button.addEventListener('click', () => {
       queueFilter = filter.key;
-      if (queueFilter !== 'review') batchSelection.clear();
+      batchSelection.clear();
+      if (queueFilter === 'done') batchMode = false;
       openInboxList();
     });
     filters.appendChild(button);
   });
 
-  const controlsRow = document.createElement('div');
-  controlsRow.className = 'inbox-controls-row';
-  controlsRow.append(filters, batchToggle);
-  body.appendChild(controlsRow);
+  toolbar.append(filters, captureButton);
+  const tools = document.createElement('details');
+  tools.className = 'inbox-queue-tools';
+  tools.open = Boolean(keepTools || batchMode || searchQuery);
+  const toolsTitle = document.createElement('summary');
+  toolsTitle.textContent = 'Поиск и выбор';
+  tools.append(toolsTitle, searchRow);
+  if (queueFilter !== 'done') tools.append(batchToggle);
+  body.insertBefore(tools, toolbar.nextSibling);
 
   const listWrap = document.createElement('div');
   body.appendChild(listWrap);
@@ -1443,8 +1482,7 @@ export function openInboxList(){
   kbdHint.className = 'inbox-kbd-hint';
   kbdHint.innerHTML =
     '<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> тип · <kbd>J</kbd>/<kbd>K</kbd> запись · <kbd>Enter</kbd> готово · <kbd>Esc</kbd> свернуть';
-  kbdHint.setAttribute('aria-hidden', 'true');
-  body.appendChild(kbdHint);
+  if (!batchMode) tools.append(kbdHint);
 
   const renderQueue = () => {
     listWrap.replaceChildren();
@@ -1459,7 +1497,8 @@ export function openInboxList(){
       const activeItem = items.find(item => item.id === activeProcessingId) || items[0] || null;
       // Started actually processing -> reviewed (automatic, Core command).
       if (activeItem && activeItem.status === 'new' && !activeItem.resultRef) {
-        updateInbox(activeItem.id, { status: 'reviewed' });
+        try { updateInbox(activeItem.id, { status: 'reviewed' }); }
+        catch (error) { window.showToast?.(error.message, 'warn'); }
       }
     }
 
@@ -1528,6 +1567,8 @@ export function openInboxList(){
 
   searchInput.addEventListener('input', () => {
     searchQuery = searchInput.value;
+    if (batchMode) batchSelection.clear();
+    if (routeReceipt) routeReceipt.hidden = batchMode || Boolean(searchQuery.trim());
     renderQueue();
   });
 
@@ -1537,7 +1578,7 @@ export function openInboxList(){
 export function initInbox(options = {}){
   onStateChange = options.onStateChange || (() => {});
   createShell();
-  updateCounter();
+  updateInboxCounter();
   document.getElementById('btnInbox')?.addEventListener('click', openInboxList);
   document.addEventListener('keydown', event => {
     if (!root || root.hidden) return;
@@ -1609,13 +1650,12 @@ export function initInbox(options = {}){
 
     // Enter — the unambiguous primary action (Thought/Note → processed).
     if (key === 'Enter') {
-      if (event.target instanceof HTMLButtonElement) return; // native click wins
+      if (event.target instanceof Element && event.target.closest('button, summary, select, a, input')) return;
       const item = state.inbox.find(entry => entry.id === activeProcessingId);
       if (!item || item.resultRef) return;
       if (item.itemType !== 'thought' && item.itemType !== 'note') return;
       if (item.status === 'processed' || item.status === 'discarded') return;
       root.querySelector('[data-route-submit]')?.click();
-      openInboxList();
       event.preventDefault();
     }
   });
