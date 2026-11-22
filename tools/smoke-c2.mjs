@@ -4,7 +4,7 @@
 // separate storage talk over real HTTP to the Atlas Sync service:
 //
 //   phone captures → desktop routes the item to a Task → phone shows a
-//   readable result card → desktop edits the Task → phone follows →
+//   readable result card → desktop moves, undoes and edits the Task → phone follows →
 //   desktop deletes the Task → phone shows the honest fallback.
 //
 // Asserts on the phone that NO Task copy exists (no Task CRUD replication).
@@ -76,8 +76,8 @@ try {
 
   await pageB.evaluate(async () => {
     const { createDomain, createProject, updateInbox, routeInboxToTask } = await import('/js/core/commands.js');
-    const domain = createDomain({ title: 'Мастерская' });
-    const project = createProject({ title: 'Ремонт', domainId: domain.id });
+    const domain = createDomain({ title: 'Дача' });
+    const project = createProject({ title: 'Сад и огород', domainId: domain.id });
     const item = window.state.inbox[0];
     updateInbox(item.id, { itemType: 'task' });
     routeInboxToTask(item.id, { projectId: project.id, priority: 3, due: { date: '2026-08-24', time: '10:00' } });
@@ -114,6 +114,25 @@ try {
   assert(card.tasks === 0, 'phone must not hold a Task copy (no Task CRUD replication)');
   assert(card.projections === 1, 'phone holds exactly one projection');
   log('result-card', 'phone renders: ✓ Разобрана · Починить калитку · Сад и огород · Дача · Высокий · 24 августа');
+
+  await pageB.evaluate(async () => {
+    const { createDomain, createProject } = await import('/js/core/commands.js');
+    const domain = createDomain({ title: 'Мастерская' });
+    createProject({ title: 'Ремонт', domainId: domain.id });
+    window.mapApi.openTask(window.state.tasks.find(task => task.sourceInboxId).id);
+  });
+  const waitForLocation = label => waitFor(async () => {
+    await pageA.evaluate(() => window.atlasSync.syncNow());
+    return (await pageA.locator('.inbox-result-line').allTextContents()).includes(label);
+  }, { timeout: 45000, label });
+  await pageB.locator('#taskPlace summary').click();
+  await pageB.locator('#taskPlaceDomain').selectOption({ label: 'Мастерская' });
+  await pageB.locator('#taskPlaceProject').selectOption({ label: 'Ремонт' });
+  await pageB.getByRole('button', { name: 'Сохранить место', exact: true }).click();
+  await waitForLocation('Мастерская · Ремонт');
+  await pageB.locator('#taskMoveUndo').click();
+  await waitForLocation('Дача · Сад и огород');
+  log('placement', 'Capture received the new address and the original address after undo');
 
   // --- 5. Desktop edits the Task → phone follows -------------------------------
   await pageB.evaluate(async () => {
