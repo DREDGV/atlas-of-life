@@ -36,6 +36,7 @@ import { drawAtlasScene } from "./features/map/scene.js";
 import { renderMapNavigator } from "./features/map/navigator.js";
 import { containsTerritory, projectRadius } from "./features/map/geometry.js";
 import { expandedCompletedProjects } from './ui/map-session.js';
+import { showStudioPanel } from './ui/studio-panels.js';
 import { withSpatialAddresses } from './core/spatial-address.js';
 
 let attentionSnapshot = new Map();
@@ -77,6 +78,7 @@ function openReturnSuggestion(visit) {
     return;
   }
   openAttentionArea(visit);
+  showStudioPanel('details', { focus: false });
   const project = visit.type === 'project' && state.projects.find(project => project.id === visit.id);
   const selector = visit.type === 'domain' ? '#domainMarkReview'
     : project?.lifecycle === 'paused' ? '[name="lifecycle"]' : '[name="nextActionId"]';
@@ -653,7 +655,7 @@ export function initMap(canvasEl) {
   // region while the Inspector shows the same object.
   canvas.setAttribute("tabindex", "0");
   canvas.setAttribute("role", "application");
-  canvas.setAttribute("aria-label", "Карта жизни: домены, проекты и задачи. Стрелки — перемещение по задачам, Enter — открыть в инспекторе.");
+  canvas.setAttribute("aria-label", "Карта жизни: сферы, проекты и задачи. Стрелки — перемещение по задачам, Enter — открыть в инспекторе.");
   liveRegionEl = document.getElementById("mapLiveRegion");
   canvas.addEventListener("keydown", onKeyDown);
   canvas.addEventListener("blur", () => {
@@ -664,19 +666,28 @@ export function initMap(canvasEl) {
   const emptyAddButton = document.getElementById("mapEmptyAddDomain");
   if (emptyAddButton) {
     emptyAddButton.onclick = () => {
+      showStudioPanel('list', { focus: false });
       const sidebarAddButton = document.getElementById("btnAddDomain");
       if (sidebarAddButton) sidebarAddButton.click();
     };
   }
   resize();
-  window.addEventListener("resize", () => {
+  const wrap = document.getElementById('canvasWrap');
+  const reflowMap = () => {
+    const rect = wrap.getBoundingClientRect();
+    if (canvas.style.width === `${rect.width}px` && canvas.style.height === `${rect.height}px`
+      && DPR === Math.max(1, Math.min(2, window.devicePixelRatio || 1))) return;
     resize();
     // Domain rows depend on the current canvas width. Rebuild their world
     // positions before fitting the camera, otherwise a narrow layout keeps
     // the stale desktop row geometry (and vice versa).
     layoutMap();
-    try { fitAll(); } catch(_) {}
-  });
+    const selection = nodes.find(node => node.id === selectedNodeId);
+    if (selection?._type === 'task') fitTask(selection.id, { includeDomain: false });
+    else fitAll();
+  };
+  window.addEventListener("resize", reflowMap);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(reflowMap).observe(wrap);
   canvas.addEventListener("mousemove", onMouseMove);
   canvas.addEventListener("mousedown", onMouseDown);
   window.addEventListener("mouseup", () => (viewState.dragging = false));
@@ -934,10 +945,11 @@ export function fitTask(taskId, { includeDomain = true } = {}) {
       (n) => n._type === "project" && n.id === task.projectId
     );
     if (pNode) {
-      minX = Math.min(minX, pNode.x - pNode.r);
-      minY = Math.min(minY, pNode.y - pNode.r);
-      maxX = Math.max(maxX, pNode.x + pNode.r);
-      maxY = Math.max(maxY, pNode.y + pNode.r);
+      const radius = includeDomain ? pNode.r : projectRadius(pNode, DPR);
+      minX = Math.min(minX, pNode.x - radius);
+      minY = Math.min(minY, pNode.y - radius);
+      maxX = Math.max(maxX, pNode.x + radius);
+      maxY = Math.max(maxY, pNode.y + radius);
       const dNode = nodes.find((n) => n._type === "domain" && n.id === pNode.parent);
       if (dNode && includeDomain) {
         minX = Math.min(minX, dNode.x - dNode.r);
@@ -1286,7 +1298,7 @@ export function drawMap() {
   if (emptyStateEl) emptyStateEl.hidden = nodes.length > 0 || state.domains.length > 0 || state.tasks.length > 0;
 
   drawAtlasScene(ctx, {
-    nodes, facts: attentionSnapshot, camera: viewState, dpr: DPR,
+    nodes, facts: attentionSnapshot, camera: viewState, dpr: DPR, width: W,
     light: mapThemeIsLight(), selected: selectedNodeId, hovered: hoverNodeId,
     keyboard: kbdNodeId, emphasis: taskEmphasis, knowledgeCounts: knowledgeCountFor(nodes, state.knowledge),
     edges, showLinks: state.showLinks, showAging: state.showAging, showGlow: state.showGlow && allowGlow,

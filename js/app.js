@@ -25,6 +25,7 @@ import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
 import { openInboxCapture, openProcessingItem, refreshInboxAfterRemoteApply, updateInboxCounter } from "./features/inbox/view.js";
+import { setupStudioPanels, showStudioPanel } from "./ui/studio-panels.js";
 import { openInspectorFor } from "./inspector.js";
 import {
   captureInbox,
@@ -50,7 +51,7 @@ import { createSyncBadge, openSyncModal } from "./sync/ui.js";
 // I18N
 const I18N = {
   views: { map: "Карта", today: "Сегодня" },
-  sidebar: { domains: "Домены", filters: "Фильтры" },
+  sidebar: { domains: "Сферы", filters: "Фильтры" },
   hints: { quick: "Шорткаты: #тег @проект !сегодня 10:00 ~30м" },
   actions: { export: "Экспорт", import: "Импорт" },
   toggles: {
@@ -168,7 +169,7 @@ function renderSidebar() {
   let html = "";
   if (ui.newDomain) {
     html += `<div class="row" id="newDomRow" style="gap:6px;flex-wrap:wrap">
-      <input id="newDomName" placeholder="Название домена" style="flex:1;min-width:140px;background:#0e172a;border:1px solid #1a2947;border-radius:8px;color:#e8f0fb;padding:6px 8px"/>
+      <input id="newDomName" placeholder="Название сферы" style="flex:1;min-width:140px;background:#0e172a;border:1px solid #1a2947;border-radius:8px;color:#e8f0fb;padding:6px 8px"/>
       <div id="newDomColors" style="display:flex;gap:6px;align-items:center">${palette
         .map(
           (c) =>
@@ -182,7 +183,7 @@ function renderSidebar() {
     </div>`;
   } else {
     html += `<div class="domain-toolbar">
-      <button class="btn" id="btnAddDomain">+ Домен</button>
+      <button class="btn" id="btnAddDomain">+ Сфера</button>
       <button class="domain-show-all" id="showAllDomains" type="button">Показать все</button>
       <span class="domain-visible-count">Показано ${visibleIds.size} из ${state.domains.length}</span>
     </div>`;
@@ -196,12 +197,12 @@ function renderSidebar() {
       const context = state.activeDomain === d.id;
       const color = d.color || "#2dd4bf";
       return `<div class="domain-row${context ? ' is-context' : ''}${visible ? '' : ' is-hidden'}" data-domain="${escapeHtml(d.id)}">
-      <input class="domain-visibility" type="checkbox" ${visible ? 'checked' : ''} aria-label="Показывать домен ${escapeHtml(d.title)}">
+      <input class="domain-visibility" type="checkbox" ${visible ? 'checked' : ''} aria-label="Показывать сферу ${escapeHtml(d.title)}">
       <span class="dot" style="background:${escapeHtml(color)}" aria-hidden="true"></span>
       <button class="domain-name" type="button"><span>${escapeHtml(d.title)}</span>${context ? '<span class="domain-context-badge">Контекст</span>' : ''}</button>
       <span class="domain-counts">${projectCount} пр · ${taskCount} зад</span>
-      <button class="domain-focus" type="button" title="Показать домен на карте" aria-label="Показать домен ${escapeHtml(d.title)} на карте">⌖</button>
-      <button class="domain-actions actions" type="button" data-dom="${escapeHtml(d.id)}" aria-label="Действия домена ${escapeHtml(d.title)}">⋯</button>
+      <button class="domain-focus" type="button" title="Показать сферу на карте" aria-label="Показать сферу ${escapeHtml(d.title)} на карте">⌖</button>
+      <button class="domain-actions actions" type="button" data-dom="${escapeHtml(d.id)}" aria-label="Действия сферы ${escapeHtml(d.title)}">⋯</button>
     </div>`;
     })
     .join("");
@@ -233,7 +234,7 @@ function renderSidebar() {
     const nameInput = $("#newDomName");
     if (nameInput) {
       nameInput.value = ui.newDomDraft || "";
-      nameInput.placeholder = "Введите название домена";
+      nameInput.placeholder = "Введите название сферы";
       nameInput.focus();
     }
     // localize and add hint
@@ -260,9 +261,9 @@ function renderSidebar() {
       });
     function validateDomainName(value) {
       const name = String(value || "").trim();
-      if (!name) return "Введите название домена";
+      if (!name) return "Введите название сферы";
       if (state.domains.some((d) => d.title.toLocaleLowerCase("ru-RU") === name.toLocaleLowerCase("ru-RU"))) {
-        return "Такой домен уже существует";
+        return "Такая сфера уже существует";
       }
       return "";
     }
@@ -285,10 +286,10 @@ function renderSidebar() {
         drawMap();
         fitActiveDomain();
         openInspectorFor({ ...domain, _type: "domain" });
-        showToast(`Создан домен: ${name}`, "ok");
+        showToast(`Создана сфера: ${name}`, "ok");
         return true;
       } catch (error) {
-        ui.newDomError = error?.message || "Не удалось создать домен";
+        ui.newDomError = error?.message || "Не удалось создать сферу";
         hint.textContent = ui.newDomError;
         return false;
       }
@@ -583,6 +584,7 @@ function setupHeader() {
   const viewChips = $$(".chip[data-view]");
   viewChips.forEach((ch) => {
     ch.onclick = () => {
+      showStudioPanel('', { focus: false });
       viewChips.forEach((c) => {
         c.classList.remove("active");
         c.setAttribute("aria-pressed", "false");
@@ -1081,6 +1083,7 @@ async function init() {
     console.warn("sync runtime failed to start", error?.message || error);
   }
   renderSidebar();
+  setupStudioPanels();
   setupHeader();
   setupQuickAdd();
   initInbox({

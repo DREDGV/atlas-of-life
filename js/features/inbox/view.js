@@ -3,6 +3,7 @@ import { getInboxItems } from './model.js';
 import { createEditState } from './edit-state.js';
 import { createRoutingDraftState } from './routing-draft.js';
 import { openInspectorFor } from '../../inspector.js';
+import { showStudioPanel } from '../../ui/studio-panels.js';
 import {
   captureInbox,
   createDomain,
@@ -16,6 +17,7 @@ import {
 } from '../../core/commands.js';
 
 let root = null;
+let inboxOpener = null;
 let onStateChange = () => {};
 let lastRemoval = null;
 let lastRouteId = null;
@@ -118,7 +120,11 @@ function closeInbox(){
   editState.exit();
   // Leaving Capture without saving must not leak its hints into a new capture.
   if (currentDialogView === 'capture') resetCaptureHints();
-  if (root) root.hidden = true;
+  if (!root || root.hidden) return;
+  root.hidden = true;
+  document.querySelector('.app').inert = false;
+  if (inboxOpener?.isConnected) inboxOpener.focus({ preventScroll: true });
+  inboxOpener = null;
 }
 
 function commit(reason){
@@ -212,6 +218,8 @@ function makeSelect(options, className = 'inbox-select'){
 // domain but never locks it.
 function buildRoutingControls(item){
   const isKnowledge = item.itemType !== 'task';
+  const showFirstTask = !isKnowledge && state.tasks.length === 0
+    && !state.inbox.some(entry => entry.id !== item.id && QUEUE_FILTERS[0].matches(entry.status));
   const wrap = document.createElement('div');
   wrap.className = 'inbox-route';
 
@@ -234,7 +242,7 @@ function buildRoutingControls(item){
   const domainSelect = makeSelect([{ value: '', text: 'Без сферы' }, ...domains.map(domain => ({
     value: domain.id, text: domain.title,
   }))]);
-  domainSelect.setAttribute('aria-label', 'Домен назначения');
+  domainSelect.setAttribute('aria-label', 'Сфера назначения');
   domainSelect.value = domains.some(domain => domain.id === draft.domainId) ? draft.domainId : '';
   const projectSelect = makeSelect([]);
   projectSelect.setAttribute('aria-label', 'Проект назначения');
@@ -286,7 +294,8 @@ function buildRoutingControls(item){
     destination.textContent = 'Где найти · ' + (isKnowledge ? 'Материалы → ' : 'Карта → ') + (path || (isKnowledge ? 'Без контекста' : 'Без сферы'));
     explanation.textContent = domain
       ? 'Проект нужен, когда у одного результата несколько шагов.'
-      : 'Выберите область жизни, например «Дом». Место можно назначить позже.';
+      : isKnowledge ? 'Без сферы материал доступен в библиотеке.'
+      : 'Без сферы задачу можно найти на карте и перенести позже.';
   };
   const setProjects = (selected = '') => {
     const projects = state.projects.filter(project => project.domainId === domainSelect.value && (isKnowledge || project.lifecycle !== 'completed'));
@@ -304,9 +313,10 @@ function buildRoutingControls(item){
   const newDomain = inlineCreation('домен', 'Например, «Дом и ремонт»', title => {
     const duplicate = domains.find(domain => domain.title.toLocaleLowerCase('ru') === title.toLocaleLowerCase('ru'));
     const domain = duplicate || createDomain({ title });
-    restorePlace(domain.id, null, 'Домен', duplicate ? null : 'domain:create');
+    restorePlace(domain.id, null, 'Сфера', duplicate ? null : 'domain:create');
   });
-  wrap.append(row('Сфера', domainSelect), newDomain, projectRow);
+  if (domains.length) wrap.append(row('Сфера', domainSelect));
+  wrap.append(newDomain, projectRow);
   if (!isKnowledge) {
     const titleDetails = document.createElement('details');
     titleDetails.className = 'inbox-create-place';
@@ -394,7 +404,8 @@ function buildRoutingControls(item){
   const submit = document.createElement('button');
   submit.type = 'button';
   submit.className = 'inbox-button primary';
-  submit.textContent = isKnowledge ? (item.itemType === 'thought' ? 'Сохранить как мысль' : 'Сохранить как заметку') : 'Создать задачу';
+  submit.textContent = isKnowledge ? (item.itemType === 'thought' ? 'Сохранить как мысль' : 'Сохранить как заметку')
+    : showFirstTask ? 'Создать и показать на карте' : 'Создать задачу';
   submit.dataset.routeSubmit = 'true';
   const routeError = document.createElement('p');
   routeError.className = 'inbox-route-error';
@@ -410,8 +421,9 @@ function buildRoutingControls(item){
       taskTitle.focus();
       return;
     }
+    let result;
     try {
-      const result = (isKnowledge ? routeInboxToKnowledge : routeInboxToTask)(item.id, {
+      result = (isKnowledge ? routeInboxToKnowledge : routeInboxToTask)(item.id, {
         projectId, domainId, priority, due, title: taskTitle.value.trim(),
       });
       if (result) {
@@ -428,6 +440,12 @@ function buildRoutingControls(item){
       }
     } catch (error) {
       routeError.textContent = 'Не удалось сохранить. ' + error.message;
+      return;
+    }
+    if (showFirstTask) {
+      closeInbox();
+      window.mapApi?.openTask?.(result.task.id, { includeDomain: false });
+      document.querySelector('#atlasNavigator [data-action="today"]')?.focus({ preventScroll: true });
       return;
     }
     openInboxList();
@@ -530,6 +548,7 @@ function buildLinkedResult(item, task){
         document.querySelector('.chip[data-view="knowledge"]')?.click();
       }
       openInspectorFor({ ...task, _type: 'knowledge' });
+      showStudioPanel('details');
     });
     actions.appendChild(open);
   }
@@ -1002,9 +1021,17 @@ function setBodyTitle(title){
   if (titleElement) titleElement.textContent = title;
 }
 
-export function openInboxCapture(){
+function showInbox(){
   createShell();
+  if (!root.hidden) return false;
+  inboxOpener = document.activeElement;
+  document.querySelector('.app').inert = true;
   root.hidden = false;
+  return true;
+}
+
+export function openInboxCapture(){
+  showInbox();
   setBodyTitle('Быстрый захват');
   currentDialogView = 'capture';
   const body = document.getElementById('inboxDialogBody');
@@ -1015,7 +1042,8 @@ export function openInboxCapture(){
     <div class="inbox-actions">
       <button type="button" class="inbox-button secondary" id="inboxOpenList">Открыть список</button>
       <button type="button" class="inbox-button secondary" id="inboxCaptureRefine">+ Уточнить</button>
-      <button type="button" class="inbox-button primary" id="inboxCaptureSave">Сохранить</button>
+      <button type="button" class="inbox-button secondary" id="inboxCaptureSave">Оставить во Входящих</button>
+      <button type="button" class="inbox-button primary" id="inboxCaptureProcess">Сохранить и разобрать</button>
     </div>
     <div class="inbox-saved-banner" id="inboxSavedBanner" hidden></div>
     <div role="alert" id="inboxCaptureError"></div>`;
@@ -1049,7 +1077,7 @@ export function openInboxCapture(){
 
   const domainRow = document.createElement('div');
   domainRow.className = 'inbox-route-row';
-  domainRow.appendChild(makeLabel('Домен'));
+  domainRow.appendChild(makeLabel('Сфера'));
   const domainSelect = makeSelect([
     { value: '', text: 'не выбран', selected: true },
     ...(Array.isArray(state.domains) ? state.domains : []).map(domain => ({
@@ -1108,7 +1136,7 @@ export function openInboxCapture(){
     savedBanner.hidden = false;
   }
 
-  const save = () => {
+  const save = (process) => {
     let created;
     try {
       created = captureInbox(input.value, {
@@ -1130,9 +1158,11 @@ export function openInboxCapture(){
     activeProcessingId = created[0].id;
     input.value = '';
     updateHintUI();
-    openInboxCapture();
+    if (process) openProcessingItem(activeProcessingId);
+    else openInboxCapture();
   };
-  document.getElementById('inboxCaptureSave').addEventListener('click', save);
+  document.getElementById('inboxCaptureSave').addEventListener('click', () => save(false));
+  document.getElementById('inboxCaptureProcess').addEventListener('click', () => save(true));
   document.getElementById('inboxOpenList').addEventListener('click', () => {
     savedBannerCount = 0;
     resetCaptureHints();
@@ -1141,7 +1171,7 @@ export function openInboxCapture(){
   input.addEventListener('keydown', event => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
-      save();
+      save(true);
     }
   });
   requestAnimationFrame(() => input.focus());
@@ -1380,8 +1410,7 @@ function renderBatchRows(container, items){
 }
 
 export function openInboxList(){
-  createShell();
-  root.hidden = false;
+  const wasClosed = showInbox();
   setBodyTitle('Входящие');
   savedBannerCount = 0;
   currentDialogView = 'list';
@@ -1573,6 +1602,7 @@ export function openInboxList(){
   });
 
   renderQueue();
+  if (wasClosed) root.querySelector('.inbox-icon-button').focus({ preventScroll: true });
 }
 
 export function initInbox(options = {}){
@@ -1667,4 +1697,5 @@ export function openProcessingItem(id){
   batchMode = false;
   activeProcessingId = id;
   openInboxList();
+  root.querySelector('.inbox-row--active [data-item-type]')?.focus({ preventScroll: true });
 }

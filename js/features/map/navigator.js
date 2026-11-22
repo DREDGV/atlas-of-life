@@ -5,6 +5,7 @@ import { expandedCompletedProjects, setMapQuery } from '../../ui/map-session.js'
 import { domainPages, projectPage } from './spatial-layout.js';
 import { openDayRow } from './map-day-view.js';
 import { formatDay } from '../../ui/status-language.js';
+import { showStudioPanel } from '../../ui/studio-panels.js';
 
 let lastSignature = '';
 export function renderMapNavigator({ state, selected, type, nodes, camera, width, height, dpr, open, fit, overview, pan }) {
@@ -32,7 +33,9 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
     if(project){path.append(make('span','/'),button(project.title,()=>{open(project,'project');fit(project.id,'project');},'project'));}
     host.append(path);
     const row=make('div',undefined,'atlas-selection');
-    row.append(make('div',entity?.title||'Вся жизнь в поле зрения','atlas-selection-title'));
+    const title = make('div', entity?.title || 'Вся жизнь в поле зрения', 'atlas-selection-title');
+    title.classList.toggle('is-task', Boolean(task));
+    row.append(title);
     if (suggestion) row.append(make('span', suggestion.reason, 'atlas-day-reason'));
     const actions=make('div',undefined,'atlas-actions');
     const status=make('span','','atlas-action-status');status.setAttribute('role','status');
@@ -65,9 +68,14 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
       if(task.status!=='done'&&task.plannedDay!==day)act(planLabel,()=>{
         updateTask(task.id,{plannedDay:localDay()});open(state.tasks.find(t=>t.id===task.id),'task');
       },'today');
+      const planAction = actions.querySelector('[data-action="today"], [data-action="open-today"]');
+      if (planAction) actions.prepend(planAction);
       if(task.sourceKnowledgeId)act('↗ Материал-источник',()=>{
         const material=state.knowledge.find(k=>k.id===task.sourceKnowledgeId);
-        if(material)open(material,'knowledge');
+        if(material){
+          open(material,'knowledge');
+          showStudioPanel('details');
+        }
       },'source');
     }else if(project){
       if(project.lifecycle==='completed')act(expandedCompletedProjects.has(project.id)?'Свернуть задачи':'Показать задачи',()=>{

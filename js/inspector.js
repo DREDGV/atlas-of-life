@@ -259,7 +259,7 @@ export function openInspectorFor(obj) {
     const independent = state.tasks.filter(task => !task.projectId && task.domainId === obj.id);
     const totalTasks = projectTasks + independent.length;
     ins.innerHTML = `
-      ${inspectorHeading("Домен", obj.title, [obj.title])}
+      ${inspectorHeading("Сфера", obj.title, [obj.title])}
       <div class="kv">Проектов: ${prjs.length} · Задач: ${totalTasks} · Без проекта: ${independent.length}</div>
       <div class="btns">
         <button class="btn primary" id="addProject">+ Проект</button>
@@ -346,7 +346,7 @@ export function openInspectorFor(obj) {
     const projectDomain = domainOf(obj);
     ins.innerHTML = `
       ${inspectorHeading("Проект", escapeKnowledge(obj.title), [escapeKnowledge(projectDomain?.title || ''), escapeKnowledge(obj.title)])}
-      <div class="kv">Домен: ${escapeKnowledge(projectDomain?.title || "Без домена")}</div>
+      <div class="kv">Сфера: ${escapeKnowledge(projectDomain?.title || "Без сферы")}</div>
       <div class="kv">Теги: #${escapeKnowledge((obj.tags || []).join(" #"))}</div>
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
@@ -438,12 +438,12 @@ export function openInspectorFor(obj) {
     };
     ins.innerHTML = `
       ${inspectorHeading("Задача", escapeKnowledge(obj.title), [
-        escapeKnowledge(taskDomain?.title || "Без домена"),
+        escapeKnowledge(taskDomain?.title || "Без сферы"),
         escapeKnowledge(taskProject?.title || "Без проекта"),
         escapeKnowledge(obj.title),
       ])}
       <div class="kv">Проект: ${escapeKnowledge(taskProject?.title || 'Без проекта')}</div>
-      <div class="kv">Домен: ${escapeKnowledge(taskDomain?.title || (taskDomainId ? 'Неизвестный домен' : 'Без домена'))}</div>
+      <div class="kv">Сфера: ${escapeKnowledge(taskDomain?.title || (taskDomainId ? 'Сфера недоступна' : 'Без сферы'))}</div>
       ${obj.sourceInboxId ? `<div class="kv">Источник: Входящие</div>` : ''}
       <div class="kv">Теги: #${escapeKnowledge(normalizeTags(obj.tags).join(" #") || "-")}</div>
       ${obj.due ? `<div class="kv${dueState(obj).kind === 'overdue' ? ' kv-overdue' : ''}">${escapeKnowledge(dueLabel(obj))}</div>` : ""}

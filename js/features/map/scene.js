@@ -2,9 +2,11 @@ import { territoryRadius, projectPoints } from './geometry.js';
 import { plural, statusLabel } from '../../ui/status-language.js';
 // Rendering only. Geometry and hit targets come from the map, facts from Core state.
 export function drawAtlasScene(ctx, scene) {
-  const { nodes, facts, camera, dpr, light, selected, hovered, keyboard, emphasis,
+  const { nodes, facts, camera, dpr, width: canvasWidth, light, selected, hovered, keyboard, emphasis,
     knowledgeCounts, edges, showLinks, targetDomain, targetProject, pendingAttach, dragged } = scene;
   const px = value => value * dpr / camera.scale;
+  const leftEdge = -camera.tx / camera.scale;
+  const rightEdge = (canvasWidth - camera.tx) / camera.scale;
   const ink = light ? '#18324c' : '#e6edf3';
   const muted = light ? '#53677e' : '#9eb2cb';
   const panel = light ? '#ffffff' : '#142033';
@@ -161,7 +163,7 @@ export function drawAtlasScene(ctx, scene) {
       text(String(n.suggestion.rank), badge.x, badge.y + px(3.5), 10, panel, 15, 700);
     }
     ctx.globalAlpha=1;
-    if(dim)continue;
+    if(dim || n.x < leftEdge || n.x > rightEdge)continue;
     if(!active && camera.scale<.65)continue;
     const near=tasks.filter(t=>t.id!==n.id).reduce((distance,t)=>Math.min(distance,Math.hypot(t.x-n.x,t.y-n.y)),Infinity)*camera.scale/dpr;
     const budget=active?180:Math.min(150,near*.88);
@@ -169,7 +171,9 @@ export function drawAtlasScene(ctx, scene) {
     ctx.font=`${active?600:500} ${px(active?13:11)}px "Segoe UI", system-ui`;
     const title=fit(n.title,px(budget));
     const width=ctx.measureText(title).width;
-    const y=n.y+r+px(17),x=n.x;
+    const sidePadding = width / 2 + px(7);
+    const y=n.y+r+px(17);
+    const x = Math.max(leftEdge + sidePadding, Math.min(n.x, rightEdge - sidePadding));
     const box={x:x-width/2-px(5),y:y-px(12),w:width+px(10),h:px(18)};
     if(!active&&labels.some(b=>box.x<b.x+b.w&&box.x+box.w>b.x&&box.y<b.y+b.h&&box.y+box.h>b.y))continue;
     labels.push(box);
@@ -177,7 +181,7 @@ export function drawAtlasScene(ctx, scene) {
     ctx.fillStyle=active?ink:muted;ctx.textAlign='center';ctx.fillText(title,x,y);
     if(active){
       const details=[n.suggestion?.reason || (n.due==='overdue'&&n.status!=='done'?'Срок прошёл':statusLabel(n.status)),n.estimateMin?`${n.estimateMin} мин`:null].filter(Boolean).join(' · ');
-      text(details,x,y+px(18),11,n.due==='overdue'&&n.status!=='done'?red:muted,180);
+      text(details,x,y+px(18),11,n.due==='overdue'&&n.status!=='done'?red:muted,Math.min(180, Math.max(10, width / px(1))));
     }
   }
   const connection=pendingAttach?{task:pendingAttach.taskId,project:pendingAttach.toProjectId}:dragged&&targetProject?{task:dragged.id,project:targetProject}:null;

@@ -15,7 +15,7 @@
 </head>
 <body>
 <div class="app">
-  <header>
+  <header class="studio-header">
     <div class="brand">Атлас жизни</div>
     <nav class="chip-group" aria-label="Основная навигация">
       <button class="chip active" type="button" data-view="map" aria-pressed="true">Карта</button>
@@ -25,9 +25,16 @@
         Входящие <span id="inboxCount" class="inbox-count" hidden></span>
       </button>
     </nav>
+    <div class="studio-small-nav" role="group" aria-label="Панели Атласа">
+      <button class="chip" type="button" data-studio-panel="list" aria-controls="studioList" aria-expanded="false">Список</button>
+      <button class="chip" type="button" data-studio-panel="details" aria-controls="studioDetails" aria-expanded="false">Детали</button>
+      <button class="chip" type="button" data-studio-panel="tools" aria-controls="studioTools" aria-expanded="false">Настройки</button>
+    </div>
+    <div class="studio-tools" id="studioTools">
+    <button class="studio-panel-close chip" type="button">Закрыть настройки</button>
     <div class="chip-group" role="group" aria-label="Камера карты">
       <button class="chip" type="button" id="btnCenter" title="Показать всю карту (C)">Всё</button>
-      <button class="chip" type="button" id="btnFitDomain" title="Подогнать активный домен (F)">Домен</button>
+      <button class="chip" type="button" id="btnFitDomain" title="Показать активную сферу (F)">Сфера</button>
       <button class="chip" type="button" id="btnFitProject" title="Подогнать активный проект (P)">Проект</button>
       <button class="chip" type="button" id="btnReset" title="Сбросить камеру (R)">Сброс</button>
     </div>
@@ -84,12 +91,15 @@
         <button class="header-action" type="button" id="btnAbout">О версии</button>
       </div>
     </details>
+    </div>
   </header>
 
   <main>
-    <aside class="left">
+    <button class="studio-panel-backdrop" type="button" tabindex="-1" aria-hidden="true"></button>
+    <aside class="left" id="studioList" aria-label="Список и обзор карты">
+      <button class="studio-panel-close btn" type="button">К карте</button>
       <section id="mapDay" class="map-day" aria-label="Сегодня на карте"></section>
-      <div class="section"><h3>Домены</h3></div>
+      <div class="section"><h3>Сферы</h3></div>
       <div class="domains" id="domainsList"></div>
       <details id="mapUnassigned" class="map-unassigned" hidden><summary>Без сферы</summary><div></div></details>
       <section id="mapReviewEntry" aria-label="Обзор изменений"></section>
@@ -115,7 +125,7 @@
           <div class="hint" id="mapStartHint">Запишите одно дело своими словами, например «Купить батарейки». Во Входящих вы сможете превратить его в задачу и выбрать место на карте.</div>
           <button class="btn primary" type="button" id="mapStartAction">Записать первое дело</button>
           <div class="start-links">
-            <button class="start-link" type="button" id="mapEmptyAddDomain">Создать первый домен</button>
+            <button class="start-link" type="button" id="mapEmptyAddDomain">Создать первую сферу</button>
             <button class="start-link" type="button" id="mapStartHelp">Первые шаги</button>
           </div>
         </div>
@@ -124,10 +134,11 @@
       <section id="viewKnowledge" hidden aria-label="Библиотека материалов"></section>
     </section>
 
-    <aside class="right">
+    <aside class="right" id="studioDetails" aria-label="Детали объекта">
+      <button class="studio-panel-close btn" type="button">Закрыть детали</button>
       <div class="section"><h3>Инспектор</h3></div>
       <div class="inspector" id="inspector" aria-live="polite">
-        <div class="hint">Выберите домен/проект/задачу на карте для подробностей.</div>
+        <div class="hint">Выберите сферу, проект или задачу, чтобы увидеть подробности.</div>
       </div>
     </aside>
   </main>
@@ -158,7 +169,7 @@
   <h2 id="firstStepsTitle">Первые шаги в Атласе</h2>
   <ol>
     <li><strong>Запишите дело во Входящие.</strong> Например, «Купить батарейки» или «Отремонтировать велосипед».</li>
-    <li><strong>Нажмите «Разобрать сейчас» и выберите тип.</strong> Задачу можно оставить без сферы. Для ремонта с несколькими шагами создайте проект внутри сферы, например «Дом и ремонт». Мысли и заметки можно хранить рядом с проектом или отдельно в «Материалах».</li>
+    <li><strong>Нажмите «Сохранить и разобрать» и выберите тип.</strong> Задачу можно оставить без сферы. Для ремонта с несколькими шагами создайте проект внутри сферы, например «Дом и ремонт». Мысли и заметки можно хранить рядом с проектом или отдельно в «Материалах».</li>
     <li><strong>Откройте задачу на карте.</strong> «На сегодня» добавит её в план дня. Срок указывайте, когда важно успеть к конкретной дате.</li>
     <li><strong>Отметьте «Выполнено» в разделе «Сегодня».</strong> Результат появится в обзоре изменений на карте.</li>
   </ol>

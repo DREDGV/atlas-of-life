@@ -18,8 +18,7 @@ try{
  };
  await capture('Не забыть купить молоко и батарейки');
  await createPlace('+ Создать сферу','Название сферы','Создать сферу','Дом и быт');
- await page.getByRole('button',{name:'Создать задачу',exact:true}).click();
- await page.getByRole('button',{name:'Открыть задачу',exact:true}).click();
+ await page.getByRole('button',{name:'Создать и показать на карте',exact:true}).click();
  await page.locator('#atlasNavigator [data-action=today]').click();
  await page.locator('#atlasNavigator [data-action=complete]').click();
  await page.reload();
@@ -37,7 +36,7 @@ try{
  await page.getByRole('button',{name:'Сохранить решение',exact:true}).click();
  await page.screenshot({path:'output/life-scenarios/repair-project.png'});
  await capture('Маркировка подшипника: 608-2RS','note');
- await page.getByLabel('Домен назначения',{exact:true}).selectOption({label:'Мастерская'});
+ await page.getByLabel('Сфера назначения',{exact:true}).selectOption({label:'Мастерская'});
  await page.getByLabel('Проект назначения',{exact:true}).selectOption({label:'Ремонт велосипеда'});
  await page.getByRole('button',{name:'Сохранить как заметку',exact:true}).click();
  await page.reload();

@@ -92,7 +92,7 @@ try {
   await button('Разобрать сейчас').click();
   assert.match(await page.locator('.inbox-type-help').innerText(), /Подсказка из захвата · Задача/);
   await page.locator('[data-item-type=task]').click();
-  const sphere = page.getByLabel('Домен назначения', { exact: true });
+  const sphere = page.getByLabel('Сфера назначения', { exact: true });
   assert.equal(await sphere.inputValue(), '');
   await button('Из захвата · Мастерская').click();
   assert.ok(await sphere.inputValue());

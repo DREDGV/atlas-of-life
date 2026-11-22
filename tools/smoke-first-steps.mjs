@@ -40,8 +40,7 @@ try {
   await page.screenshot({ path: 'output/map-day/inbox-first-choice.png' });
   await page.locator('[data-item-type=task]').click();
   assert.match(await destination.innerText(), /Карта → Без сферы/);
-  await button('Создать задачу').click();
-  await button('Открыть задачу').click();
+  await button('Создать и показать на карте').click();
   assert.match(await page.locator('#inspector').innerText(), /Купить батарейки для фонаря/);
   await page.locator('#atlasNavigator [data-action=today]').click();
   await page.locator('#atlasNavigator [data-action=open-today]').click();
@@ -123,6 +122,7 @@ try {
   await button('Открыть задачу').click();
   const fastTask = (await saved()).tasks.find(task => task.title === 'Купить крепёж для люка');
   assert.equal(fastTask.domainId, null);
+  await button('Детали').click();
   await page.locator('#taskPlace summary').click();
   await page.locator('#taskPlaceDomain').selectOption({ label: 'Дом и ремонт' });
   await page.locator('#taskPlaceProject').selectOption({ label: 'Скрытый люк' });
