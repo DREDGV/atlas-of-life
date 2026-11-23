@@ -2,7 +2,7 @@ import { nextMapSlot, withSpatialAddresses } from './spatial-address.js';
 import { state, normalizeTags, FOCUS_LIMIT } from '../state.js';
 import { projectDefaults, validateProjectContext } from './project-context.js';
 import { validateDomainAttention } from './review-history.js';
-import { saveState, prepareState, replaceStoredState } from '../storage.js';
+import { saveState, prepareReplacement, replaceStoredState } from '../storage.js';
 import { appendOperation } from './operations.js';
 import { enqueueSyncOperation } from '../sync/outbox.js';
 import { syncCapabilities } from '../sync/capabilities.js';
@@ -229,12 +229,12 @@ export function restoreAtlasSnapshot(raw, options = {}){
   if (typeof window !== 'undefined' && window.atlasSync?.getStatus().syncing) {
     throw new Error('Дождитесь завершения текущей синхронизации и повторите восстановление.');
   }
-  prepareState(raw); // Refuse malformed input before touching state/history.
+  const candidate = prepareReplacement(raw);
   const checkpoint = captureCommandState();
   try {
     const operation = appendOperation({ type:'state.restore', entityType:'state',
-      entityId:'atlas', payload:{ reason:'explicit-local-restore' } });
-    return replaceStoredState(raw, operation, options);
+      entityId:'atlas', payload:{ reason:options.reason || 'explicit-local-restore' } });
+    return replaceStoredState(candidate, operation, options);
   } catch (error) {
     restoreCommandState(checkpoint);
     throw error;

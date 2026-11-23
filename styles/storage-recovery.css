@@ -1,0 +1,44 @@
+#storageReplacement {
+  box-sizing: border-box;
+  width: min(540px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  padding: clamp(16px, 4vw, 26px);
+  border: 1px solid var(--muted, #536785);
+  border-radius: 16px;
+  background: var(--panel, #111c2b);
+  color: var(--text, #e7eef9);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+#storageReplacement::backdrop { background: rgb(6 12 23 / .72); }
+#storageReplacement h2 { margin: 0; font-size: 20px; }
+#storageReplacement p { margin: 12px 0; }
+#storageReplacement .replacement-source { overflow-wrap: anywhere; font-weight: 650; }
+#storageReplacement #replacementWarning {
+  padding: 10px 12px;
+  border-inline-start: 2px solid var(--accent, #65d5ee);
+  background: var(--panel-2, #19273a);
+}
+#storageReplacement table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#storageReplacement th, #storageReplacement td {
+  padding: 7px 4px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  text-align: end;
+}
+#storageReplacement th:first-child { text-align: start; }
+#storageReplacement tbody th { font-weight: 500; }
+#storageReplacement .replacement-places { overflow-wrap: anywhere; }
+#storageReplacement .replacement-message { color: var(--danger, #ffb4ab); }
+#storageReplacement .replacement-message:empty { display: none; }
+#storageReplacement form { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+#storageReplacement button {
+  padding: 9px 13px;
+  border: 1px solid var(--muted, #536785);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--panel-2, #19273a);
+  font: inherit;
+  cursor: pointer;
+}
+#storageReplacement button:focus-visible { outline: 2px solid var(--accent, #65d5ee); outline-offset: 2px; }
+#storageReplacement .replacement-confirm { color: var(--panel, #111c2b); background: var(--accent, #65d5ee); font-weight: 700; }
+#storageReplacement button:disabled { opacity: .45; cursor: default; }

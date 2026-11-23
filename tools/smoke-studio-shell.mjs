@@ -77,15 +77,13 @@ try {
   const second = await browser.newPage();
   await second.goto(server.origin);
   await second.locator('#fileImport').setInputFiles({ name: 'atlas.json', mimeType: 'application/json', buffer: bytes });
+  const replacement = second.getByRole('dialog', { name: 'Импорт Atlas из JSON' });
+  await replacement.getByRole('button', { name: 'Заменить данные', exact: true }).click();
+  await replacement.waitFor({ state: 'detached' });
   await second.waitForFunction(id => window.state.tasks.some(task => task.id === id), ids.task);
-  let rejected = false;
-  second.once('dialog', async dialog => {
-    rejected = /Не удалось импортировать/.test(dialog.message());
-    await dialog.accept();
-  });
   await second.locator('#fileImport').setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{broken') });
-  await second.waitForFunction(() => !document.getElementById('fileImport').value);
-  assert.ok(rejected);
+  await replacement.getByText('Файл содержит некорректный JSON.', { exact: true }).waitFor();
+  await replacement.getByRole('button', { name: 'Отмена', exact: true }).click();
   assert.equal(await second.evaluate(() => window.state.tasks.length), 1);
   await second.close();
 

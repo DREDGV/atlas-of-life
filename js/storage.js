@@ -344,10 +344,21 @@ export function exportJson(){
   downloadStateText(JSON.stringify(data, null, 2));
 }
 
-// Called only by Core's explicit restore/import command. Validate and preserve
-// the original before replacing; a failed write never changes the in-memory Atlas.
-export function replaceStoredState(raw, operation, options = {}){
+export function prepareReplacement(raw){
   const candidate = prepareState(raw);
+  const domains = new Set(candidate.domains.map(item => item.id));
+  const projects = new Set(candidate.projects.map(item => item.id));
+  for (const project of candidate.projects) if (!domains.has(project.domainId)) throw new Error('У проекта отсутствует сфера');
+  for (const task of candidate.tasks) if (task.projectId && !projects.has(task.projectId)) throw new Error('У задачи отсутствует проект');
+  return candidate;
+}
+
+// Called only by Core after validating a replacement.
+export function replaceStoredState(candidate, operation, options = {}){
+  const previous = adapter.load();
+  if (options.expectedCurrent !== undefined && previous !== options.expectedCurrent) {
+    throw new Error('Данные Atlas изменились. Закройте окно и откройте предпросмотр заново.');
+  }
   // Restoring a snapshot can omit events recorded after that snapshot. Keep
   // its facts, but only claim continuous coverage from this explicit restore.
   candidate.reviewHistory.since = Math.max(candidate.reviewHistory.since, operation.timestamp);
@@ -355,14 +366,17 @@ export function replaceStoredState(raw, operation, options = {}){
     ...(options.localBackup ? candidate.pendingSyncOperations : []),
     ...state.pendingSyncOperations,
   ].map(operation => [operation.id, operation])).values()];
-  const domains = new Set(candidate.domains.map(item => item.id));
-  const projects = new Set(candidate.projects.map(item => item.id));
-  for (const project of candidate.projects) if (!domains.has(project.domainId)) throw new Error('Неизвестный домен проекта');
-  for (const task of candidate.tasks) if (task.projectId && !projects.has(task.projectId)) throw new Error('Неизвестный проект задачи');
   candidate.operationLog.push(operation);
-  const previous = adapter.load();
-  if (previous !== null) localStorage.setItem(RECOVERY_KEY, previous);
-  adapter.save(JSON.stringify(candidate));
+  const priorBackup = localStorage.getItem(RECOVERY_KEY);
+  const empty = { schema:SCHEMA_VERSION, domains:[], projects:[], tasks:[] };
+  localStorage.setItem(RECOVERY_KEY, previous ?? JSON.stringify(empty));
+  try {
+    adapter.save(JSON.stringify(candidate));
+  } catch (error) {
+    if (priorBackup === null) localStorage.removeItem(RECOVERY_KEY);
+    else localStorage.setItem(RECOVERY_KEY, priorBackup);
+    throw error;
+  }
   applyPrepared(candidate);
   storageStatus = { status:'ready', error:null };
   return true;

@@ -8,6 +8,7 @@ const PRECACHE_ASSETS = [
   './index.html',
   './manifest.webmanifest',
   '../styles/capture.css',
+  '../styles/storage-recovery.css',
   '../js/capture/app.js',
   '../js/capture/draft.js',
   '../js/capture/pwa.js',

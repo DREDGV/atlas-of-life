@@ -1,7 +1,7 @@
-import { showStorageRecovery } from './ui/storage-recovery.js';
+import { showStorageRecovery, showStorageReplacement } from './ui/storage-recovery.js';
 // js/app.js
 import { state, $, $$, normalizeTags, daysSince } from "./state.js";
-import { loadState, getStorageStatus, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
+import { loadState, getStorageStatus, saveState, exportJson } from "./storage.js";
 import {
   initMap,
   layoutMap,
@@ -62,7 +62,6 @@ const I18N = {
     edges: "Рёбра",
   },
   wip: (cur, lim) => `WIP: ${cur} / ${lim}`,
-  errors: { import: "Не удалось импортировать JSON: " },
   defaults: { taskTitle: "Новая задача" },
 };
 window.I18N = I18N;
@@ -709,19 +708,11 @@ function setupHeader() {
   $("#btnExport").onclick = () => exportJson();
   $("#btnRecovery").onclick = () => showStorageRecovery({ maintenance:true });
   const fileInput = $("#fileImport");
-  fileInput.onchange = async (e) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    try {
-      await importJson(e.target.files[0]);
-      renderSidebar();
-      layoutMap();
-      drawMap();
-      renderToday();
-    } catch (err) {
-      alert(I18N.errors.import + err.message);
-    } finally {
-      e.target.value = "";
-    }
+  $("#btnImport").onclick = () => fileInput.click();
+  fileInput.onchange = () => {
+    const file = fileInput.files[0];
+    fileInput.value = '';
+    if (file) void showStorageReplacement({ read: () => file.text(), name: file.name });
   };
   // edge cap slider
   // zoom slider (top control)
