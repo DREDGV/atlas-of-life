@@ -64,6 +64,7 @@ try {
   await page.getByRole('button',{name:'Скачать исходные данные',exact:true}).click();
   const download=await downloadPromise; await download.saveAs('output/playwright/daily-recovery-original.json');
   await page.getByRole('button',{name:'Восстановить предыдущий снимок',exact:true}).click();
+  await page.getByRole('button',{name:'Восстановить данные',exact:true}).click();
   await page.waitForFunction(() => window.state?.tasks?.length===2 && !document.getElementById('storageRecovery'));
   assert.equal(await page.evaluate(() => localStorage.getItem('atlas_v2_recovery_original')),'{broken-original');
   assert.equal(await page.evaluate(() => window.state.operationLog.some(op => op.type==='state.restore')),true);

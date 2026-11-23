@@ -1,5 +1,8 @@
+import { nextMapSlot, withSpatialAddresses } from './spatial-address.js';
 import { state, normalizeTags, FOCUS_LIMIT } from '../state.js';
-import { saveState, prepareState, replaceStoredState } from '../storage.js';
+import { projectDefaults, validateProjectContext } from './project-context.js';
+import { validateDomainAttention } from './review-history.js';
+import { saveState, prepareReplacement, replaceStoredState } from '../storage.js';
 import { appendOperation } from './operations.js';
 import { enqueueSyncOperation } from '../sync/outbox.js';
 import { syncCapabilities } from '../sync/capabilities.js';
@@ -95,7 +98,7 @@ function buildTaskResultProjection(task){
     id: String(task.id),
     title: String(task.title || '').slice(0, 200),
     sourceInboxId: task.sourceInboxId ? String(task.sourceInboxId) : null,
-    domainId: task.domainId ? String(task.domainId) : (domain?.id ? String(domain.id) : null),
+    domainId: domain?.id ? String(domain.id) : (task.domainId ? String(task.domainId) : null),
     domainTitle: domain?.title ?? null,
     projectId: task.projectId ? String(task.projectId) : null,
     projectTitle: project?.title ?? null,
@@ -160,6 +163,7 @@ function captureCommandState(){
       snapshot: cloneCommandValue(state.settings),
     },
     activeDomain: state.activeDomain,
+    reviewHistory: cloneCommandValue(state.reviewHistory),
   };
 }
 
@@ -184,6 +188,7 @@ function restoreCommandState(checkpoint){
     state.settings = cloneCommandValue(checkpoint.settings.snapshot);
   }
   state.activeDomain = checkpoint.activeDomain;
+  state.reviewHistory = checkpoint.reviewHistory;
 }
 
 function runAtomicCommand(execute){
@@ -193,7 +198,20 @@ function runAtomicCommand(execute){
   let result;
   let persist = false;
   try {
+    const spatial=withSpatialAddresses(state);
+    state.domains.forEach((d,i)=>{d.mapSlot=spatial.domains[i].mapSlot;});
+    state.projects.forEach((p,i)=>{p.mapSlot=spatial.projects[i].mapSlot;});
     result = execute();
+    // All Task paths (including routing, revert and promotion) share this boundary.
+    for (const project of state.projects) {
+      if (project.nextActionId && !state.tasks.some(t => t.id === project.nextActionId && t.projectId === project.id && t.status !== 'done')) {
+        const before = snapshot(project);
+        project.nextActionId = null;
+        project.updatedAt = Date.now();
+        appendOperation({ type:'project.next_action.clear', entityType:'project', entityId:project.id, payload:{ before, after:project } });
+      }
+      if (project.lifecycle) validateProjectContext({ ...projectDefaults(), ...project }, state.tasks);
+    }
     state.pendingSyncOperations.push(...commandTransaction.outbound);
     persist = commandTransaction.persist;
     if (commandTransaction.persist) saveState();
@@ -211,12 +229,12 @@ export function restoreAtlasSnapshot(raw, options = {}){
   if (typeof window !== 'undefined' && window.atlasSync?.getStatus().syncing) {
     throw new Error('Дождитесь завершения текущей синхронизации и повторите восстановление.');
   }
-  prepareState(raw); // Refuse malformed input before touching state/history.
+  const candidate = prepareReplacement(raw);
   const checkpoint = captureCommandState();
   try {
     const operation = appendOperation({ type:'state.restore', entityType:'state',
-      entityId:'atlas', payload:{ reason:'explicit-local-restore' } });
-    return replaceStoredState(raw, operation, options);
+      entityId:'atlas', payload:{ reason:options.reason || 'explicit-local-restore' } });
+    return replaceStoredState(candidate, operation, options);
   } catch (error) {
     restoreCommandState(checkpoint);
     throw error;
@@ -497,7 +515,7 @@ function routeInboxToTaskMutation(id, options){
   // applyTaskPlacement validate the project and derive the domain from it.
   const destination = {
     projectId: options.projectId ?? null,
-    domainId: options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
+    domainId: options.domainId === null ? null : options.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
   };
   if (Object.hasOwn(destination, 'domainId') && destination.domainId) {
     const domainExists = state.domains.some(domain => domain.id === destination.domainId);
@@ -1284,7 +1302,7 @@ function createTaskMutation(input, options){
   if (!title) throw new Error('Task title cannot be empty');
   if (input.sourceKnowledgeId && !state.knowledge.some(item => item.id === input.sourceKnowledgeId)) throw new Error('Материал-источник не найден');
   const projectId = input.projectId ?? null;
-  const domainId = projectId
+  const domainId = projectId || input.domainId === null
     ? null
     : (input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null);
   if (!projectId && domainId && !state.domains.some(domain => domain.id === domainId)) {
@@ -1339,8 +1357,7 @@ export function createTaskFromKnowledge(id, input = {}, options = {}){
     const material = state.knowledge.find(item => item.id === id);
     if (!material) throw new Error('Материал-источник не найден');
     const projectId = Object.hasOwn(input, 'projectId') ? input.projectId : material.projectId;
-    const domainId = Object.hasOwn(input, 'domainId') ? input.domainId : material.domainId;
-    if (!projectId && !domainId) throw new Error('Выберите домен для задачи');
+    const domainId = (Object.hasOwn(input, 'domainId') ? input.domainId : material.domainId) ?? null;
     return createTaskMutation({ ...input, title:input.title ?? material.title,
       projectId, domainId, sourceKnowledgeId:material.id }, options);
   });
@@ -1484,6 +1501,21 @@ export function updateTask(taskId, patch, options = {}){
   return runAtomicCommand(() => updateTaskMutation(taskId, patch, options));
 }
 
+function taskMoveAddress(task){
+  const project = state.projects.find(item => item.id === task.projectId);
+  const domainId = project?.domainId ?? task.domainId ?? null;
+  return {
+    domainId,
+    domainTitle: state.domains.find(item => item.id === domainId)?.title ?? null,
+    projectId: task.projectId ?? null,
+    projectTitle: project?.title ?? null,
+  };
+}
+
+function sameTaskMoveAddress(a, b) {
+  return a.domainId === b.domainId && a.projectId === b.projectId;
+}
+
 function moveTaskMutation(taskId, destination, options){
   const task = state.tasks.find(item => item.id === taskId);
   if (!task) return null;
@@ -1501,7 +1533,7 @@ function moveTaskMutation(taskId, destination, options){
     JSON.stringify(before.pos ?? null) !== JSON.stringify(task.pos ?? null);
   if (!placementChanged) return { task, before, operation: null };
 
-  task.updatedAt = options.now ?? Date.now();
+  task.updatedAt = Math.max(options.now ?? Date.now(), (before.updatedAt || 0) + 1);
   const operation = appendOperation({
     type: options.operationType || 'task.move',
     entityType: 'task',
@@ -1510,6 +1542,8 @@ function moveTaskMutation(taskId, destination, options){
     payload: {
       before,
       after: task,
+      from: taskMoveAddress(before),
+      to: taskMoveAddress(task),
       reason: options.reason || null,
       sourceOperationId: options.sourceOperationId || null,
     },
@@ -1531,6 +1565,18 @@ export function undoTaskMove(moveResult, options = {}){
   const before = moveResult?.before || operation?.payload?.before;
   const taskId = moveResult?.task?.id || operation?.entityId || before?.id;
   if (!taskId || !before) return null;
+  const task = state.tasks.find(item => item.id === taskId);
+  if (!task) return null;
+  const { from, to, after } = operation?.payload || {};
+  if (to && (!sameTaskMoveAddress(taskMoveAddress(task), to)
+      || JSON.stringify(task.pos ?? null) !== JSON.stringify(after?.pos ?? null))) {
+    throw new Error('Место задачи уже изменилось. Проверьте её текущий адрес.');
+  }
+  if (from && (!sameTaskMoveAddress(taskMoveAddress(before), from)
+      || (from.domainId && !state.domains.some(item => item.id === from.domainId))
+      || (from.projectId && !state.projects.some(item => item.id === from.projectId)))) {
+    throw new Error('Прежний адрес изменился или недоступен. Выберите место задачи вручную.');
+  }
   return moveTask(taskId, {
     projectId: before.projectId ?? null,
     domainId: before.domainId ?? null,
@@ -1569,6 +1615,8 @@ export function deleteTask(taskId, options = {}){
 function createProjectMutation(input, options){
   const now = options.now ?? Date.now();
   const project = {
+    ...projectDefaults(),
+    mapSlot:nextMapSlot(state.projects.filter(p => p.domainId === (input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null))),
     id: input.id || options.projectId || generateProjectId(),
     domainId: input.domainId ?? state.activeDomain ?? state.domains[0]?.id ?? null,
     title: String(input.title || '').trim() || 'Новый проект',
@@ -1592,12 +1640,47 @@ export function createProject(input, options = {}){
   return runAtomicCommand(() => createProjectMutation(input, options));
 }
 
+function changeProjectContext(id, patch, type, options) {
+  return runAtomicCommand(() => {
+    const project = state.projects.find(p => p.id === id);
+    if (!project) throw new Error('Проект не найден');
+    if (options.expectedUpdatedAt !== undefined && options.expectedUpdatedAt !== project.updatedAt) throw new Error('Проект изменился. Откройте его заново перед сохранением.');
+    const before = snapshot(project);
+    const after = { ...projectDefaults(), ...project, ...patch };
+    validateProjectContext(after, state.tasks);
+    Object.assign(project, after, { updatedAt:Math.max(options.now ?? Date.now(), (project.updatedAt || 0)+1) });
+    const operation = appendOperation({ type, entityType:'project', entityId:id, baseVersion:before.updatedAt, payload:{ before, after:project } }, { timestamp:options.now ?? Date.now(), deviceId:options.deviceId });
+    finish(options);
+    return { project, before, operation };
+  });
+}
+export function setProjectOutcome(id, outcome, options = {}) {
+  return changeProjectContext(id, { outcome:String(outcome ?? '').trim() }, 'project.outcome', options);
+}
+export function setProjectNextAction(id, taskIdOrNull, options = {}) {
+  return changeProjectContext(id, { nextActionId:taskIdOrNull || null }, 'project.next_action', options);
+}
+export function reviewProject(id, { lifecycle, pauseReason = '', reviewOn = null }, options = {}) {
+  return changeProjectContext(id, { lifecycle, pauseReason:lifecycle === 'paused' ? String(pauseReason).trim() : '',
+    reviewOn:lifecycle === 'paused' ? (reviewOn || null) : null, reviewedAt:options.now ?? Date.now(),
+    completedAt:lifecycle === 'completed' ? (options.now ?? Date.now()) : null }, 'project.review', options);
+}
+export function saveProjectDecision(id, decision, options = {}) {
+  return runAtomicCommand(() => {
+    setProjectOutcome(id, decision.outcome, options);
+    const nextOptions = { ...options }; delete nextOptions.expectedUpdatedAt;
+    setProjectNextAction(id, decision.nextActionId, nextOptions);
+    return reviewProject(id, decision, nextOptions);
+  });
+}
+
 function createDomainMutation(input, options){
   const now = options.now ?? Date.now();
   const title = String(input?.title ?? '').trim();
   if (!title) throw new Error('Domain title cannot be empty');
   const domain = {
     id: input?.id || options.domainId || generateDomainId(),
+    mapSlot:nextMapSlot(state.domains),
     title,
     color: input?.color ?? null,
     createdAt: now,
@@ -1616,6 +1699,31 @@ function createDomainMutation(input, options){
 
 export function createDomain(input, options = {}){
   return runAtomicCommand(() => createDomainMutation(input, options));
+}
+
+export function saveDomainAttention(id, input, options = {}) {
+  return runAtomicCommand(() => {
+    const domain = state.domains.find(entry => entry.id === id);
+    if (!domain) throw new Error('Сфера не найдена');
+    if (options.expectedUpdatedAt !== undefined && options.expectedUpdatedAt !== domain.updatedAt) {
+      throw new Error('Сфера изменилась. Откройте её заново перед сохранением.');
+    }
+    const before = snapshot(domain);
+    const now = options.now ?? Date.now();
+    const reviewEveryDays = Number(input.reviewEveryDays);
+    const after = { ...domain, intention: String(input.intention || '').trim(),
+      reviewEveryDays,
+      attentionSince: reviewEveryDays ? (domain.reviewEveryDays ? domain.attentionSince || now : now) : null,
+      attentionReviewedAt: options.review === true ? now : (domain.attentionReviewedAt || null),
+      updatedAt: Math.max(now, (domain.updatedAt || 0) + 1) };
+    validateDomainAttention(after);
+    Object.assign(domain, after);
+    const operation = appendOperation({ type: options.review === true ? 'domain.review' : 'domain.attention',
+      entityType: 'domain', entityId: id, baseVersion: before.updatedAt, payload: { before, after } },
+    { timestamp: now, deviceId: options.deviceId });
+    finish(options);
+    return { domain, operation };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1717,6 +1825,56 @@ export function updateProject(projectId, patch, options = {}){
   return runAtomicCommand(() => updateProjectMutation(projectId, patch, options));
 }
 
+// Placement is owned by the project; its tasks and materials keep stable IDs.
+export function moveProject(projectId, domainId, options = {}){
+  return runAtomicCommand(() => {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) throw new Error('Проект больше не существует.');
+    if (!state.domains.some(d => d.id === domainId)) throw new Error('Сфера назначения больше не существует.');
+    if (options.expectedUpdatedAt !== undefined && project.updatedAt !== options.expectedUpdatedAt) {
+      throw new Error('Проект изменился. Откройте его заново перед переносом.');
+    }
+    const before = snapshot(project);
+    if (project.domainId === domainId) return { project, before, operation: null };
+    if(options.restoreMapSlot !== undefined && state.projects.some(p=>p.id!==project.id && p.domainId===domainId && p.mapSlot===options.restoreMapSlot)) {
+      throw new Error('Прежнее место проекта уже занято. Отмена не переместит другие проекты.');
+    }
+    if (options.restorePosition && (!Number.isFinite(options.restorePosition.x) || !Number.isFinite(options.restorePosition.y))) {
+      throw new Error('Некорректная позиция проекта.');
+    }
+    project.mapSlot = options.restoreMapSlot ?? nextMapSlot(state.projects.filter(p => p.domainId === domainId));
+    project.domainId = domainId;
+    // Old absolute coordinates belong to the old territory, not the new one.
+    delete project.pos;
+    delete project._pos;
+    if (options.restorePosition) project.pos = snapshot(options.restorePosition);
+    project.updatedAt = Math.max(options.now ?? Date.now(), (Number(before.updatedAt) || 0) + 1);
+    const operation = appendOperation({
+      type: options.sourceOperationId ? 'project.move.undo' : 'project.move',
+      entityType: 'project', entityId: projectId, baseVersion: before.updatedAt || null,
+      payload: { before, after: project, sourceOperationId: options.sourceOperationId || null },
+    }, { timestamp: project.updatedAt, deviceId: options.deviceId });
+    finish(options);
+    state.tasks.filter(t => t.projectId === projectId && t.sourceInboxId)
+      .forEach(t => enqueueTaskResultOperation('task.result.upsert', t, options));
+    return { project, before, operation };
+  });
+}
+
+export function undoProjectMove(result, options = {}){
+  const operation = result?.operation;
+  const before = operation?.payload?.before;
+  const after = operation?.payload?.after;
+  if (!before || !after || !operation.id) throw new Error('Нет переноса для отмены.');
+  const current = state.projects.find(p => p.id === operation.entityId);
+  if (JSON.stringify(current) !== JSON.stringify(after)) throw new Error('Проект изменился после переноса. Отмена не затронет новые изменения.');
+  return moveProject(operation.entityId, before.domainId, {
+    ...options, expectedUpdatedAt: after.updatedAt, sourceOperationId: operation.id,
+    restoreMapSlot: before.mapSlot,
+    restorePosition: before.pos || before._pos || null,
+  });
+}
+
 function mergeDomainMutation(sourceDomainId, targetDomainId, options){
   if (state.knowledge.some(item => item.domainId === sourceDomainId || state.projects.some(p => p.id === item.projectId && p.domainId === sourceDomainId))) throw new Error('В домене есть мысли и заметки. Сначала верните их в разбор.');
   if (sourceDomainId === targetDomainId) throw new Error('Cannot merge a domain into itself');
@@ -1736,6 +1894,7 @@ function mergeDomainMutation(sourceDomainId, targetDomainId, options){
   state.projects.forEach(project => {
     if (project.domainId !== sourceDomainId) return;
     movedProjects.push(snapshot(project));
+    project.mapSlot = nextMapSlot(state.projects.filter(p => p.domainId === targetDomainId));
     project.domainId = targetDomainId;
     project.updatedAt = now;
   });

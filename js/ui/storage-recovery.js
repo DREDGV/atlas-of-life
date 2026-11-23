@@ -1,6 +1,94 @@
 import adapter from '../storageAdapter.js';
-import { BACKUP_KEY, RECOVERY_KEY, getStorageStatus, downloadStateText, prepareState } from '../storage.js';
+import { BACKUP_KEY, RECOVERY_KEY, getStorageStatus, downloadStateText, prepareState, prepareReplacement } from '../storage.js';
 import { restoreAtlasSnapshot } from '../core/commands.js';
+
+const sections = [
+  ['domains', 'Сферы'], ['projects', 'Проекты'], ['tasks', 'Задачи'],
+  ['inbox', 'Записи во Входящих'], ['knowledge', 'Материалы'],
+];
+
+export async function showStorageReplacement({ read, name, localBackup = false }) {
+  if (document.getElementById('storageReplacement')) return;
+  const dialog = document.createElement('dialog');
+  dialog.id = 'storageReplacement';
+  dialog.setAttribute('aria-labelledby', 'replacementTitle');
+  dialog.setAttribute('aria-describedby', 'replacementWarning');
+  dialog.innerHTML = `
+    <h2 id="replacementTitle">${localBackup ? 'Восстановление данных' : 'Импорт Atlas из JSON'}</h2>
+    <p class="replacement-source"></p>
+    <p id="replacementWarning">Atlas на этом устройстве будет целиком заменён. Текущие данные сохранятся в «Ещё → Резервные данные».</p>
+    <p class="replacement-loading" role="status">Проверяем данные…</p>
+    <table hidden>
+      <thead><tr><th scope="col">Раздел</th><th scope="col">Сейчас</th><th scope="col">После замены</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="replacement-places" hidden></p>
+    <p class="replacement-message" role="alert"></p>
+    <form method="dialog">
+      <button value="cancel" autofocus>Отмена</button>
+      <button type="button" class="replacement-confirm" disabled>${localBackup ? 'Восстановить данные' : 'Заменить данные'}</button>
+    </form>`;
+  dialog.querySelector('.replacement-source').textContent = name;
+  const alert = dialog.querySelector('[role=alert]');
+  const confirm = dialog.querySelector('.replacement-confirm');
+  const warning = dialog.querySelector('#replacementWarning');
+  dialog.addEventListener('close', () => dialog.remove(), { once:true });
+  dialog.addEventListener('keydown', event => event.stopPropagation());
+  document.body.append(dialog);
+  dialog.showModal();
+
+  try {
+    const raw = await read();
+    if (!dialog.open) return;
+    const candidate = prepareReplacement(raw);
+    const expectedCurrent = adapter.load();
+    let current = {};
+    try { if (expectedCurrent !== null) current = prepareState(expectedCurrent); }
+    catch (_) {
+      current = null;
+      warning.textContent = 'Текущие данные не открылись. Atlas сохранит их отдельно перед заменой.';
+    }
+    const table = dialog.querySelector('table');
+    for (const [key, label] of sections) {
+      const row = table.tBodies[0].insertRow();
+      const heading = document.createElement('th');
+      heading.scope = 'row';
+      heading.textContent = label;
+      row.append(heading);
+      row.insertCell().textContent = current ? current[key]?.length ?? 0 : '—';
+      row.insertCell().textContent = candidate[key].length;
+    }
+    if (sections.every(([key]) => candidate[key].length === 0)) {
+      warning.prepend('Выбранный снимок пуст. ');
+    }
+    const titles = candidate.domains.slice(0, 3).map(domain => domain.title).filter(Boolean);
+    if (titles.length) {
+      const places = dialog.querySelector('.replacement-places');
+      const rest = candidate.domains.length - titles.length;
+      places.textContent = `Сферы в снимке: ${titles.join(' · ')}${rest ? ` · ещё ${rest}` : ''}`;
+      places.hidden = false;
+    }
+    table.hidden = false;
+    confirm.disabled = false;
+    confirm.onclick = () => {
+      try {
+        alert.textContent = '';
+        restoreAtlasSnapshot(raw, {
+          expectedCurrent, localBackup, reason: localBackup ? 'explicit-local-restore' : 'explicit-json-import',
+        });
+        confirm.disabled = true;
+        location.reload();
+      } catch (error) {
+        alert.textContent = `Замена не выполнена. ${error.message}`;
+      }
+    };
+  } catch (error) {
+    warning.hidden = true;
+    alert.textContent = error instanceof SyntaxError ? 'Файл содержит некорректный JSON.' : error.message;
+  } finally {
+    dialog.querySelector('.replacement-loading').hidden = true;
+  }
+}
 
 export function showStorageRecovery(options = {}){
   const maintenance = options.maintenance === true;
@@ -20,7 +108,7 @@ export function showStorageRecovery(options = {}){
   host.querySelector('#recoveryReason').textContent = getStorageStatus().error;
   if (maintenance) {
     host.querySelector('h1').textContent = 'Резервные данные Atlas';
-    host.querySelector('p').textContent = 'Перед изменением Atlas сохраняет один предыдущий снимок. Здесь можно скачать данные или явно восстановить снимок. Sync приостановлен, пока эта панель открыта.';
+    host.querySelector('p').textContent = 'Здесь хранятся данные до последней замены и предыдущий снимок обычного сохранения. Синхронизация приостановлена, пока эта панель открыта.';
     host.querySelector('details').hidden = true;
   }
   const actions = host.querySelector('#recoveryActions');
@@ -39,31 +127,35 @@ export function showStorageRecovery(options = {}){
     if (raw === null) throw new Error('Сохранённых данных нет');
     downloadStateText(raw, 'atlas-recovery-original.json');
   });
+  try {
+    const original = localStorage.getItem(RECOVERY_KEY);
+    if (original !== null) {
+      try {
+        prepareReplacement(original);
+        button('Вернуть данные до замены', () => showStorageReplacement({
+          read: () => original, name: 'Данные до последнего импорта или восстановления', localBackup:true,
+        }));
+      } catch (_) { /* Unreadable original remains available as a download. */ }
+      button('Скачать данные до замены', () => downloadStateText(original, 'atlas-before-replacement.json'));
+    }
+  } catch (_) {}
   let backup = null;
-  try { backup = localStorage.getItem(BACKUP_KEY); if (backup !== null) prepareState(backup); } catch (_) { backup = null; }
-  if (backup !== null) button('Восстановить предыдущий снимок', () => {
-    if (!confirm('Восстановить локальный Atlas из предыдущего снимка? Текущие данные будут сохранены отдельно.')) return;
-    restoreAtlasSnapshot(backup, { localBackup:true }); location.reload();
-  });
+  try { backup = localStorage.getItem(BACKUP_KEY); if (backup !== null) prepareReplacement(backup); } catch (_) { backup = null; }
   if (backup !== null) {
+    button('Восстановить предыдущий снимок', () => showStorageReplacement({
+      read: () => backup, name: 'Предыдущий снимок обычного сохранения', localBackup:true,
+    }));
     button('Скачать предыдущий снимок', () => downloadStateText(backup, 'atlas-previous.json'));
     const data = prepareState(backup);
     const info = document.createElement('p');
     info.textContent = `Предыдущий снимок: ${data.tasks.length} задач, ${data.inbox.length} входящих, ${data.knowledge.length} материалов.`;
     actions.after(info);
   }
-  try {
-    const original = localStorage.getItem(RECOVERY_KEY);
-    if (original !== null) button('Скачать данные до восстановления', () => downloadStateText(original, 'atlas-before-restore.json'));
-  } catch (_) {}
   const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json'; input.hidden = true;
-  input.onchange = async () => {
-    try {
-      const file = input.files[0]; if (!file) return;
-      const raw = await file.text(); prepareState(raw);
-      if (!confirm('Восстановить локальный Atlas из выбранного файла?')) return;
-      restoreAtlasSnapshot(raw); location.reload();
-    } catch (error) { message.textContent = error.message; }
+  input.onchange = () => {
+    const file = input.files[0];
+    input.value = '';
+    if (file) void showStorageReplacement({ read: () => file.text(), name: file.name });
   };
   button('Открыть резервный JSON', () => input.click());
   host.append(input); document.body.append(host);

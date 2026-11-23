@@ -2,7 +2,6 @@
 // Covers: automatic processing transitions, Thought/Note → processed without
 // Task, Capture userHint/domainHintId normalization, and routing-draft
 // behavior around the domain hint.
-import { readFileSync } from 'node:fs';
 import { state } from '../js/state.js';
 import {
   captureInbox,
@@ -83,29 +82,17 @@ assert(t3c.length === 2, 'Test 3c: multiline capture creates two records');
 assert(t3c.every(item => item.userHint === 'note' && item.domainHintId === 'd2'), 'Test 3d: hints apply to every line');
 console.log('✓ Test 3: Capture userHint/domainHintId');
 
-// Test 4: routing draft uses the domain hint as a proposal but can change it
+// Test 4: an explicit placement remains editable in the routing draft.
+// Confirmation of Capture hints is exercised in tools/smoke-inbox-queue.mjs.
 const { createRoutingDraftState } = await import('../js/features/inbox/routing-draft.js');
 const drafts = createRoutingDraftState();
 const hintId = 'd1';
 const draft = { domainId: hintId, projectId: null, priority: 2, dueDate: '', dueTime: '' };
 drafts.set('i1', draft);
-assert(drafts.get('i1').domainId === 'd1', 'Test 4a: draft starts from the proposed domain');
+assert(drafts.get('i1').domainId === 'd1', 'Test 4a: draft retains the selected domain');
 drafts.set('i1', { ...drafts.get('i1'), domainId: 'd2' });
 assert(drafts.get('i1').domainId === 'd2', 'Test 4b: user can change the domain in the draft');
 
-const viewSource = readFileSync(new URL('../js/features/inbox/view.js', import.meta.url), 'utf-8');
-assert(
-  viewSource.includes('item.domainHintId') && viewSource.includes('draft.domainId'),
-  'Test 4c: routing controls seed the draft from the domain hint'
-);
-assert(
-  viewSource.includes('Предложенный домен'),
-  'Test 4d: processing card shows the proposed domain to the user'
-);
-assert(
-  viewSource.includes('Сохранить как мысль') && viewSource.includes('К разбору'),
-  'Test 4e: B2 flow UI present (finish action, queue label)'
-);
-console.log('✓ Test 4: routing draft uses the domain hint but allows change');
+console.log('✓ Test 4: routing draft keeps the selected domain and allows changes');
 
 console.log('\n✅ All Stage B2 processing flow tests passed.');

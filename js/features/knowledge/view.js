@@ -1,5 +1,6 @@
 import { state } from '../../state.js';
 import { openInspectorFor } from '../../inspector.js';
+import { showStudioPanel } from '../../ui/studio-panels.js';
 import { knowledgeContext, materialActions, queryKnowledge } from './model.js';
 
 const filters = { query:'', kind:'all', domain:'all', sort:'updated' };
@@ -71,6 +72,7 @@ export function renderKnowledge(){
     card.append(footer);
     card.onclick=()=>{
       selectedId=item.id;renderKnowledge();openInspectorFor({...item,_type:'knowledge'});
+      showStudioPanel('details');
       const heading=document.querySelector('#inspector h2');if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}
     };
     list.append(card);

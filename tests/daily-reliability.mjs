@@ -76,9 +76,18 @@ try {
   assert(state.pendingSyncOperations.length > 0);
   memory.set('atlas-sync-outbox-v1',outboxBefore); flushPendingSyncOperations();
   const restoredBefore = JSON.stringify(state);
+  const beforeReplacement = memory.get(adapter.key);
+  memory.set(RECOVERY_KEY, original);
+  assert.throws(() => restoreAtlasSnapshot(JSON.stringify(fixture), { expectedCurrent: original }), /Данные Atlas изменились/);
+  assert.equal(memory.get(RECOVERY_KEY), original);
+  failWrite = RECOVERY_KEY;
+  assert.throws(() => restoreAtlasSnapshot(JSON.stringify(fixture)), /write denied/);
+  assert.equal(memory.get(adapter.key), beforeReplacement);
   failWrite = adapter.key;
   assert.throws(() => restoreAtlasSnapshot(JSON.stringify(fixture)));
   assert.equal(JSON.stringify(state),restoredBefore);
+  assert.equal(memory.get(adapter.key),beforeReplacement);
+  assert.equal(memory.get(RECOVERY_KEY),original);
   failWrite = null;
   memory.set(adapter.key,'{corrupt'); loadState();
   restoreAtlasSnapshot(JSON.stringify(fixture));

@@ -1,4 +1,5 @@
 import { state } from '../state.js';
+import { recordReviewOperation } from './review-history.js';
 import { getDeviceId } from './device.js';
 import { nextDeviceSequence } from '../sync/device.js';
 
@@ -43,6 +44,7 @@ export function appendOperation(input, options = {}){
   };
   const log = ensureOperationLog();
   log.push(operation);
+  recordReviewOperation(state, operation);
   if (log.length > OPERATION_LOG_LIMIT) {
     log.splice(0, log.length - OPERATION_LOG_LIMIT);
   }

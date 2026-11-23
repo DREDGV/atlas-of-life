@@ -12,10 +12,11 @@
   <title>Атлас жизни</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%2360a5fa'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/storage-recovery.css" />
 </head>
 <body>
 <div class="app">
-  <header>
+  <header class="studio-header">
     <div class="brand">Атлас жизни</div>
     <nav class="chip-group" aria-label="Основная навигация">
       <button class="chip active" type="button" data-view="map" aria-pressed="true">Карта</button>
@@ -25,9 +26,16 @@
         Входящие <span id="inboxCount" class="inbox-count" hidden></span>
       </button>
     </nav>
-    <div class="chip-group" role="group" aria-label="Камера карты">
+    <div class="studio-small-nav" role="group" aria-label="Панели Атласа">
+      <button class="chip" type="button" data-studio-panel="list" aria-controls="studioList" aria-expanded="false">Список</button>
+      <button class="chip" type="button" data-studio-panel="details" aria-controls="studioDetails" aria-expanded="false">Детали</button>
+      <button class="chip" type="button" data-studio-panel="tools" aria-controls="studioTools" aria-expanded="false">Настройки</button>
+    </div>
+    <div class="studio-tools" id="studioTools">
+    <button class="studio-panel-close chip" type="button">Закрыть настройки</button>
+    <div class="chip-group map-camera" role="group" aria-label="Камера карты">
       <button class="chip" type="button" id="btnCenter" title="Показать всю карту (C)">Всё</button>
-      <button class="chip" type="button" id="btnFitDomain" title="Подогнать активный домен (F)">Домен</button>
+      <button class="chip" type="button" id="btnFitDomain" title="Показать активную сферу (F)">Сфера</button>
       <button class="chip" type="button" id="btnFitProject" title="Подогнать активный проект (P)">Проект</button>
       <button class="chip" type="button" id="btnReset" title="Сбросить камеру (R)">Сброс</button>
     </div>
@@ -46,8 +54,8 @@
     <button class="chip" type="button" id="btnSync" title="Синхронизация между устройствами">Синхронизация</button>
     <div class="spacer"></div>
     <button class="chip header-quiet-action" type="button" id="btnFullscreen" title="Полный экран">Экран</button>
-    <label class="map-zoom" for="zoomSlider"><span>Масштаб</span><input id="zoomSlider" class="zoom-slider" type="range" min="50" max="220" step="1" value="100"></label>
-    <details class="header-popover">
+    <label class="map-zoom" for="zoomSlider"><span>Масштаб</span><input id="zoomSlider" class="zoom-slider" type="range" min="3" max="220" step="1" value="100"></label>
+    <details class="header-popover studio-map-view">
       <summary>Вид карты</summary>
       <div class="header-popover-menu header-map-settings">
         <div class="popover-title">Статусы задач</div>
@@ -57,16 +65,18 @@
           <span class="pill pill-doing">в работе</span>
           <span class="pill pill-done">готово</span>
         </div>
-        <div class="popover-title">Что показывает орб</div>
+        <div class="popover-title">Знаки на карте</div>
         <div class="hint map-orb-legend">
-          <span><i class="orb-mark orb-size"></i>размер — важность и оценка</span>
-          <span><i class="orb-mark orb-overdue"></i>красное кольцо — срок истёк</span>
-          <span><i class="orb-mark orb-focus"></i>крестик — Фокус дня</span>
-          <span><i class="orb-mark orb-doing"></i>пунктир — в работе</span>
-          <span><i class="orb-mark orb-age"></i>дуга — давность</span>
+          <span>⬡ проект · мягкий контур — сфера</span>
+          <span>▶ в работе · ✓ выполнено</span>
+          <span>◆ выбрано на сегодня · Ф — фокус</span>
+          <span>1–3 — предложения из «Сегодня на карте»</span>
+          <span>! красный контур — срок истёк</span>
+          <span>дуга — без изменений 30+ дней</span>
+          <span>размер задачи — важность и оценка</span>
         </div>
         <div class="popover-title">Слои</div>
-        <label><input type="checkbox" id="tgLinks" checked/> Связи</label>
+        <label><input type="checkbox" id="tgLinks" checked/> Связи выбранного объекта</label>
         <label><input type="checkbox" id="tgAging" checked/> Давность</label>
         <label><input type="checkbox" id="tgGlow" checked/> Свечение</label>
       </div>
@@ -74,19 +84,28 @@
     <details class="header-popover header-popover-secondary">
       <summary>Ещё</summary>
       <div class="header-popover-menu header-secondary-actions">
+        <button class="header-action" type="button" id="btnFirstSteps">Первые шаги</button>
+        <label class="header-action" for="tgTheme"><input type="checkbox" id="tgTheme"> Светлая тема</label>
         <button class="header-action" type="button" id="btnExport">Экспорт JSON</button>
         <button class="header-action" type="button" id="btnRecovery">Резервные данные</button>
-        <label class="header-action" for="fileImport">Импорт JSON</label>
-        <input id="fileImport" type="file" accept="application/json" class="hidden" />
+        <button class="header-action" type="button" id="btnImport">Импорт JSON</button>
+        <input id="fileImport" type="file" accept=".json,application/json" hidden />
         <button class="header-action" type="button" id="btnAbout">О версии</button>
       </div>
     </details>
+    </div>
   </header>
 
   <main>
-    <aside class="left">
-      <div class="section"><h3>Домены</h3></div>
+    <button class="studio-panel-backdrop" type="button" tabindex="-1" aria-hidden="true"></button>
+    <aside class="left" id="studioList" aria-label="Список и обзор карты">
+      <button class="studio-panel-close btn" type="button">К карте</button>
+      <section id="mapDay" class="map-day" aria-label="Сегодня на карте"></section>
+      <div class="section"><h3>Сферы</h3></div>
       <div class="domains" id="domainsList"></div>
+      <details id="mapUnassigned" class="map-unassigned" hidden><summary>Без сферы</summary><div></div></details>
+      <section id="mapReviewEntry" aria-label="Обзор изменений"></section>
+      <section id="mapAttention" class="map-attention" aria-label="Обзор внимания"></section>
       <div class="section"><button class="btn" id="btnKnowledge" type="button">Мысли и заметки</button></div>
       <div class="section"><h3>Фильтры</h3></div>
       <div class="filters" id="tagsList"></div>
@@ -96,26 +115,34 @@
     </aside>
 
     <section id="canvasWrap">
+      <section id="atlasNavigator" class="atlas-navigator" aria-label="Навигация и действия карты"></section>
+      <div class="atlas-minimap"><span>ОБЗОР</span><canvas id="atlasMinimap" width="160" height="96" tabindex="0" role="img" aria-label="Мини-карта. Нажмите для перемещения; стрелки перемещают камеру, Home возвращает обзор."></canvas></div>
       <canvas id="canvas"></canvas>
+      <section id="mapDomainSignals" aria-label="Сигналы на карте"></section>
+      <section id="mapTaskMove" aria-label="Перенос задачи" hidden></section>
       <section class="map-hud" id="mapHud" hidden aria-label="Сведения об объекте под курсором"></section>
       <div class="sr-only" id="mapLiveRegion" role="status" aria-live="polite"></div>
       <div class="map-empty" id="mapEmpty" hidden>
         <div class="map-empty-card">
           <div class="map-empty-orbit" aria-hidden="true"><span></span></div>
-          <div class="map-empty-kicker">Первый ориентир</div>
-          <div class="map-empty-title">Начните с области жизни</div>
-          <div class="hint">Создайте домен — например, «Дом», «Работа» или «Здоровье». Внутри появятся проекты и задачи.</div>
-          <button class="btn primary" type="button" id="mapEmptyAddDomain">Создать первый домен</button>
+          <h2 class="map-empty-title" id="mapStartTitle">С какого дела начнём?</h2>
+          <div class="hint" id="mapStartHint">Запишите одно дело своими словами, например «Купить батарейки». Во Входящих вы сможете превратить его в задачу и выбрать место на карте.</div>
+          <button class="btn primary" type="button" id="mapStartAction">Записать первое дело</button>
+          <div class="start-links">
+            <button class="start-link" type="button" id="mapEmptyAddDomain">Создать первую сферу</button>
+            <button class="start-link" type="button" id="mapStartHelp">Первые шаги</button>
+          </div>
         </div>
       </div>
       <div class="viewToday hidden" id="viewToday"></div>
       <section id="viewKnowledge" hidden aria-label="Библиотека материалов"></section>
     </section>
 
-    <aside class="right">
+    <aside class="right" id="studioDetails" aria-label="Детали объекта">
+      <button class="studio-panel-close btn" type="button">Закрыть детали</button>
       <div class="section"><h3>Инспектор</h3></div>
       <div class="inspector" id="inspector" aria-live="polite">
-        <div class="hint">Выберите домен/проект/задачу на карте для подробностей.</div>
+        <div class="hint">Выберите сферу, проект или задачу, чтобы увидеть подробности.</div>
       </div>
     </aside>
   </main>
@@ -142,11 +169,22 @@
   </footer>
 </div>
 
+<dialog id="firstSteps" class="first-steps" aria-labelledby="firstStepsTitle">
+  <h2 id="firstStepsTitle">Первые шаги в Атласе</h2>
+  <ol>
+    <li><strong>Запишите дело во Входящие.</strong> Например, «Купить батарейки» или «Отремонтировать велосипед».</li>
+    <li><strong>Нажмите «Сохранить и разобрать» и выберите тип.</strong> Задачу можно оставить без сферы. Для ремонта с несколькими шагами создайте проект внутри сферы, например «Дом и ремонт». Мысли и заметки можно хранить рядом с проектом или отдельно в «Материалах».</li>
+    <li><strong>Откройте задачу на карте.</strong> «На сегодня» добавит её в план дня. Срок указывайте, когда важно успеть к конкретной дате.</li>
+    <li><strong>Отметьте «Выполнено» в разделе «Сегодня».</strong> Результат появится в обзоре изменений на карте.</li>
+  </ol>
+  <form method="dialog"><button class="btn primary" value="capture">Записать дело</button><button class="btn" value="close" autofocus>Закрыть</button></form>
+</dialog>
 <!-- simple modal -->
-<div id="modal" class="modal">
+<div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="box">
     <div class="title" id="modalTitle">Диалог</div>
     <div class="body" id="modalBody"></div>
+    <p id="modalError" class="modal-error" role="alert"></p>
     <div class="buttons">
       <button class="btn" id="modalCancel">Отмена</button>
       <button class="btn primary" id="modalOk">Ок</button>

@@ -1,5 +1,6 @@
 // Session-only map preferences. They are intentionally excluded from storage.
 let initialized = false;
+export const expandedCompletedProjects = new Set();
 const visibleDomainIds = new Set();
 const knownDomainIds = new Set();
 

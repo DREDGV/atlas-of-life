@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { mkdirSync } from 'node:fs';
+import { startStaticServer, closeAll } from './smoke-shared.mjs';
+const server=await startStaticServer();
+const browser=await chromium.launch({headless:true});
+const page=await browser.newPage({viewport:{width:1600,height:1000},reducedMotion:'reduce'});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+mkdirSync('output/visual-atlas',{recursive:true});
+try{
+  await page.goto(server.origin);
+  const ids=await page.evaluate(async()=>{
+    const c=await import('/js/core/commands.js');
+    const {localDay,shiftDay}=await import('/js/features/today/model.js');
+    const home=c.createDomain({title:'Дом и близкие',color:'#2dd4bf'});
+    const work=c.createDomain({title:'Дело и развитие',color:'#60a5fa'});
+    const health=c.createDomain({title:'Здоровье',color:'#c084fc'});
+    const craft=c.createDomain({title:'Творчество',color:'#f59e0b'});
+    const garden=c.createProject({title:'Сад у дома',domainId:home.id});
+    const launch=c.createProject({title:'Запуск мастерской',domainId:work.id});
+    const study=c.createProject({title:'Изучить свет',domainId:craft.id});
+    const [source]=c.captureInbox('Свет в портретной съёмке\nПопробовать отражатель у окна.',{itemType:'thought',splitLines:false});
+    const {material}=c.routeInboxToKnowledge(source.id,{projectId:study.id});
+    const task=c.createTaskFromKnowledge(material.id,{title:'Снять портрет у окна',due:{date:shiftDay(localDay(),-2)}});
+    c.createTask({title:'Собрать референсы',projectId:study.id,status:'done'});
+    c.createTask({title:'Заказать саженцы',projectId:garden.id,status:'today'});
+    c.createTask({title:'Подготовить почву',projectId:garden.id,status:'doing'});
+    c.createTask({title:'Выбрать место для яблони',projectId:garden.id});
+    for(const title of ['Образцы изделий','Сайт мастерской','Упаковка','Смета'])c.createTask({title,projectId:launch.id,status:'doing'});
+    c.createTask({title:'Записаться к стоматологу',domainId:health.id,updatedAt:Date.now()-40*86400000});
+    const map=await import('/js/view_map.js');map.layoutMap();map.fitAll();
+    return {task:task.id,project:study.id,source:material.id};
+  });
+  await page.waitForTimeout(100);
+  await page.screenshot({path:'output/visual-atlas/overview-dark.png',animations:'disabled'});
+  // Actual Canvas selection, then a real persisted action from the navigator.
+  const point=await page.evaluate(async id=>{
+    const s=(await import('/js/view_map.js')).getLayoutSnapshot();const n=s.nodes.find(n=>n.id===id);
+    const r=document.getElementById('canvas').getBoundingClientRect();
+    return {x:r.x+(n.x*s.scale+s.tx)/s.size.dpr,y:r.y+(n.y*s.scale+s.ty)/s.size.dpr};
+  },ids.task);
+  await page.mouse.click(point.x,point.y);
+  assert.match(await page.locator('#atlasNavigator').innerText(),/Снять портрет у окна/);
+  await page.locator('#atlasNavigator [data-action="fit"]').click();
+  await page.waitForTimeout(80);
+  await page.screenshot({path:'output/visual-atlas/task-focus.png',animations:'disabled'});
+  await page.locator('#atlasNavigator [data-action="today"]').click();
+  const planned=await page.evaluate(async id=>(await import('/js/state.js')).state.tasks.find(t=>t.id===id),ids.task);
+  assert.ok(planned.plannedDay);assert.ok(planned.due,'planning keeps deadline');
+  await page.locator('#atlasNavigator [data-action="complete"]').click();
+  assert.equal(await page.evaluate(async id=>(await import('/js/state.js')).state.tasks.find(t=>t.id===id).status,ids.task),'done');
+  await page.locator('#atlasNavigator [data-action="source"]').click();
+  assert.match(await page.locator('#inspector').innerText(),/Свет в портретной съёмке/);
+  const camera=()=>page.evaluate(async()=>{const s=(await import('/js/view_map.js')).getLayoutSnapshot();return [s.tx,s.ty];});
+  const before=await camera();
+  await page.locator('#atlasMinimap').click({position:{x:25,y:30}});
+  await page.waitForTimeout(80);assert.notDeepEqual(await camera(),before);
+  await page.locator('#atlasMinimap').focus();await page.keyboard.press('Home');
+  await page.waitForTimeout(80);
+  await page.evaluate(async()=>{document.documentElement.dataset.theme='light';(await import('/js/view_map.js')).drawMap();});
+  await page.screenshot({path:'output/visual-atlas/overview-light.png',animations:'disabled'});
+  await page.reload();
+  assert.equal(await page.evaluate(async id=>(await import('/js/state.js')).state.tasks.find(t=>t.id===id).status,ids.task),'done');
+  await page.setViewportSize({width:1024,height:768});await page.waitForTimeout(100);
+  await page.screenshot({path:'output/visual-atlas/compact.png',animations:'disabled'});
+  assert.deepEqual(errors,[]);
+  console.log('PASS Visual Atlas: canvas selection, zoom, plan != due, complete, source, minimap + keyboard, reload, both themes');
+}finally{await browser.close();await closeAll(server);}

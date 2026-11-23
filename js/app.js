@@ -1,7 +1,7 @@
-import { showStorageRecovery } from './ui/storage-recovery.js';
+import { showStorageRecovery, showStorageReplacement } from './ui/storage-recovery.js';
 // js/app.js
 import { state, $, $$, normalizeTags, daysSince } from "./state.js";
-import { loadState, getStorageStatus, saveState, exportJson, importJsonV26 as importJson } from "./storage.js";
+import { loadState, getStorageStatus, saveState, exportJson } from "./storage.js";
 import {
   initMap,
   layoutMap,
@@ -24,7 +24,9 @@ import { renderKnowledge } from './features/knowledge/view.js';
 import { parseQuick, resolveQuickDraft } from "./parser.js";
 import { logEvent } from "./utils/analytics.js";
 import { initInbox } from "./features/inbox/index.js";
-import { refreshInboxAfterRemoteApply } from "./features/inbox/view.js";
+import { openInboxCapture, openProcessingItem, refreshInboxAfterRemoteApply, updateInboxCounter } from "./features/inbox/view.js";
+import { setupStudioPanels, showStudioPanel } from "./ui/studio-panels.js";
+import { workToResume } from "./ui/work-resume.js";
 import { openInspectorFor } from "./inspector.js";
 import {
   captureInbox,
@@ -50,7 +52,7 @@ import { createSyncBadge, openSyncModal } from "./sync/ui.js";
 // I18N
 const I18N = {
   views: { map: "Карта", today: "Сегодня" },
-  sidebar: { domains: "Домены", filters: "Фильтры" },
+  sidebar: { domains: "Сферы", filters: "Фильтры" },
   hints: { quick: "Шорткаты: #тег @проект !сегодня 10:00 ~30м" },
   actions: { export: "Экспорт", import: "Импорт" },
   toggles: {
@@ -60,7 +62,6 @@ const I18N = {
     edges: "Рёбра",
   },
   wip: (cur, lim) => `WIP: ${cur} / ${lim}`,
-  errors: { import: "Не удалось импортировать JSON: " },
   defaults: { taskTitle: "Новая задача" },
 };
 window.I18N = I18N;
@@ -96,10 +97,15 @@ function openModal({
   title,
   bodyHTML,
   onConfirm,
+  returnFocus = document.activeElement,
   confirmText = "Ок",
   cancelText = "Отмена",
 }) {
   const modal = document.getElementById("modal");
+  const studio = document.querySelector('.app');
+  const wasInert = studio?.inert;
+  const errorBox = document.getElementById('modalError');
+  errorBox.textContent = '';
   document.getElementById("modalTitle").textContent = title || "Диалог";
   document.getElementById("modalBody").innerHTML = bodyHTML || "";
   const btnOk = document.getElementById("modalOk");
@@ -107,18 +113,30 @@ function openModal({
   btnOk.textContent = confirmText;
   document.getElementById("modalCancel").textContent = cancelText;
   function close() {
+    modal.onkeydown = null;
     modal.style.display = "none";
+    if (studio) studio.inert = wasInert;
     btnOk.onclick = null;
     btnCancel.onclick = null;
+    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
   }
   btnCancel.onclick = () => close();
   btnOk.onclick = () => {
-    const shouldClose = onConfirm
-      ? onConfirm(document.getElementById("modalBody")) !== false
-      : true;
-    if (shouldClose) close();
+    errorBox.textContent = '';
+    try {
+      if (onConfirm?.(document.getElementById('modalBody')) !== false) close();
+    } catch (error) {
+      errorBox.textContent = error.message;
+    }
+  };
+  modal.onkeydown = event => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    close();
   };
   modal.style.display = "flex";
+  if (studio) studio.inert = true;
+  (modal.querySelector('[autofocus]') || btnCancel).focus();
 }
 
 // toast helper
@@ -149,13 +167,27 @@ function escapeHtml(value) {
 // expose globally for addons/other modules
 try { window.showToast = showToast; } catch (_) {}
 
+function updateFirstStep() {
+  const action = document.getElementById('mapStartAction');
+  const resume = workToResume(state);
+  const pending = resume?.kind === 'inbox' ? resume : null;
+  document.getElementById('mapStartTitle').textContent = pending ? 'Продолжить работу' : 'С какого дела начнём?';
+  document.getElementById('mapStartHint').textContent = pending
+    ? 'У вас есть запись «' + pending.title + '». Выберите её тип и сохраните результат на карте.'
+    : 'Запишите одно дело своими словами, например «Купить батарейки». Во Входящих вы сможете превратить его в задачу и выбрать место на карте.';
+  action.textContent = pending ? 'Разобрать запись' : 'Записать первое дело';
+  action.onclick = pending ? () => openProcessingItem(pending.id) : openInboxCapture;
+}
+
 function renderSidebar() {
+  updateInboxCounter();
+  updateFirstStep();
   const dWrap = document.getElementById("domainsList");
   const visibleIds = getVisibleDomainIds(state.domains);
   let html = "";
   if (ui.newDomain) {
     html += `<div class="row" id="newDomRow" style="gap:6px;flex-wrap:wrap">
-      <input id="newDomName" placeholder="Название домена" style="flex:1;min-width:140px;background:#0e172a;border:1px solid #1a2947;border-radius:8px;color:#e8f0fb;padding:6px 8px"/>
+      <input id="newDomName" aria-label="Название сферы" placeholder="Введите название сферы" style="flex:1;min-width:140px;background:#0e172a;border:1px solid #1a2947;border-radius:8px;color:#e8f0fb;padding:6px 8px"/>
       <div id="newDomColors" style="display:flex;gap:6px;align-items:center">${palette
         .map(
           (c) =>
@@ -169,7 +201,7 @@ function renderSidebar() {
     </div>`;
   } else {
     html += `<div class="domain-toolbar">
-      <button class="btn" id="btnAddDomain">+ Домен</button>
+      <button class="btn" id="btnAddDomain">+ Сфера</button>
       <button class="domain-show-all" id="showAllDomains" type="button">Показать все</button>
       <span class="domain-visible-count">Показано ${visibleIds.size} из ${state.domains.length}</span>
     </div>`;
@@ -183,12 +215,12 @@ function renderSidebar() {
       const context = state.activeDomain === d.id;
       const color = d.color || "#2dd4bf";
       return `<div class="domain-row${context ? ' is-context' : ''}${visible ? '' : ' is-hidden'}" data-domain="${escapeHtml(d.id)}">
-      <input class="domain-visibility" type="checkbox" ${visible ? 'checked' : ''} aria-label="Показывать домен ${escapeHtml(d.title)}">
+      <input class="domain-visibility" type="checkbox" ${visible ? 'checked' : ''} aria-label="Показывать сферу ${escapeHtml(d.title)}">
       <span class="dot" style="background:${escapeHtml(color)}" aria-hidden="true"></span>
       <button class="domain-name" type="button"><span>${escapeHtml(d.title)}</span>${context ? '<span class="domain-context-badge">Контекст</span>' : ''}</button>
       <span class="domain-counts">${projectCount} пр · ${taskCount} зад</span>
-      <button class="domain-focus" type="button" title="Показать домен на карте" aria-label="Показать домен ${escapeHtml(d.title)} на карте">⌖</button>
-      <button class="domain-actions actions" type="button" data-dom="${escapeHtml(d.id)}" aria-label="Действия домена ${escapeHtml(d.title)}">⋯</button>
+      <button class="domain-focus" type="button" title="Показать сферу на карте" aria-label="Показать сферу ${escapeHtml(d.title)} на карте">⌖</button>
+      <button class="domain-actions actions" type="button" data-dom="${escapeHtml(d.id)}" aria-expanded="false" aria-label="Действия сферы ${escapeHtml(d.title)}">⋯</button>
     </div>`;
     })
     .join("");
@@ -220,7 +252,6 @@ function renderSidebar() {
     const nameInput = $("#newDomName");
     if (nameInput) {
       nameInput.value = ui.newDomDraft || "";
-      nameInput.placeholder = "Введите название домена";
       nameInput.focus();
     }
     // localize and add hint
@@ -247,9 +278,9 @@ function renderSidebar() {
       });
     function validateDomainName(value) {
       const name = String(value || "").trim();
-      if (!name) return "Введите название домена";
+      if (!name) return "Введите название сферы";
       if (state.domains.some((d) => d.title.toLocaleLowerCase("ru-RU") === name.toLocaleLowerCase("ru-RU"))) {
-        return "Такой домен уже существует";
+        return "Такая сфера уже существует";
       }
       return "";
     }
@@ -272,10 +303,10 @@ function renderSidebar() {
         drawMap();
         fitActiveDomain();
         openInspectorFor({ ...domain, _type: "domain" });
-        showToast(`Создан домен: ${name}`, "ok");
+        showToast(`Создана сфера: ${name}`, "ok");
         return true;
       } catch (error) {
-        ui.newDomError = error?.message || "Не удалось создать домен";
+        ui.newDomError = error?.message || "Не удалось создать сферу";
         hint.textContent = ui.newDomError;
         return false;
       }
@@ -392,37 +423,52 @@ function renderSidebar() {
 }
 
 let currentMenu = null;
+let domainMenuTrigger = null;
 function closeDomainMenu() {
   if (currentMenu && currentMenu.remove) {
     currentMenu.remove();
     currentMenu = null;
+    domainMenuTrigger?.setAttribute('aria-expanded', 'false');
+    domainMenuTrigger = null;
     document.removeEventListener("click", onDocClick, true);
   }
 }
 function onDocClick(e) {
-  if (currentMenu && !currentMenu.contains(e.target)) closeDomainMenu();
+  if (currentMenu && !currentMenu.contains(e.target) && !domainMenuTrigger?.contains(e.target)) closeDomainMenu();
 }
 function openDomainMenuX(id, rowEl) {
+  const trigger = rowEl.querySelector('.domain-actions');
+  const alreadyOpen = domainMenuTrigger === trigger;
   closeDomainMenu();
+  if (alreadyOpen) return;
   const d = state.domains.find((x) => x.id === id);
   const menu = document.createElement("div");
   menu.className = "domenu";
   menu.innerHTML = `
-    <div class="item" data-act="focus">Фокус</div>
-    <div class="item" data-act="rename">Переименовать</div>
-    <div class="item" data-act="color">Цвет</div>
+    <button class="item" type="button" data-act="focus">Показать на карте</button>
+    <button class="item" type="button" data-act="rename">Переименовать</button>
+    <button class="item" type="button" data-act="color" aria-expanded="false">Цвет</button>
     <div class="palette" style="display:none">${palette
       .map(
-        (c) => `<div class="dot" data-col="${c}" style="background:${c}"></div>`
+        (c) => `<button type="button" class="dot" data-col="${c}" style="background:${c}" aria-label="Цвет ${c}" aria-pressed="${d.color === c}"></button>`
       )
       .join("")}</div>
-    <div class="item" data-act="merge">Слить с…</div>
+    <button class="item" type="button" data-act="merge">Объединить с…</button>
     <div class="sep"></div>
-    <div class="item" data-act="delete" style="color:#ffd1d1">Удалить</div>
+    <button class="item danger" type="button" data-act="delete">Удалить…</button>
   `;
   rowEl.insertAdjacentElement("afterend", menu);
   currentMenu = menu;
+  domainMenuTrigger = trigger;
+  trigger.setAttribute('aria-expanded', 'true');
   document.addEventListener("click", onDocClick, true);
+  menu.querySelector('button').focus({ preventScroll: true });
+  menu.onkeydown = event => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    closeDomainMenu();
+    trigger.focus({ preventScroll: true });
+  };
 
   menu.querySelector('[data-act="focus"]').onclick = () => {
     setDomainVisible(id, true, state.domains);
@@ -435,11 +481,13 @@ function openDomainMenuX(id, rowEl) {
 
   menu.querySelector('[data-act="rename"]').onclick = () => {
     const body = `<div style="display:flex;flex-direction:column;gap:8px">
-      <input id=\"domName\" value=\"${escapeHtml(d.title)}\" placeholder=\"Введите название домена\"/>
+      <input id=\"domName\" value=\"${escapeHtml(d.title)}\" aria-label="Название сферы" autofocus/>
       <div id=\"domHint\" class=\"hint\"></div>
     </div>`;
+    closeDomainMenu();
     openModal({
-      title: "Переименование домена",
+      title: "Переименовать сферу",
+      returnFocus: trigger,
       bodyHTML: body,
       confirmText: "Сохранить",
       onConfirm: (bodyEl) => {
@@ -447,7 +495,7 @@ function openDomainMenuX(id, rowEl) {
         const name = (inp.value || "").trim();
         if (!name) {
           bodyEl.querySelector("#domHint").textContent =
-            "Введите название домена";
+            "Введите название сферы";
           return false;
         }
         if (
@@ -456,7 +504,7 @@ function openDomainMenuX(id, rowEl) {
           )
         ) {
           bodyEl.querySelector("#domHint").textContent =
-            "Такой домен уже существует";
+            "Такая сфера уже существует";
           return false;
         }
         const updated = updateDomain(id, { title: name });
@@ -470,9 +518,10 @@ function openDomainMenuX(id, rowEl) {
     });
   };
 
-  menu.querySelector('[data-act="color"]').onclick = () => {
+  menu.querySelector('[data-act="color"]').onclick = event => {
     const pal = menu.querySelector(".palette");
     pal.style.display = pal.style.display === "none" ? "flex" : "none";
+    event.currentTarget.setAttribute('aria-expanded', String(pal.style.display === 'flex'));
     pal.querySelectorAll(".dot").forEach((dot) => {
       dot.onclick = () => {
         updateDomain(id, { color: dot.dataset.col });
@@ -487,16 +536,18 @@ function openDomainMenuX(id, rowEl) {
   menu.querySelector('[data-act="merge"]').onclick = () => {
     const others = state.domains.filter((x) => x.id !== id);
     if (others.length === 0) {
-      alert("Некуда сливать: доступен только один домен");
+      showToast('Для объединения нужна другая сфера', 'warn');
       return;
     }
-    const body = `<label>Слить в:</label> <select id=\"selDom\">${others
+    const body = `<label for="selDom">Перенести в сферу:</label> <select id=\"selDom\">${others
       .map((o) => `<option value=\"${escapeHtml(o.id)}\">${escapeHtml(o.title)}</option>`)
       .join("")}</select>`;
+    closeDomainMenu();
     openModal({
-      title: `Слить домен "${d.title}"`,
+      title: `Объединить сферу «${d.title}»`,
+      returnFocus: trigger,
       bodyHTML: body,
-      confirmText: "Слить",
+      confirmText: "Объединить",
       onConfirm: (bodyEl) => {
         const targetId = bodyEl.querySelector("#selDom").value;
         const target = state.domains.find((x) => x.id === targetId);
@@ -520,20 +571,22 @@ function openDomainMenuX(id, rowEl) {
 
   menu.querySelector('[data-act="delete"]').onclick = () => {
     if (state.domains.length <= 1) {
-      alert("Нельзя удалять последний домен");
+      showToast('Последнюю сферу удалить нельзя', 'warn');
       return;
     }
     const others = state.domains.filter((x) => x.id !== id);
     const body = `
       <div style=\"display:flex;flex-direction:column;gap:8px\">
         <label><input type=\"radio\" name=\"mode\" value=\"move\" checked/> Перенести проекты в:</label>
-        <select id=\"selDom\">${others
+        <select id=\"selDom\" aria-label="Сфера назначения">${others
           .map((o) => `<option value=\"${escapeHtml(o.id)}\">${escapeHtml(o.title)}</option>`)
           .join("")}</select>
         <label><input type=\"radio\" name=\"mode\" value=\"delete\"/> Удалить вместе с проектами и задачами</label>
       </div>`;
+    closeDomainMenu();
     openModal({
-      title: `Удалить домен "${d.title}"?`,
+      title: `Удалить сферу «${d.title}»?`,
+      returnFocus: trigger,
       bodyHTML: body,
       confirmText: "Удалить",
       onConfirm: (bodyEl) => {
@@ -570,6 +623,7 @@ function setupHeader() {
   const viewChips = $$(".chip[data-view]");
   viewChips.forEach((ch) => {
     ch.onclick = () => {
+      showStudioPanel('', { focus: false });
       viewChips.forEach((c) => {
         c.classList.remove("active");
         c.setAttribute("aria-pressed", "false");
@@ -654,19 +708,11 @@ function setupHeader() {
   $("#btnExport").onclick = () => exportJson();
   $("#btnRecovery").onclick = () => showStorageRecovery({ maintenance:true });
   const fileInput = $("#fileImport");
-  fileInput.onchange = async (e) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    try {
-      await importJson(e.target.files[0]);
-      renderSidebar();
-      layoutMap();
-      drawMap();
-      renderToday();
-    } catch (err) {
-      alert(I18N.errors.import + err.message);
-    } finally {
-      e.target.value = "";
-    }
+  $("#btnImport").onclick = () => fileInput.click();
+  fileInput.onchange = () => {
+    const file = fileInput.files[0];
+    fileInput.value = '';
+    if (file) void showStorageReplacement({ read: () => file.text(), name: file.name });
   };
   // edge cap slider
   // zoom slider (top control)
@@ -705,16 +751,13 @@ function setupHeader() {
     const THEME_KEY = 'atlas_theme';
     const cur = localStorage.getItem(THEME_KEY) || 'dark';
     document.documentElement.setAttribute('data-theme', cur);
-    const lab = document.createElement('label');
-    lab.style.marginLeft = '8px';
-    lab.innerHTML = `<input type="checkbox" id="tgTheme" ${cur==='light'?'checked':''}/> Тема`;
-    document.querySelector('header .toggle')?.appendChild(lab);
     const tgl = document.getElementById('tgTheme');
     if(tgl){
+      tgl.checked = cur === 'light';
       tgl.onchange = (e)=>{
         const next = e.target.checked ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem(THEME_KEY, next);
+        try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
       };
     }
   }catch(_){}
@@ -832,7 +875,7 @@ function setupQuickAdd() {
       <button type="button" data-quick-action="undo">Отменить</button>`;
     result.querySelector('[data-quick-action="open"]').onclick = () => {
       if (type === "inbox") document.getElementById("btnInbox")?.click();
-      else window.mapApi?.fitTask?.(id);
+      else window.mapApi?.openTask?.(id);
     };
     result.querySelector('[data-quick-action="undo"]').onclick = () => {
       try {
@@ -871,6 +914,8 @@ function setupQuickAdd() {
         if (!created.length) throw new Error("Не удалось сохранить запись");
         qa.value = "";
         showQuickResult("Добавлено во Входящие", "inbox", created[0].id);
+        updateInboxCounter();
+        updateFirstStep();
       } else {
         const parsed = parseQuick(rawText);
         const resolved = resolveQuickDraft(parsed, {
@@ -1018,6 +1063,24 @@ async function init() {
   };
   const ok = loadState();
   if (!ok && getStorageStatus().status === 'error') { showStorageRecovery(); return; }
+  const firstSteps = document.getElementById('firstSteps');
+  let guideTrigger;
+  function showFirstSteps(event) {
+    guideTrigger = event.currentTarget;
+    const menu = guideTrigger.closest('details');
+    if (menu) {
+      menu.open = false;
+      guideTrigger = menu.querySelector('summary');
+    }
+    firstSteps.returnValue = '';
+    firstSteps.showModal();
+  }
+  document.getElementById('mapStartHelp').onclick = showFirstSteps;
+  document.getElementById('btnFirstSteps').onclick = showFirstSteps;
+  firstSteps.addEventListener('close', () => {
+    if (firstSteps.returnValue === 'capture') openInboxCapture();
+    else guideTrigger?.focus();
+  });
   // set version in brand + document title
   const brandEl = document.querySelector("header .brand");
   if (brandEl) brandEl.textContent = APP_LABEL;
@@ -1048,6 +1111,7 @@ async function init() {
     console.warn("sync runtime failed to start", error?.message || error);
   }
   renderSidebar();
+  setupStudioPanels();
   setupHeader();
   setupQuickAdd();
   initInbox({
@@ -1082,8 +1146,11 @@ async function init() {
     // Ctrl+Z -> undo last move
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
-      const ok = undoLastMove && undoLastMove();
-      if (ok) showToast("Отменено", "ok");
+      try {
+        if (undoLastMove()) showToast("Перенос отменён", "ok");
+      } catch (error) {
+        showToast(error.message, "warn");
+      }
       return;
     }
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "f") {
@@ -1112,6 +1179,10 @@ async function init() {
   });
   const canvas = document.getElementById("canvas");
   initMap(canvas);
+  window.addEventListener('atlas:resume-work', () => {
+    updateFirstStep();
+    drawMap();
+  });
   initMapFilterControls();
   updateWip();
 }
@@ -1317,8 +1388,13 @@ function initMapFilterControls() {
     };
   });
 
+  let timer = null;
+  window.addEventListener('atlas:map-reveal', () => {
+    clearTimeout(timer);
+    if (search) search.value = getMapFilterState().query;
+    renderState();
+  });
   if (search) {
-    let timer = null;
     const apply = () => {
       setMapFilter({ query: search.value });
       renderState();
