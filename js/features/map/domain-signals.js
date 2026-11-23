@@ -41,6 +41,10 @@ const overlaps = (a, b) => a.x < b.x + b.w + 5 && a.x + a.w + 5 > b.x
   && a.y < b.y + b.h + 5 && a.y + a.h + 5 > b.y;
 
 export function renderDomainSignals(host, { nodes, signals, camera, dpr, width, height, open }) {
+  if (!nodes.length || !signals.size) {
+    if (host.childElementCount) host.replaceChildren();
+    return new Set();
+  }
   const existing = new Map([...host.children].map(button => [button.dataset.domain, button]));
   const visible = new Set();
   const navigator = document.getElementById('atlasNavigator');

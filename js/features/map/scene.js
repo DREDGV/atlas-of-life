@@ -3,7 +3,7 @@ import { plural, statusLabel } from '../../ui/status-language.js';
 // Rendering only. Geometry and hit targets come from the map, facts from Core state.
 export function drawAtlasScene(ctx, scene) {
   const { nodes, facts, domainSignals, shownSignals, camera, dpr, width: canvasWidth, light, selected, hovered, keyboard, emphasis,
-    knowledgeCounts, edges, showLinks, targetDomain, targetProject, pendingAttach, dragged } = scene;
+    knowledgeCounts, edges, showLinks, targetDomain, targetProject, dragged } = scene;
   const px = value => value * dpr / camera.scale;
   const leftEdge = -camera.tx / camera.scale;
   const rightEdge = (canvasWidth - camera.tx) / camera.scale;
@@ -14,6 +14,8 @@ export function drawAtlasScene(ctx, scene) {
   const warning = light ? '#855400' : '#f2c94c';
   const red = light ? '#b42323' : '#f87171';
   const green = light ? '#087b5b' : '#60d8ae';
+  const dropDomain = light ? '#1766ab' : '#7dd9ff';
+  const dropProject = light ? '#087b5b' : '#6ef3c2';
   const index = new Map(nodes.map(n => [n.id, n]));
   const tasks = nodes.filter(n => n._type === 'task');
   const selectedNode = index.get(selected);
@@ -51,12 +53,14 @@ export function drawAtlasScene(ctx, scene) {
   };
   // Terraced terrain gives containment a visual identity; there is no productivity score.
   for (const n of nodes.filter(n=>n._type==='domain')) {
-    const chosen = selected === n.id || targetDomain === n.id;
+    const isDestination = targetDomain === n.id;
+    const chosen = selected === n.id;
     const gradient=ctx.createRadialGradient(n.x-n.r*.3,n.y-n.r*.5,0,n.x,n.y,n.r*1.2);
     gradient.addColorStop(0,n.color+(light?'20':'28'));
     gradient.addColorStop(1,light?'#ffffffc9':'#101c2bed');
     contour(n);ctx.fillStyle=gradient;ctx.fill();
-    ctx.strokeStyle=chosen?accent:n.color+(light?'80':'70');ctx.lineWidth=px(chosen?2:1);ctx.stroke();
+    if (isDestination) { ctx.fillStyle = dropDomain + '28'; ctx.fill(); }
+    ctx.strokeStyle=isDestination?dropDomain:chosen?accent:n.color+(light?'80':'70');ctx.lineWidth=px(isDestination?3:chosen?2:1);ctx.stroke();
     contour(n,1.04);ctx.strokeStyle=n.color+'20';ctx.lineWidth=px(1);ctx.stroke();
     const stats=facts.get(`domain:${n.id}`);
     const hasBadge = shownSignals?.has(n.id);
@@ -92,10 +96,13 @@ export function drawAtlasScene(ctx, scene) {
     const domain=index.get(n.parent||n.domainId);
     const color=domain?.color||accent;
     const active=selected===n.id||hovered===n.id||targetProject===n.id;
+    const isDestination = targetProject === n.id;
     const radius=n.r+(isProject?18*dpr:0);
     if(isProject){
       const path=(inset=0)=>{ctx.beginPath();projectPoints(n,dpr,inset).forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();};
-      path();ctx.fillStyle=panel;ctx.fill();ctx.strokeStyle=active?accent:(light?'#9bb4ca':'#425a73');ctx.lineWidth=px(active?2:1);ctx.stroke();
+      path();ctx.fillStyle=panel;ctx.fill();
+      if (isDestination) { ctx.fillStyle = dropProject + '38'; ctx.fill(); }
+      ctx.strokeStyle=isDestination?dropProject:active?accent:(light?'#9bb4ca':'#425a73');ctx.lineWidth=px(isDestination?3:active?2:1);ctx.stroke();
       path(px(5));ctx.strokeStyle=color+'40';ctx.lineWidth=px(1);ctx.stroke();
     }else{
       ctx.setLineDash([px(3),px(5)]);circle(n,radius,null,color+'70');ctx.setLineDash([]);
@@ -130,10 +137,11 @@ export function drawAtlasScene(ctx, scene) {
   const labels=[];
   const ordered=[...tasks].sort((a,b)=>(a.id===selected?-2:a.id===hovered?-1:0)-(b.id===selected?-2:b.id===hovered?-1:0));
   for(const n of ordered) {
-    const active=n.id===selected||n.id===hovered||n.id===keyboard;
-    const dim=emphasis(n)<.5;
-    const statusColor=n.due==='overdue'&&n.status!=='done'?red:n.status==='done'?green:n.status==='doing'?accent:n.plannedToday||n.due==='today'?warning:muted;
-    const r=n.r;
+    const carried=dragged?._type==='task'&&dragged.id===n.id;
+    const active=carried||n.id===selected||n.id===hovered||n.id===keyboard;
+    const dim=!carried&&emphasis(n)<.5;
+    const statusColor=carried?dropProject:n.due==='overdue'&&n.status!=='done'?red:n.status==='done'?green:n.status==='doing'?accent:n.plannedToday||n.due==='today'?warning:muted;
+    const r=carried?Math.max(n.r,px(9)):n.r;
     if(camera.scale<.4 && !active){circle(n,r,n.plannedToday ? accent : muted,null);continue;}
     ctx.globalAlpha=dim ? .18 : n.status==='done' ? .65 : 1;
     if(scene.showGlow&&active){ctx.shadowColor=accent;ctx.shadowBlur=8*dpr;}
@@ -186,7 +194,6 @@ export function drawAtlasScene(ctx, scene) {
       text(details,x,y+px(18),11,n.due==='overdue'&&n.status!=='done'?red:muted,Math.min(180, Math.max(10, width / px(1))));
     }
   }
-  const connection=pendingAttach?{task:pendingAttach.taskId,project:pendingAttach.toProjectId}:dragged&&targetProject?{task:dragged.id,project:targetProject}:null;
-  if(connection&&index.has(connection.task)&&index.has(connection.project))line(index.get(connection.task),index.get(connection.project),warning,true);
+  if (dragged?._type === 'task' && index.has(targetProject)) line(dragged, index.get(targetProject), dropProject, true);
   ctx.lineCap='butt';ctx.globalAlpha=1;
 }

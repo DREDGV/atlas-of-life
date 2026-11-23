@@ -29,6 +29,7 @@ import { dueState, dueLabel, localDay } from "./features/today/model.js";
 import { statusLabel, plural } from "./ui/status-language.js";
 import { buildAttention } from "./features/map/attention.js";
 import { buildDomainSignals, renderDomainSignals } from './features/map/domain-signals.js';
+import { findDropTerritory, renderTaskMove, taskDropTarget } from './features/map/drag-task.js';
 import { renderAttention } from "./features/map/attention-view.js";
 import { renderReviewEntry } from './features/map/review-view.js';
 import { buildMapDay } from './features/map/today-suggestions.js';
@@ -383,7 +384,6 @@ const viewState = {
   lastY: 0,
 };
 // remember last mouse client position for mouseup fallback
-let lastMouseClient = { clientX: 0, clientY: 0, offsetX: 0, offsetY: 0 };
 
 // wheel/zoom handler
 let pendingFrame = false;
@@ -425,8 +425,9 @@ function onWheel(e) {
 // DnD state
 let draggedNode = null;
 let dragOffset = { x: 0, y: 0 };
-let dropTargetProjectId = null;
 let dropTargetDomainId = null;
+let taskDropPreview = null;
+let taskMoveNotice = null;
 // drag threshold (px, screen space before scale/DPR)
 let pendingDragNode = null;
 let pendingDragStart = { x: 0, y: 0 };
@@ -463,13 +464,10 @@ function undoMapTaskMove(operationId) {
   const result = undoTaskMove(undoStack[index].moveResult, { reason: 'map.undo' });
   if (!result) throw new Error('Задача уже удалена.');
   undoStack.splice(index, 1);
+  if (taskMoveNotice?.operation?.id === operationId) taskMoveNotice = { message:'Перенос отменён', kind:'success' };
   revealTaskMove(result.task.id);
   return true;
 }
-// transient pending attach: { taskId, fromProjectId, toProjectId, pos }
-let pendingAttach = null;
-// transient pending detach: { taskId, fromProjectId, pos }
-let pendingDetach = null;
 // perf tuning
 let dynamicEdgeCap = 300;
 let allowGlow = true;
@@ -521,18 +519,23 @@ function hitRank(node) {
   return 3;
 }
 
-function bestHit(x, y, ignoreId = null) {
-  // The visible diamond is a project handle; invisible task slop must not steal it.
-  const actualTask=nodes.some(n=>n._type==='task' && n.id!==ignoreId && Math.hypot(x-n.x,y-n.y)<=n.r);
-  if(!actualTask){
-    const handle=nodes.find(n=>n._type==='project' && n.id!==ignoreId && Math.hypot(x-n.x,y-n.y)<=8*DPR/Math.max(.1,viewState.scale));
-    if(handle)return handle;
+function bestHit(x, y) {
+  // An actual task orb wins over the invisible hit area of its neighbours.
+  let actualTask = null;
+  let nearest = Infinity;
+  for (const node of nodes) {
+    if (node._type !== 'task') continue;
+    const distance = Math.hypot(x - node.x, y - node.y);
+    if (distance <= node.r && distance <= nearest) { actualTask = node; nearest = distance; }
   }
+  if (actualTask) return actualTask;
+  // The visible diamond is a project handle; invisible task slop must not steal it.
+  const handle=nodes.find(n=>n._type==='project' && Math.hypot(x-n.x,y-n.y)<=8*DPR/Math.max(.1,viewState.scale));
+  if(handle)return handle;
   let best = null;
   let bestRadius = 0;
   let bestRank = 0;
   for (const node of nodes) {
-    if (ignoreId !== null && node.id === ignoreId) continue;
     const dx = x - node.x;
     const dy = y - node.y;
     const radius = hitRadius(node);
@@ -1354,12 +1357,19 @@ export function drawMap() {
   const shownSignals = renderDomainSignals(document.getElementById('mapDomainSignals'), {
     nodes:signalNodes, signals:domainSignals, camera:viewState, dpr:DPR, width:W / DPR, height:H / DPR, open:openDomainSignal,
   });
+  const moveBox = document.getElementById('mapTaskMove');
+  renderTaskMove(moveBox, taskDropPreview, taskMoveNotice, operationId => {
+    try { if (!undoMapTaskMove(operationId)) throw new Error('Этот перенос уже недоступен для отмены.'); }
+    catch (error) { taskMoveNotice = { ...taskMoveNotice, kind:'error', message:error.message }; drawMap(); }
+    moveBox.querySelector('button')?.focus({ preventScroll:true });
+  }, () => { taskMoveNotice = null; drawMap(); });
   drawAtlasScene(ctx, {
     nodes, facts: attentionSnapshot, domainSignals, shownSignals, camera: viewState, dpr: DPR, width: W,
     light: mapThemeIsLight(), selected: selectedNodeId, hovered: hoverNodeId,
     keyboard: kbdNodeId, emphasis: taskEmphasis, knowledgeCounts: knowledgeCountFor(nodes, state.knowledge),
     edges, showLinks: state.showLinks, showAging: state.showAging, showGlow: state.showGlow && allowGlow,
-    targetDomain: dropTargetDomainId, targetProject: dropTargetProjectId, pendingAttach, dragged: draggedNode,
+    targetDomain: taskDropPreview?.valid ? taskDropPreview.domainId : dropTargetDomainId,
+    targetProject: taskDropPreview?.valid ? taskDropPreview.projectId : null, dragged: draggedNode,
   });
 
   // active object ring + navigation ping (drawn on top of everything)
@@ -1476,9 +1486,8 @@ export function resolveHit(x, y) {
 }
 
 function screenToWorld(x, y) {
-  const dpr = window.devicePixelRatio || 1;
-  const cx = x * dpr,
-    cy = y * dpr;
+  const cx = x * DPR,
+    cy = y * DPR;
   const invScale = 1 / viewState.scale;
   return {
     x: (cx - viewState.tx) * invScale,
@@ -1491,19 +1500,7 @@ function hit(x, y) {
   return bestHit(x, y);
 }
 
-// hit test that ignores a specific node id (useful while dragging)
-function hitExcluding(x, y, ignoreId) {
-  return bestHit(x, y, ignoreId);
-}
-
 function onMouseMove(e) {
-  // track last mouse for mouseup outside canvas
-  lastMouseClient = {
-    clientX: e.clientX,
-    clientY: e.clientY,
-    offsetX: e.offsetX,
-    offsetY: e.offsetY,
-  };
   if (viewState.dragging) {
     const dx = e.clientX - viewState.lastX,
       dy = e.clientY - viewState.lastY;
@@ -1523,6 +1520,9 @@ function onMouseMove(e) {
     const dist = Math.hypot(dx, dy);
     const threshold = 5; // px
     if (dist >= threshold) {
+      cameraAnimation++;
+      hoverNodeId = null;
+      hideMapHoverCard();
       // start actual drag
       const pt = screenToWorld(
         pendingDragStart.x - (e.clientX - e.offsetX),
@@ -1545,25 +1545,8 @@ function onMouseMove(e) {
     }
     draggedNode.x = pt.x - dragOffset.x;
     draggedNode.y = pt.y - dragOffset.y;
-    // detect potential drop targets while dragging
-    dropTargetProjectId = null;
-    dropTargetDomainId = null;
-    const hitNode = hitExcluding(pt.x, pt.y, draggedNode.id);
-    if (draggedNode._type === 'project') {
-      dropTargetDomainId = nodes.filter(n => n._type === 'domain' && containsTerritory(n, pt.x, pt.y, DPR))
-        .sort((a, b) => a.r - b.r)[0]?.id || null;
-    }
-    if (hitNode) {
-      if (draggedNode._type === "task" && hitNode._type === "project") {
-        dropTargetProjectId = hitNode.id;
-      }
-      if (
-        (draggedNode._type === "project" || draggedNode._type === "task") &&
-        hitNode._type === "domain"
-      ) {
-        dropTargetDomainId = hitNode.id;
-      }
-    }
+    if (draggedNode._type === 'task') taskDropPreview = taskDropTarget(state, nodes, draggedNode.id, pt, DPR);
+    else dropTargetDomainId = findDropTerritory(nodes, 'domain', pt, DPR)?.id ?? null;
     requestDraw();
     return;
   }
@@ -1573,9 +1556,6 @@ function onMouseMove(e) {
     hoverNodeId = null;
     canvas.style.cursor = "";
     hideMapHoverCard();
-    // clear drop targets when not dragging
-    dropTargetProjectId = null;
-    dropTargetDomainId = null;
     requestDraw();
     return;
   }
@@ -1615,18 +1595,28 @@ function hideMapHoverCard() {
   } catch (_) {}
 }
 
-function onMouseLeave() {
+function clearMapDrag() {
+  draggedNode = null;
   pendingDragNode = null;
-  if (draggedNode) {
-    draggedNode = null;
-    canvas.style.cursor = "";
-  }
-  hoverNodeId = null;
-  canvas.style.cursor = "";
-  hideMapHoverCard();
-  dropTargetProjectId = null;
+  taskDropPreview = null;
   dropTargetDomainId = null;
+  canvas.style.cursor = '';
+}
+
+function cancelMapDrag() {
+  if (!draggedNode) { pendingDragNode = null; return; }
+  skipClickUntil = performance.now() + 250;
+  clearMapDrag();
+  layoutMap();
   drawMap();
+}
+
+function onMouseLeave() {
+  cancelMapDrag();
+  hoverNodeId = null;
+  canvas.style.cursor = '';
+  hideMapHoverCard();
+  requestDraw();
 }
 
 function onMouseDown(e) {
@@ -1650,244 +1640,56 @@ function onMouseDown(e) {
     }
   }
 }
-// DnD: отпускание задачи
-// Consolidated mouseup handler: finalize drag, persist, push undo entry
-window.addEventListener("mouseup", (e) => {
-  // if drag never started, clear any pending drag
-  if (!draggedNode && pendingDragNode) {
-    pendingDragNode = null;
-    return;
-  }
-  if (!draggedNode) return;
-  if (draggedNode._type === 'project') {
-    skipClickUntil = performance.now() + 250;
-    const id = draggedNode.id;
-    const destination = dropTargetDomainId;
-    // Clear the preview before Core refreshes the map; a failed save restores it.
-    draggedNode = null;
-    dropTargetDomainId = null;
-    dropTargetProjectId = null;
-    canvas.style.cursor = '';
+window.addEventListener('mouseup', event => {
+  if (!draggedNode) { pendingDragNode = null; return; }
+  if (event.target !== canvas) { cancelMapDrag(); return; }
+  const drag = draggedNode;
+  const point = screenToWorld(event.offsetX, event.offsetY);
+  const destination = drag._type === 'task'
+    ? taskDropTarget(state, nodes, drag.id, point, DPR)
+    : findDropTerritory(nodes, 'domain', point, DPR);
+  skipClickUntil = performance.now() + 250;
+  clearMapDrag();
+
+  if (drag._type === 'project') {
     try {
       if (destination) {
-        const result = moveProject(id, destination);
+        const result = moveProject(drag.id, destination.id);
         if (result.operation) {
-          undoStack.push({ type: 'project.move', moveResult: result });
+          undoStack.push({ type:'project.move', moveResult:result });
           if (undoStack.length > 50) undoStack.shift();
           revealProject(result.project);
-          openInspectorFor({ ...result.project, _type: 'project' });
+          openInspectorFor({ ...result.project, _type:'project' });
           showProjectMoveNotice('Проект перенесён вместе с задачами и материалами.', true);
         } else showProjectMoveNotice('Проект уже в этой сфере. Положение задаёт автоматическая раскладка.');
       } else showProjectMoveNotice('Перенос отменён. Отпустите проект внутри нужной сферы.');
-    } catch (error) { showProjectMoveNotice(`Не удалось перенести: ${error.message}`); }
-    layoutMap(); drawMap();
-    return;
-  }
-  let moved = false;
-  let taskMoveDeferred = false;
-  let taskMoveCommitted = false;
-  // DnD: если есть dropTargetProjectId и он отличается от текущего projectId — переносим задачу
-  // If mouseup occurred outside canvas, ensure we compute hit from last known mouse position
-  if (!dropTargetProjectId && draggedNode && draggedNode._type === "task") {
-    // attempt to compute target under last mouse
-    const offX = lastMouseClient.offsetX;
-    const offY = lastMouseClient.offsetY;
-    if (typeof offX === "number") {
-      const ptCheck = screenToWorld(offX, offY);
-      const hitNodeCheck = hitExcluding(ptCheck.x, ptCheck.y, draggedNode.id);
-      if (hitNodeCheck && hitNodeCheck._type === "project")
-        dropTargetProjectId = hitNodeCheck.id;
-    }
-  }
-
-  if (dropTargetProjectId && draggedNode._type === "task") {
-    const task = state.tasks.find((t) => t.id === draggedNode.id);
-    if (task && task.projectId !== dropTargetProjectId) {
-      // Найдём все задачи, которые уже принадлежат этому проекту
-      const projectTasks = state.tasks.filter(
-        (t) => t.projectId === dropTargetProjectId && t.id !== draggedNode.id
-      );
-      const pNode = nodes.find(
-        (n) => n._type === "project" && n.id === dropTargetProjectId
-      );
-      let pos = { x: draggedNode.x, y: draggedNode.y };
-      if (pNode) {
-        // Определяем угол для новой задачи
-        const idx = projectTasks.length;
-        const total = projectTasks.length + 1;
-        const angle = (idx / total) * 2 * Math.PI;
-        // Радиус размещения — по краю круга проекта с небольшим отступом внутрь
-        const taskRadius = sizeByImportance(task) * DPR;
-        const r = pNode.r - taskRadius - 8 * DPR;
-        pos = {
-          x: pNode.x + Math.cos(angle) * r,
-          y: pNode.y + Math.sin(angle) * r,
-        };
-      }
-      pendingAttach = {
-        taskId: draggedNode.id,
-        fromProjectId: task.projectId,
-        toProjectId: dropTargetProjectId,
-        pos,
-      };
-      taskMoveDeferred = true;
-      // update inspector so user sees confirm/cancel immediately
-      try {
-        const obj = state.tasks.find((t) => t.id === draggedNode.id);
-        openInspectorFor({ ...obj, _type: "task" });
-      } catch (e) {}
-      // show attach toast with buttons
-      const toast = document.getElementById("toast");
-      if (toast) {
-        toast.className = "toast attach";
-        toast.innerHTML = `Привязать задачу к проекту? <button id="attachOk">Привязать</button> <button id="attachCancel">Отменить</button>`;
-        toast.style.display = "block";
-        toast.style.opacity = "1";
-        // handlers
-        setTimeout(() => {
-          const ok = document.getElementById("attachOk");
-          const cancel = document.getElementById("attachCancel");
-          if (ok)
-            ok.onclick = () => {
-              confirmAttach();
-            };
-          if (cancel)
-            cancel.onclick = () => {
-              cancelAttach();
-            };
-        }, 20);
-      }
-    }
-  }
-
-  // For tasks: if dropped over a domain, ask to move into that domain (select project or keep independent)
-  if (draggedNode._type === "task" && dropTargetDomainId) {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    const curDomain = t?.projectId
-      ? state.projects.find((p) => p.id === t.projectId)?.domainId
-      : t?.domainId;
-    if (t && dropTargetDomainId && dropTargetDomainId !== curDomain) {
-      // Если задача была полностью независимой (без domainId), сразу прикрепляем к домену
-      if (!t.domainId && !t.projectId) {
-        const result = moveTask(t.id, {
-          projectId: null,
-          domainId: dropTargetDomainId,
-          pos: { x: draggedNode.x, y: draggedNode.y },
-        }, { reason: "map.attach_domain" });
-        taskMoveCommitted = rememberTaskMove(result);
-        requestSyncNow(); // C2: routed Task placement follows immediately
-        const toast = document.getElementById("toast");
-        if (toast) {
-          toast.className = "toast ok";
-          toast.textContent = "Задача прикреплена к домену";
-          setTimeout(() => { toast.style.display = "none"; }, 1400);
-        }
-        layoutMap();
-        drawMap();
-      } else {
-        // Для остальных случаев показываем модалку выбора
-        taskMoveDeferred = true;
-        openMoveTaskModal(t, dropTargetDomainId, {
-          x: draggedNode.x,
-          y: draggedNode.y,
-        });
-      }
-    }
-  }
-
-  // If task dropped outside any domain and beyond its project circle, propose detach
-  if (
-    draggedNode._type === "task" &&
-    !dropTargetDomainId &&
-    !pendingAttach
-  ) {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t && t.projectId) {
-      const pNode = nodes.find(
-        (n) => n._type === "project" && n.id === t.projectId
-      );
-      if (pNode) {
-        const dx = draggedNode.x - pNode.x;
-        const dy = draggedNode.y - pNode.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > pNode.r + 12 * DPR) {
-          // mirror pendingDetach flow used elsewhere
-          pendingDetach = {
-            taskId: draggedNode.id,
-            fromProjectId: t.projectId,
-            pos: { x: draggedNode.x, y: draggedNode.y },
-          };
-          taskMoveDeferred = true;
-          const toast = document.getElementById("toast");
-          if (toast) {
-            toast.className = "toast detach";
-            toast.innerHTML = `Отвязать задачу от проекта? <button id="detachOk">Отвязать</button> <button id="detachCancel">Отмена</button>`;
-            toast.style.display = "block";
-            toast.style.opacity = "1";
-            setTimeout(() => {
-              const ok = document.getElementById("detachOk");
-              if (ok) {
-                ok.onclick = () => {
-                  try {
-                    confirmDetach();
-                  } catch (e) {
-                    console.error("Error in detach confirm:", e);
-                  }
-                };
-              }
-              const cancel = document.getElementById("detachCancel");
-              if (cancel) {
-                cancel.onclick = () => {
-                  pendingDetach = null;
-                  toast.style.display = "none";
-                  layoutMap();
-                  drawMap();
-                };
-              }
-            }, 10);
-          }
+    } catch (error) { showProjectMoveNotice(error.message); }
+  } else {
+    try {
+      if (destination?.valid) {
+        const result = moveTask(drag.id, {
+          projectId:destination.projectId, domainId:destination.domainId, pos:null,
+        }, { reason:'map.drag_task' });
+        if (rememberTaskMove(result)) {
+          taskMoveNotice = { message:'Задача перенесена', operation:result.operation, kind:'success' };
+          revealTaskMove(drag.id);
+          return;
         }
       }
+      taskMoveNotice = { message:destination?.domainId ? destination.label : 'Перенос отменён. Выберите сферу или проект.' };
+    } catch (error) {
+      taskMoveNotice = { message:'Не удалось перенести задачу. ' + error.message, kind:'error' };
     }
   }
-
-  // persist visual position back to state
-  if (draggedNode._type === "task") {
-    const t = state.tasks.find((x) => x.id === draggedNode.id);
-    if (t && !taskMoveDeferred && !taskMoveCommitted && !t.projectId) {
-      showProjectMoveNotice('Место задачи определяется сферой. Для переноса отпустите её в другом проекте или сфере.');
-    }
-    if (t?.projectId && !taskMoveDeferred && !taskMoveCommitted) {
-      showProjectMoveNotice('Внутри проекта задачи раскладываются автоматически. Для переноса отпустите задачу в другом проекте или сфере.');
-    }
-  }
-  draggedNode = null;
-  dropTargetProjectId = null;
-  dropTargetDomainId = null;
-  canvas.style.cursor = "";
   layoutMap();
   drawMap();
-
-  // Показываем toast при успешном переносе
-  if (moved) {
-    const toast = document.getElementById("toast");
-    if (toast) {
-      toast.className = "toast ok";
-      toast.textContent = "Задача перенесена";
-      toast.style.display = "block";
-      toast.style.opacity = "1";
-      setTimeout(() => {
-        toast.style.transition = "opacity .3s linear";
-        toast.style.opacity = "0";
-        setTimeout(() => {
-          toast.style.display = "none";
-          toast.style.transition = "";
-        }, 320);
-      }, 1800);
-    }
-  }
-
 });
+
+window.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || !draggedNode) return;
+  event.preventDefault();
+  cancelMapDrag();
+}, true);
 
 // expose undo function
 function showProjectMoveNotice(message, allowUndo = false) {
@@ -1923,114 +1725,6 @@ export function undoLastMove() {
   return latest?.type === 'task.move' ? undoMapTaskMove(latest.moveResult.operation.id) : false;
 }
 
-export function confirmAttach() {
-  if (!pendingAttach) return false;
-  const item = pendingAttach;
-  const result = moveTask(item.taskId, {
-    projectId: item.toProjectId,
-  }, { reason: "map.attach_project" });
-  if (!result) {
-    pendingAttach = null;
-    return false;
-  }
-  rememberTaskMove(result);
-  requestSyncNow(); // C2: routed Task placement follows immediately
-  pendingAttach = null;
-  // hide toast
-  const toast = document.getElementById("toast");
-  if (toast) {
-    toast.style.opacity = "0";
-    setTimeout(() => {
-      toast.style.display = "none";
-      toast.innerHTML = "";
-    }, 300);
-  }
-  layoutMap();
-  drawMap();
-  return true;
-}
-
-export function cancelAttach() {
-  pendingAttach = null;
-  const toast = document.getElementById("toast");
-  if (toast) {
-    toast.style.opacity = "0";
-    setTimeout(() => {
-      toast.style.display = "none";
-      toast.innerHTML = "";
-    }, 300);
-  }
-  layoutMap();
-  drawMap();
-}
-
-// Confirm detach task from its current project (uses pendingDetach)
-function confirmDetach() {
-  try {
-    if (!pendingDetach) return false;
-    const item = pendingDetach;
-    const t = state.tasks.find((x) => x.id === item.taskId);
-    if (!t) {
-      pendingDetach = null;
-      return false;
-    }
-    
-    // Определяем, находится ли задача внутри какого-либо домена
-    const taskPos = item.pos || { x: 100, y: 100 };
-    let insideDomain = null;
-    
-    // Проверяем все домены на пересечение с позицией задачи
-    for (const domain of state.domains) {
-      const dNode = nodes.find(n => n._type === 'domain' && n.id === domain.id);
-      if (dNode) {
-        const dx = taskPos.x - dNode.x;
-        const dy = taskPos.y - dNode.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist <= dNode.r) {
-          insideDomain = domain.id;
-          break;
-        }
-      }
-    }
-    
-    const result = moveTask(t.id, {
-      projectId: null,
-      domainId: insideDomain,
-      pos: null,
-    }, { reason: "map.detach_project" });
-    if (!result) {
-      pendingDetach = null;
-      return false;
-    }
-    rememberTaskMove(result);
-    requestSyncNow(); // C2: routed Task placement follows immediately
-    pendingDetach = null;
-    const toast = document.getElementById("toast");
-    if (toast) {
-      toast.className = "toast ok";
-      toast.textContent = insideDomain ? "Отвязано от проекта" : "Задача стала независимой";
-      setTimeout(() => { toast.style.display = "none"; }, 1400);
-    }
-    layoutMap();
-    drawMap();
-    return true;
-  } catch (e) {
-    console.error("Error in confirmDetach:", e);
-    pendingDetach = null;
-    const toast = document.getElementById("toast");
-    if (toast) {
-      toast.className = "toast error";
-      toast.textContent = "Ошибка при отвязке";
-      setTimeout(() => { toast.style.display = "none"; }, 1400);
-    }
-    return false;
-  }
-}
-
-export function getPendingAttach() {
-  return pendingAttach;
-}
-
 // ── Selection & navigation feedback ─────────────────────────────────
 // The Inspector and the map share one "active object". setSelectedNode is
 // called from the Inspector (and from fitTask) so the ring always matches
@@ -2039,7 +1733,7 @@ function setSelectedNode(id, _type, opts) {
   const o = opts || {};
   selectedNodeId = id || null;
   if (!id) landingPing = null;
-  if (o.ping && id) {
+  if (o.ping && id && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     landingPing = { id, t0: performance.now() };
   }
   drawMap();
@@ -2080,10 +1774,6 @@ function drawLandingPing() {
 
 // expose some API to the global so inspector can avoid circular import
 window.mapApi = window.mapApi || {};
-window.mapApi.getPendingAttach = getPendingAttach;
-window.mapApi.confirmAttach = confirmAttach;
-window.mapApi.cancelAttach = cancelAttach;
-window.mapApi.confirmDetach = confirmDetach;
 window.mapApi.drawMap = drawMap;
 window.mapApi.initMap = initMap;
 window.mapApi.fitAll = fitAll;
@@ -2128,92 +1818,6 @@ function setZoom(percent) {
 }
 window.mapApi.getScale = getScale;
 window.mapApi.setZoom = setZoom;
-
-// small modal helper (reuse existing modal structure in index.html)
-function openModalLocal({
-  title,
-  bodyHTML,
-  onConfirm,
-  confirmText = "OK",
-  cancelText = "Отмена",
-}) {
-  const modal = document.getElementById("modal");
-  if (!modal) return onConfirm && onConfirm(null);
-  const ttl = document.getElementById("modalTitle");
-  const body = document.getElementById("modalBody");
-  const ok = document.getElementById("modalOk");
-  const cancel = document.getElementById("modalCancel");
-  ttl.textContent = title || "";
-  body.innerHTML = bodyHTML || "";
-  ok.textContent = confirmText;
-  cancel.textContent = cancelText;
-  function close() {
-    modal.style.display = "none";
-    ok.onclick = null;
-    cancel.onclick = null;
-  }
-  cancel.onclick = () => close();
-  ok.onclick = () => {
-    try {
-      onConfirm && onConfirm(body);
-    } finally {
-      close();
-    }
-  };
-  modal.style.display = "flex";
-}
-
-function openMoveTaskModal(task, targetDomainId, dropPosition = null) {
-  const projs = state.projects.filter((p) => p.domainId === targetDomainId);
-  const options = [`<option value="__indep__">Оставить независимой</option>`]
-    .concat(projs.map((p) => `<option value="${p.id}">${p.title}</option>`))
-    .join("");
-  const domTitle =
-    state.domains.find((d) => d.id === targetDomainId)?.title || "";
-  const body = `<div style="display:flex;flex-direction:column;gap:8px">
-    <div>Перенести в домен "${domTitle}"?</div>
-    <label>В проект:</label>
-    <select id="selProject">${options}</select>
-  </div>`;
-  openModalLocal({
-    title: `Переместить задачу`,
-    bodyHTML: body,
-    confirmText: "Переместить",
-    onConfirm: (bodyEl) => {
-      const sel = bodyEl.querySelector("#selProject");
-      const val = sel ? sel.value : "__indep__";
-      const destination = val === "__indep__"
-        ? {
-          projectId: null,
-          domainId: targetDomainId,
-          pos: null,
-        }
-        : { projectId: val };
-      const result = moveTask(task.id, destination, {
-        reason: val === "__indep__" ? "map.move_domain" : "map.move_project",
-      });
-      if (!result) return;
-      rememberTaskMove(result);
-      requestSyncNow(); // C2: routed Task placement follows immediately
-      const toast = document.getElementById("toast");
-      if (toast) {
-        toast.className = "toast ok";
-        toast.textContent = "Перемещено";
-        toast.style.display = "block";
-        toast.style.opacity = "1";
-        setTimeout(() => {
-          toast.style.opacity = "0";
-          setTimeout(() => {
-            toast.style.display = "none";
-            toast.style.transition = "";
-          }, 320);
-        }, 1400);
-      }
-      layoutMap();
-      drawMap();
-    },
-  });
-}
 
 // Fit the camera around one packed group and its tasks. Shared by the group
 // click and the project double-click.

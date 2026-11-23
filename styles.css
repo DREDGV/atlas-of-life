@@ -111,7 +111,12 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .atlas-actions{display:flex;flex-wrap:wrap;gap:5px;pointer-events:auto}
 .atlas-actions button{font:500 12px/1.4 inherit;color:var(--text);background:var(--panel-2);border:1px solid color-mix(in srgb,var(--muted) 35%,transparent);border-radius:7px;padding:6px 9px;cursor:pointer}
 .atlas-actions button:hover{border-color:var(--accent);color:var(--accent)}
+.atlas-navigator{--map-create-color:#68ddb3;--map-edit-color:#c4adff}
+[data-theme="light"] .atlas-navigator{--map-create-color:#057457;--map-edit-color:#6349a6}
+.atlas-actions [data-action^="create"],.atlas-actions [data-action="complete"]{color:var(--map-create-color);background:color-mix(in srgb,var(--map-create-color) 11%,var(--panel));border-color:color-mix(in srgb,var(--map-create-color) 42%,var(--panel));font-weight:650}
+.atlas-actions [data-action^="create"][aria-expanded="true"]{border-color:var(--map-create-color)}
 .map-create-form{display:grid;gap:8px;box-sizing:border-box;width:min(100%,390px);margin-top:8px;padding:12px;border:1px solid color-mix(in srgb,var(--accent) 36%,var(--panel));border-radius:9px;background:var(--panel);pointer-events:auto;font-size:13px}
+.atlas-navigator .map-create-form{border-inline-start:3px solid var(--map-create-color)}
 .map-create-form p{margin:0;overflow-wrap:anywhere}
 .map-create-place{color:var(--muted)}
 .map-create-form label{display:grid;gap:4px;color:var(--text)}
@@ -125,6 +130,10 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .atlas-object-tools summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .atlas-object-options{position:absolute;inset:calc(100% + 4px) 0 auto auto;display:grid;gap:5px;padding:8px;border:1px solid var(--panel-2);border-radius:9px;background:var(--panel);box-shadow:0 7px 22px #0006}
 .atlas-object-options button{text-align:start}
+.atlas-object-options .map-action-mark{display:inline-block;width:1.35em;font-weight:700}
+.atlas-object-options [data-tone="edit"] .map-action-mark{color:var(--map-edit-color)}
+.atlas-object-options [data-tone="move"] .map-action-mark{color:var(--accent)}
+.atlas-object-options [data-tone="delete"] .map-action-mark{color:var(--danger)}
 .atlas-actions [data-action="today"]{border-color:transparent;background:var(--accent);color:var(--panel);font-weight:650}
 .atlas-actions [data-action="today"]:hover{filter:brightness(1.1)}
 .atlas-resume{align-items:center;min-width:0;gap:6px 10px}
@@ -148,6 +157,25 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .map-domain-signal:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .app[data-studio-panel] #mapDomainSignals{visibility:hidden}
 .app:not(:has([data-view="map"].active)) #mapDomainSignals{display:none}
+#mapTaskMove{--move-ink:#78dfbd;position:absolute;z-index:5;inset:auto auto 16px 16px;width:min(400px,calc(100% - 32px));box-sizing:border-box;padding:12px 14px;border:1px solid color-mix(in srgb,var(--move-ink) 45%,var(--panel));border-inline-start:3px solid var(--move-ink);border-radius:10px;background:var(--panel);color:var(--text);font-size:13px;overflow-wrap:anywhere}
+[data-theme="light"] #mapTaskMove{--move-ink:#087b5b}
+#mapTaskMove[data-mode="preview"]{pointer-events:none}
+#mapTaskMove[data-mode="preview"][data-valid="false"]{--move-ink:var(--muted)}
+#mapTaskMove[data-tone="info"]{--move-ink:var(--muted)}
+#mapTaskMove[data-tone="error"]{--move-ink:var(--danger)}
+#mapTaskMove strong{color:var(--move-ink)}
+#mapTaskMove p{margin:4px 0 0}
+#mapTaskMove dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;margin:8px 0}
+#mapTaskMove dt{color:var(--muted)}
+#mapTaskMove dd{margin:0}
+.map-move-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.map-move-actions .btn{min-height:34px}
+.map-move-actions .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app:not(:has([data-view="map"].active)) #mapTaskMove,.app[data-studio-panel] #mapTaskMove,#canvasWrap:has(#mapTaskMove:not([hidden])) #mapHud{display:none}
+@media (prefers-reduced-motion:no-preference){
+  .map-create-form,.atlas-object-tools[open] .atlas-object-options,#mapTaskMove[data-mode="notice"]>strong,#mapTaskMove[data-mode="preview"][data-valid="true"]>p{animation:map-action-enter .16s ease-out both}
+  @keyframes map-action-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+}
 .app:has([data-view="today"].active) :is(.atlas-navigator,.atlas-minimap),.app:has([data-view="knowledge"].active) :is(.atlas-navigator,.atlas-minimap){display:none}
 #mapHud{top:auto;bottom:16px;left:16px}
 @media(max-width:1100px){.atlas-selection-title{font-size:15px;max-width:190px}.atlas-help{display:none}.atlas-path button{max-width:130px}.atlas-minimap{width:114px;bottom:10px;right:10px}.atlas-minimap canvas{width:112px;height:67px}}

@@ -69,8 +69,8 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
         if (!menu.contains(event.relatedTarget)) menu.open = false;
       };
       const options = make('div', undefined, 'atlas-object-options');
-      for (const [label, selector, confirmAction] of choices) {
-        options.append(button(label, () => {
+      for (const [label, selector, tone] of choices) {
+        const action = button(label, () => {
           menu.open = false;
           const inspector = document.getElementById('inspector');
           if (inspector.dataset.objectId !== String(entity.id) || inspector.dataset.objectType !== type) open(entity, type);
@@ -80,8 +80,13 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
           const disclosure = target.closest('details');
           if (disclosure) disclosure.open = true;
           target.focus();
-          if (confirmAction) target.click();
-        }));
+          if (tone === 'delete') target.click();
+        });
+        const icon = make('span', { edit:'✎', move:'↔', delete:'×' }[tone], 'map-action-mark');
+        icon.setAttribute('aria-hidden', 'true');
+        action.prepend(icon);
+        action.dataset.tone = tone;
+        options.append(action);
       }
       menu.append(toggle, options);
       actions.append(menu);
@@ -121,9 +126,9 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
         }
       },'source');
       addInspectorActions([
-        ['Править задачу', '#taskEditTitle'],
-        ['Перенести задачу', '#taskPlaceDomain'],
-        ['Удалить задачу…', '#delTask', true],
+        ['Править задачу', '#taskEditTitle', 'edit'],
+        ['Перенести задачу', '#taskPlaceDomain', 'move'],
+        ['Удалить задачу…', '#delTask', 'delete'],
       ]);
     }else if(project){
       if(project.lifecycle==='completed')act(expandedCompletedProjects.has(project.id)?'Свернуть задачи':'Показать задачи',()=>{
@@ -132,8 +137,8 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
       },'expand');
       if (project.lifecycle !== 'completed') addCreate('+ Задача', 'create', 'task', { projectId:project.id }, [domain?.title, project.title]);
       addInspectorActions([
-        ['Переименовать проект', '#projectEditTitle'],
-        ['Перенести проект', '[name="projectDestination"]'],
+        ['Переименовать проект', '#projectEditTitle', 'edit'],
+        ['Перенести проект', '[name="projectDestination"]', 'move'],
       ]);
     }else if(domain){
       addCreate('+ Проект', 'create', 'project', { domainId:domain.id }, [domain.title]);

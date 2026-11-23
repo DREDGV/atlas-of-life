@@ -24,25 +24,6 @@ function drawMap() {
 function refreshMap(opts){
   return window.mapApi && window.mapApi.refresh && window.mapApi.refresh(opts||{});
 }
-function getPendingAttach() {
-  return (
-    window.mapApi &&
-    window.mapApi.getPendingAttach &&
-    window.mapApi.getPendingAttach()
-  );
-}
-function confirmAttach() {
-  return (
-    window.mapApi &&
-    window.mapApi.confirmAttach &&
-    window.mapApi.confirmAttach()
-  );
-}
-function cancelAttach() {
-  return (
-    window.mapApi && window.mapApi.cancelAttach && window.mapApi.cancelAttach()
-  );
-}
 import {
   deleteTask,
   promoteTaskToProject,
@@ -418,8 +399,6 @@ export function openInspectorFor(obj) {
     });
   }
   if (type === "task") {
-    const pending = getPendingAttach();
-    const pendForThis = pending && pending.taskId === obj.id;
     const taskProject = project(obj.projectId);
     const taskDomainId = obj.domainId || taskProject?.domainId;
     const taskDomain = taskDomainId ? byId(state.domains, taskDomainId) : null;
@@ -464,13 +443,6 @@ export function openInspectorFor(obj) {
         </form>
       </details>
       <p id="taskMoveMessage" class="hint" role="status"></p>
-      ${
-        pendForThis
-          ? `<div class="kv hint">Ожидает привязки к проекту: ${
-              project(pending.toProjectId).title
-            }</div>`
-          : ""
-      }
       <div class="inspector-section-label">План дня</div>
       <div class="inspector-plan">
         <div class="kv" id="taskPlanLabel">${escapeKnowledge(planLabel())}</div>
@@ -491,11 +463,6 @@ export function openInspectorFor(obj) {
         <button class="btn" data-st="doing">В работе</button>
         <button class="btn ok" data-st="done">Готово</button>
         <button class="btn inspector-destructive" id="delTask">Удалить</button>
-        ${
-          pendForThis
-            ? `<button class="btn" id="confirmAttach">Привязать</button><button class="btn" id="cancelAttach">Отменить привязку</button>`
-            : ""
-        }
       </div>
     `;
     const titleInput = document.getElementById("taskEditTitle");
@@ -565,16 +532,6 @@ export function openInspectorFor(obj) {
     planFocusInput.onchange = () => applyPlan({ focus: planFocusInput.checked });
     refreshPlan();
 
-    if (pendForThis) {
-      document.getElementById("confirmAttach").onclick = () => {
-        confirmAttach();
-        openInspectorFor(obj);
-      };
-      document.getElementById("cancelAttach").onclick = () => {
-        cancelAttach();
-        openInspectorFor(obj);
-      };
-    }
     ins.querySelectorAll(".btn[data-st]").forEach((b) => {
       const status = live().status;
       b.setAttribute("aria-pressed", String(status === b.dataset.st));

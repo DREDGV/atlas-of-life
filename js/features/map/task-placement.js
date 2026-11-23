@@ -1,6 +1,8 @@
 import { state } from '../../state.js';
 import { moveTask } from '../../core/commands.js';
 
+export const taskMovePath = address => `${address.domainTitle || 'Без сферы'} → ${address.projectTitle || 'Без проекта'}`;
+
 function appendReceipt(host, operation) {
   const receipt = document.createElement('section');
   receipt.className = 'task-move-receipt';
@@ -14,7 +16,7 @@ function appendReceipt(host, operation) {
     const term = document.createElement('dt');
     term.textContent = label;
     const value = document.createElement('dd');
-    value.textContent = `${address.domainTitle || 'Без сферы'} → ${address.projectTitle || 'Без проекта'}`;
+    value.textContent = taskMovePath(address);
     places.append(term, value);
   }
   const undo = document.createElement('button');
