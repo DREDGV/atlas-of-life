@@ -14,6 +14,7 @@ import { requestSyncNow } from "./sync/runtime.js";
 import { appendProjectPlacement } from './features/map/project-placement.js';
 import { appendProjectReview } from './features/map/project-review.js';
 import { appendDomainReview } from './features/map/domain-review.js';
+import { bindMapCreate } from './features/map/create-form.js';
 import { dueLabel, dueState, localDay, plannedDayOf, stepDay } from "./features/today/model.js";
 import { formatDay } from "./ui/status-language.js";
 // view_map helpers are accessed via window.mapApi to avoid circular import issues
@@ -43,8 +44,6 @@ function cancelAttach() {
   );
 }
 import {
-  createProject,
-  createTask,
   deleteTask,
   promoteTaskToProject,
   updateProject,
@@ -60,6 +59,18 @@ import { wireTaskPlacement } from './features/map/task-placement.js';
 
 function forInspector(obj, type) {
   return obj ? { ...obj, _type: type } : null;
+}
+
+function bindInspectorCreate(host, id, type, destination, path) {
+  const trigger = host.querySelector('#' + id);
+  bindMapCreate(trigger, { row:trigger.parentElement, type, destination, path, onCreate:(item, kind) => {
+    openInspectorFor(forInspector(item, kind));
+    if (kind === 'project') window.mapApi?.fitProject?.(item.id);
+    else window.mapApi?.fitTask?.(item.id);
+    const heading = host.querySelector('.inspector-heading');
+    heading.tabIndex = -1;
+    heading.focus();
+  } });
 }
 
 function inspectorHeading(kind, title, path) {
@@ -270,6 +281,7 @@ export function openInspectorFor(obj) {
       <div class="kv">Проектов: ${prjs.length} · Задач: ${totalTasks} · Без проекта: ${independent.length}</div>
       <div class="btns">
         <button class="btn primary" id="addProject">+ Проект</button>
+        <button class="btn" id="addDomainTask">+ Задача</button>
       </div>
       <div class="list">${prjs
         .map(
@@ -288,17 +300,8 @@ export function openInspectorFor(obj) {
           <div class="meta">#${normalizeTags(task.tags).join(" #") || "—"}</div>
         </button>`).join("")}</div>` : ''}
     `;
-    document.getElementById("addProject").onclick = () => {
-      const title = prompt("Название проекта:", "Новый проект");
-      if (!title) return;
-      createProject({
-        domainId: obj.id,
-        title,
-        tags: [],
-      });
-      refreshMap({ layout: true });
-      openInspectorFor(obj);
-    };
+    bindInspectorCreate(ins, 'addProject', 'project', { domainId:obj.id }, [obj.title]);
+    bindInspectorCreate(ins, 'addDomainTask', 'task', { domainId:obj.id }, [obj.title, 'Без проекта']);
     appendDomainReview(ins, state.domains.find(domain => domain.id === obj.id), () => openInspectorFor(obj));
     ins.querySelectorAll("[data-project-id]").forEach((card) => {
       card.onclick = () => {
@@ -331,13 +334,7 @@ export function openInspectorFor(obj) {
           <div class="meta">#${normalizeTags(task.tags).join(" #") || "—"}</div>
         </button>`).join("")}</div>
     `;
-    document.getElementById("unassignedAddProject").onclick = () => {
-      const title = prompt("Название проекта:", "Новый проект");
-      if (!title) return;
-      const project = createProject({ domainId: obj.domainId, title, tags: [] });
-      refreshMap({ layout: true });
-      openInspectorFor(forInspector(project, "project"));
-    };
+    bindInspectorCreate(ins, 'unassignedAddProject', 'project', { domainId:obj.domainId }, [domain?.title]);
     ins.querySelectorAll("[data-task-id]").forEach(card => {
       card.onclick = () => {
         const task = state.tasks.find(item => item.id === card.dataset.taskId);
@@ -366,6 +363,7 @@ export function openInspectorFor(obj) {
       <div class="kv">Теги: #${escapeKnowledge((obj.tags || []).join(" #"))}</div>
       <div class="btns">
         <button class="btn primary" id="addTask">+ Задача</button>
+        <button class="btn" id="addIndep">+ Задача в сфере</button>
       </div>
       <div class="list">${tks
         .map(
@@ -402,42 +400,8 @@ export function openInspectorFor(obj) {
       document.getElementById('addTask').disabled = true;
       document.getElementById('addTask').title = 'Сначала верните проект в активное состояние';
     }
-    document.getElementById("addTask").onclick = () => {
-      const title = prompt("Название задачи:", "Новая задача");
-      if (!title) return;
-      createTask({
-        projectId: obj.id,
-        title,
-        tags: [],
-        status: "backlog",
-      });
-      refreshMap({ layout: true });
-      openInspectorFor(obj);
-    };
-    // add button to create independent task in this project's domain
-    try{
-      const btns = document.querySelector('#inspector .btns');
-      if(btns){
-        const b = document.createElement('button');
-        b.className = 'btn';
-        b.id = 'addIndep';
-        b.textContent = '+ Независимая задача (в домене)';
-        btns.appendChild(b);
-        b.onclick = () => {
-          const title = prompt('Название независимой задачи:', 'Новая задача');
-          if(!title) return;
-          createTask({
-            projectId: null,
-            domainId: obj.domainId,
-            title,
-            tags: [],
-            status: 'backlog',
-          });
-          refreshMap({ layout: true });
-          openInspectorFor(obj);
-        };
-      }
-    }catch(_){ }
+    bindInspectorCreate(ins, 'addTask', 'task', { projectId:obj.id }, [projectDomain?.title, obj.title]);
+    bindInspectorCreate(ins, 'addIndep', 'task', { domainId:obj.domainId }, [projectDomain?.title, 'Без проекта']);
     ins.querySelectorAll("[data-task-id]").forEach((card) => {
       card.onclick = () => {
         const task = state.tasks.find((item) => item.id === card.dataset.taskId);

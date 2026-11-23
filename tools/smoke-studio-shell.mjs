@@ -131,8 +131,28 @@ try {
   const colorValue = await color.getAttribute('data-col');
   await color.click();
   assert.equal(await page.evaluate(() => window.state.domains.find(domain => domain.title === 'Гараж').color), colorValue);
-  page.once('dialog', dialog => dialog.accept('Ремонт станка'));
+  const nav = page.locator('#atlasNavigator');
+  await nav.getByRole('button', { name:'+ Задача', exact:true }).click();
+  const looseTask = nav.getByRole('form', { name:'Новая задача' });
+  assert.match(await looseTask.innerText(), /Место — Гараж → Без проекта/);
+  await looseTask.getByLabel('Название задачи').fill('Купить щётку');
+  await looseTask.getByRole('button', { name:'Создать задачу', exact:true }).click();
+  await nav.locator('[data-action=domain]').click();
   await page.locator('#atlasNavigator').getByRole('button', { name: '+ Проект', exact: true }).click();
+  const projectForm = page.locator('#atlasNavigator').getByRole('form', { name:'Новый проект' });
+  assert.match(await projectForm.innerText(), /Место — Гараж/);
+  await projectForm.getByLabel('Название проекта').fill('Ремонт станка');
+  await projectForm.getByRole('button', { name:'Создать проект', exact:true }).click();
+  assert.match(await page.locator('#inspector .inspector-heading').innerText(), /Ремонт станка/);
+  await page.screenshot({ path:`${out}/project-created.png` });
+  await page.locator('#inspector #addTask').click();
+  const taskForm = page.locator('#inspector').getByRole('form', { name:'Новая задача' });
+  assert.match(await taskForm.innerText(), /Место — Гараж → Ремонт станка/);
+  await taskForm.getByLabel('Название задачи').fill('Проверить подшипник');
+  await taskForm.getByRole('button', { name:'Создать задачу', exact:true }).click();
+  assert.match(await page.locator('#inspector .inspector-heading').innerText(), /Проверить подшипник/);
+  assert.ok(await page.evaluate(() => window.state.tasks.some(task => task.title === 'Проверить подшипник'
+    && window.state.projects.find(project => project.id === task.projectId)?.title === 'Ремонт станка')));
   await sphereActions('Гараж').click();
   await domainMenu.getByRole('button', { name: 'Объединить с…', exact: true }).click();
   await page.locator('#modalOk').click();
@@ -162,6 +182,13 @@ try {
   assert.equal(await sphereActions('Временная').count(), 0);
   assert.equal(await sphereActions('Гараж').count(), 0);
   assert.ok(await sphereActions('Заметки').isVisible());
+  assert.ok(await page.evaluate(() => {
+    const home = window.state.domains.find(domain => domain.title === 'Дом');
+    const repair = window.state.projects.find(project => project.title === 'Ремонт станка');
+    const loose = window.state.tasks.find(task => task.title === 'Купить щётку');
+    const attached = window.state.tasks.find(task => task.title === 'Проверить подшипник');
+    return repair.domainId === home.id && loose.domainId === home.id && !loose.projectId && attached.projectId === repair.id;
+  }));
 
   await page.setViewportSize({ width: 390, height: 830 });
   await button('Настройки').click();

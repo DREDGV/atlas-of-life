@@ -1,4 +1,4 @@
-import { updateTask, createTask, createProject, setProjectNextAction } from '../../core/commands.js';
+import { updateTask, setProjectNextAction } from '../../core/commands.js';
 import { localDay } from '../today/model.js';
 import { requestSyncNow } from '../../sync/runtime.js';
 import { expandedCompletedProjects, setMapQuery } from '../../ui/map-session.js';
@@ -6,6 +6,7 @@ import { domainPages, projectPage } from './spatial-layout.js';
 import { openDayRow } from './map-day-view.js';
 import { formatDay } from '../../ui/status-language.js';
 import { showStudioPanel } from '../../ui/studio-panels.js';
+import { bindMapCreate } from './create-form.js';
 
 let lastSignature = '';
 export function renderMapNavigator({ state, selected, type, nodes, camera, width, height, dpr, open, fit, overview, pan, resume, openResume }) {
@@ -45,6 +46,15 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
       try{run();requestSyncNow();}
       catch(error){const s=document.querySelector('.atlas-action-status');if(s)s.textContent=error.message;}
     },key));
+    const addCreate = (label, key, createType, destination, context) => {
+      const trigger = button(label, null, key);
+      bindMapCreate(trigger, { row, type:createType, destination, path:context, onCreate:(created, kind) => {
+        open(created, kind);
+        fit(created.id, kind);
+        host.querySelector('[data-action=fit]')?.focus({ preventScroll:true });
+      } });
+      actions.append(trigger);
+    };
     const addInspectorActions = choices => {
       const menu = make('details', undefined, 'atlas-object-tools');
       const toggle = make('summary', 'Действия');
@@ -120,13 +130,14 @@ export function renderMapNavigator({ state, selected, type, nodes, camera, width
         if(expandedCompletedProjects.has(project.id))expandedCompletedProjects.delete(project.id);else expandedCompletedProjects.add(project.id);
         lastSignature='';window.mapApi?.refresh?.({layout:true});
       },'expand');
-      if(project.lifecycle!=='completed')act('+ Задача',()=>{const title=prompt('Новая задача проекта:');if(title?.trim()){const t=createTask({title,projectId:project.id});open(t,'task');fit(t.id,'task');}},'create');
+      if (project.lifecycle !== 'completed') addCreate('+ Задача', 'create', 'task', { projectId:project.id }, [domain?.title, project.title]);
       addInspectorActions([
         ['Переименовать проект', '#projectEditTitle'],
         ['Перенести проект', '[name="projectDestination"]'],
       ]);
     }else if(domain){
-      act('+ Проект',()=>{const title=prompt('Название проекта:');if(title?.trim()){const p=createProject({title,domainId:domain.id});open(p,'project');fit(p.id,'project');}},'create');
+      addCreate('+ Проект', 'create', 'project', { domainId:domain.id }, [domain.title]);
+      addCreate('+ Задача', 'create-task', 'task', { domainId:domain.id }, [domain.title, 'Без проекта']);
     }else if(resume){
       const action = button('Продолжить работу', () => openResume(resume), 'resume');
       const caption = make('span', (resume.kind === 'task' ? 'Задача · ' : 'Разбор · ') + resume.title, 'atlas-resume-target');
