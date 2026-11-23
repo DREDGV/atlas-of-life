@@ -1,8 +1,8 @@
 // DOM counterpart of the Canvas readout: same snapshot, keyboard accessible.
 let signature = '';
-export function renderAttention(host, entries, { openArea, openTask }) {
+export function renderAttention(host, entries, { openArea, openTask, domainSignals, openDomainSignal }) {
   if (!host) return;
-  const next = JSON.stringify([...entries]);
+  const next = JSON.stringify([[...entries], [...domainSignals].map(([id, signal]) => [id, signal.kind, signal.target.id, signal.detail])]);
   if (signature === next && host.childElementCount) return;
   signature = next;
   const expanded = new Set([...host.querySelectorAll('details[open]')].map(el => el.dataset.area));
@@ -26,13 +26,23 @@ export function renderAttention(host, entries, { openArea, openTask }) {
     return button;
   };
   for (const area of domains) {
-    const details = make('details', `attention-area attention-${area.primary.kind}`);
+    const signal = domainSignals.get(area.id);
+    const primary = signal || area.primary;
+    const details = make('details', `attention-area attention-${primary.kind}`);
     details.dataset.area = area.id;
     details.open = expanded.has(area.id);
     const summary = make('summary');
     summary.dataset.nav = `summary:${area.id}`;
-    summary.append(make('span', 'attention-name', area.title), make('span', 'attention-state', area.primary.label));
+    summary.append(make('span', 'attention-name', area.title), make('span', 'attention-state', primary.label));
     details.append(summary);
+    if (signal) {
+      const action = make('button', 'attention-open', 'Открыть главное →');
+      action.type = 'button';
+      action.dataset.nav = `signal:${area.id}`;
+      action.title = [signal.label, signal.detail, signal.action].filter(Boolean).join(' · ');
+      action.onclick = () => openDomainSignal(area.id);
+      details.append(action);
+    }
     details.append(areaButton(area, 'Показать сферу на карте ↗'));
     const children = [...entries.values()].filter(e => e.type === 'project' && e.domainId === area.id);
     const renderReasons = (entry) => {

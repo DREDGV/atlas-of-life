@@ -36,11 +36,11 @@ export function buildMapDay(atlas, now = Date.now(), attention = buildAttention(
   for (const area of attention.values()) {
     const context = area.context;
     if (area.signals.some(signal => signal.kind === 'review')) {
-      dueReviews.push({ ...areaRef(area), reason: 'Наступил срок обзора сферы', action: 'Открыть обзор' });
+      dueReviews.push({ ...areaRef(area), kind: 'review', reason: 'Наступил срок обзора сферы', action: 'Открыть обзор' });
     } else if (context?.lifecycle === 'paused' && context.reviewOn && context.reviewOn <= day) {
-      dueReviews.push({ ...areaRef(area), reason: 'Наступил срок пересмотра паузы', action: 'Пересмотреть паузу' });
+      dueReviews.push({ ...areaRef(area), kind: 'pause', reason: 'Наступил срок пересмотра паузы', action: 'Пересмотреть паузу' });
     } else if (context?.lifecycle === 'active' && !context.nextAction) {
-      missingSteps.push({ ...areaRef(area), reason: 'У активного проекта нет следующего шага', action: 'Выбрать шаг' });
+      missingSteps.push({ ...areaRef(area), kind: 'next', reason: 'У активного проекта нет следующего шага', action: 'Выбрать шаг' });
     }
   }
   const quietTasks = [];

@@ -2,7 +2,7 @@ import { territoryRadius, projectPoints } from './geometry.js';
 import { plural, statusLabel } from '../../ui/status-language.js';
 // Rendering only. Geometry and hit targets come from the map, facts from Core state.
 export function drawAtlasScene(ctx, scene) {
-  const { nodes, facts, camera, dpr, width: canvasWidth, light, selected, hovered, keyboard, emphasis,
+  const { nodes, facts, domainSignals, shownSignals, camera, dpr, width: canvasWidth, light, selected, hovered, keyboard, emphasis,
     knowledgeCounts, edges, showLinks, targetDomain, targetProject, pendingAttach, dragged } = scene;
   const px = value => value * dpr / camera.scale;
   const leftEdge = -camera.tx / camera.scale;
@@ -59,10 +59,12 @@ export function drawAtlasScene(ctx, scene) {
     ctx.strokeStyle=chosen?accent:n.color+(light?'80':'70');ctx.lineWidth=px(chosen?2:1);ctx.stroke();
     contour(n,1.04);ctx.strokeStyle=n.color+'20';ctx.lineWidth=px(1);ctx.stroke();
     const stats=facts.get(`domain:${n.id}`);
-    text(n.title,n.x,n.y-n.r-px(24),17,ink,Math.min(240,n.r*2*camera.scale/dpr+40),650);
+    const hasBadge = shownSignals?.has(n.id);
+    if (!hasBadge) text(n.title,n.x,n.y-n.r-px(24),17,ink,Math.min(240,n.r*2*camera.scale/dpr+40),650);
     if(stats) {
-      const color=stats.primary.kind==='overdue'?red:['load','stale','review'].includes(stats.primary.kind)?warning:muted;
-      text(stats.primary.label,n.x,n.y-n.r-px(7),11,color,210);
+      const primary = domainSignals?.get(n.id) || stats.primary;
+      const color = primary.kind === 'overdue' ? red : domainSignals?.has(n.id) ? warning : muted;
+      if (!hasBadge) text(primary.label,n.x,n.y-n.r-px(7),11,color,210);
       const y=n.y+n.r+px(23);
       if (stats.plannedToday && camera.scale < .85) {
         const focus = stats.focus ? ' · фокус ' + stats.focus : '';

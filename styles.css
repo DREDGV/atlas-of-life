@@ -127,6 +127,18 @@ aside.right{background:var(--panel);border-left:1px solid var(--panel-2);display
 .atlas-minimap{position:absolute;bottom:16px;right:16px;z-index:3;width:162px;border:1px solid color-mix(in srgb,var(--muted) 24%,transparent);border-radius:10px;background:color-mix(in srgb,var(--panel) 94%,transparent);overflow:hidden}
 .atlas-minimap>span{display:block;padding:7px 10px 0;font:10px ui-monospace,monospace;letter-spacing:1px;color:var(--muted)}
 .atlas-minimap canvas{width:160px;height:96px;cursor:crosshair}
+#mapDomainSignals{position:absolute;inset:0;z-index:2;pointer-events:none}
+.map-domain-signal{position:absolute;top:0;left:0;box-sizing:border-box;height:56px;padding:4px 25px 4px 10px;border:1px solid color-mix(in srgb,var(--accent) 54%,var(--panel));border-radius:9px;background:var(--panel);color:var(--text);display:grid;align-content:center;text-align:start;line-height:15px;cursor:pointer;pointer-events:auto}
+.map-domain-signal::after{content:'↗';position:absolute;right:9px;top:20px;color:var(--accent);font-size:14px}
+.map-domain-signal[data-kind="overdue"]{border-inline-start:3px solid var(--danger)}
+.map-domain-signal strong,.map-domain-signal span{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px}
+.map-domain-signal strong{font-weight:700}
+.map-domain-signal span{color:var(--muted)}
+.map-domain-signal span[hidden]{display:none}
+.map-domain-signal:hover{background:var(--panel-2);border-color:var(--accent)}
+.map-domain-signal:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app[data-studio-panel] #mapDomainSignals{visibility:hidden}
+.app:not(:has([data-view="map"].active)) #mapDomainSignals{display:none}
 .app:has([data-view="today"].active) :is(.atlas-navigator,.atlas-minimap),.app:has([data-view="knowledge"].active) :is(.atlas-navigator,.atlas-minimap){display:none}
 #mapHud{top:auto;bottom:16px;left:16px}
 @media(max-width:1100px){.atlas-selection-title{font-size:15px;max-width:190px}.atlas-help{display:none}.atlas-path button{max-width:130px}.atlas-minimap{width:114px;bottom:10px;right:10px}.atlas-minimap canvas{width:112px;height:67px}}

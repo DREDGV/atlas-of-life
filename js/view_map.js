@@ -28,6 +28,7 @@ import {
 import { dueState, dueLabel, localDay } from "./features/today/model.js";
 import { statusLabel, plural } from "./ui/status-language.js";
 import { buildAttention } from "./features/map/attention.js";
+import { buildDomainSignals, renderDomainSignals } from './features/map/domain-signals.js';
 import { renderAttention } from "./features/map/attention-view.js";
 import { renderReviewEntry } from './features/map/review-view.js';
 import { buildMapDay } from './features/map/today-suggestions.js';
@@ -41,6 +42,7 @@ import { workToResume } from './ui/work-resume.js';
 import { withSpatialAddresses } from './core/spatial-address.js';
 
 let attentionSnapshot = new Map();
+let domainSignals = new Map();
 let attentionDay = '';
 let dayMarkers = new Map();
 let skipClickUntil = 0;
@@ -102,6 +104,24 @@ function openReturnSuggestion(visit) {
   if (target?.name === 'nextActionId' && target.options.length === 1) target = document.getElementById('addTask') || target;
   target?.focus({ preventScroll: true });
   target?.scrollIntoView({ block: 'nearest' });
+}
+
+function openDomainSignal(id) {
+  const signal = domainSignals.get(id);
+  if (!signal) return;
+  if (['review', 'pause', 'next'].includes(signal.kind)) {
+    openReturnSuggestion(signal.target);
+    return;
+  }
+  if (signal.target.type === 'task') openAttentionTask(signal.target.id, { includeDomain:false });
+  else openAttentionArea(signal.target);
+  showStudioPanel('details', { focus:false });
+  const heading = document.querySelector('#inspector .inspector-heading');
+  if (heading) {
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll:true });
+    heading.scrollIntoView({ block:'nearest' });
+  }
 }
 
 // A task orb carries its meaning explicitly instead of leaving the renderer to
@@ -387,9 +407,9 @@ function onWheel(e) {
   const old = viewState.scale;
   const next = clamp(old * zoomFactor, 0.025, 2.2);
   // keep world point under cursor stable
-  const dpr = window.devicePixelRatio || 1;
-  const cx = (e.offsetX || 0) * dpr;
-  const cy = (e.offsetY || 0) * dpr;
+  const { left, top } = canvas.getBoundingClientRect();
+  const cx = (e.clientX - left) * DPR;
+  const cy = (e.clientY - top) * DPR;
   const invOld = 1 / old;
   const wx = (cx - viewState.tx) * invOld;
   const wy = (cy - viewState.ty) * invOld;
@@ -731,6 +751,7 @@ export function initMap(canvasEl) {
   window.addEventListener("mouseup", () => (viewState.dragging = false));
   canvas.addEventListener("mouseleave", onMouseLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
+  document.getElementById('mapDomainSignals').addEventListener('wheel', onWheel, { passive:false });
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("dblclick", onDblClick);
   layoutMap();
@@ -1009,6 +1030,7 @@ export function layoutMap() {
   const now = Date.now();
   attentionSnapshot = buildAttention(state, now);
   const day = buildMapDay(state, now, attentionSnapshot);
+  domainSignals = buildDomainSignals(state, attentionSnapshot, day.returnSuggestions);
   attentionDay = day.day;
   dayMarkers = new Map(day.suggestions.slice(0, 3).map((row, index) => [row.id, { rank: index + 1, reason: row.reason }]));
   renderMapDay(document.getElementById('mapDay'), day, id => openAttentionTask(id, { includeDomain: false }), openReturnSuggestion);
@@ -1017,7 +1039,7 @@ export function layoutMap() {
     openArea: openAttentionArea, openTask: openAttentionTask,
   });
   renderAttention(document.getElementById('mapAttention'), attentionSnapshot, {
-    openArea: openAttentionArea, openTask: openAttentionTask,
+    openArea: openAttentionArea, openTask: openAttentionTask, domainSignals, openDomainSignal,
   });
   nodes = [];
   edges = [];
@@ -1313,15 +1335,9 @@ export function drawMap() {
   // empty-state overlay: nothing to show on the map yet
   if (emptyStateEl) emptyStateEl.hidden = nodes.length > 0 || state.domains.length > 0 || state.tasks.length > 0;
 
-  drawAtlasScene(ctx, {
-    nodes, facts: attentionSnapshot, camera: viewState, dpr: DPR, width: W,
-    light: mapThemeIsLight(), selected: selectedNodeId, hovered: hoverNodeId,
-    keyboard: kbdNodeId, emphasis: taskEmphasis, knowledgeCounts: knowledgeCountFor(nodes, state.knowledge),
-    edges, showLinks: state.showLinks, showAging: state.showAging, showGlow: state.showGlow && allowGlow,
-    targetDomain: dropTargetDomainId, targetProject: dropTargetProjectId, pendingAttach, dragged: draggedNode,
-  });
+  const selectedType = nodes.find(n => n.id === selectedNodeId)?._type;
   renderMapNavigator({
-    state, selected: selectedNodeId, type: nodes.find(n => n.id === selectedNodeId)?._type,
+    state, selected: selectedNodeId, type: selectedType,
     resume: selectedNodeId || emptyStateEl?.hidden === false ? null : workToResume(state),
     openResume: resumeWork,
     nodes, camera: viewState, width: W, height: H, dpr: DPR,
@@ -1333,6 +1349,17 @@ export function drawMap() {
     },
     overview: () => { openInspectorFor(null); fitAll(); },
     pan: (x, y) => animateTo({ sx: viewState.scale, tx: W / 2 - x * viewState.scale, ty: H / 2 - y * viewState.scale }),
+  });
+  const signalNodes = state.view === 'map' && !draggedNode && (!selectedType || selectedType === 'domain') ? nodes : [];
+  const shownSignals = renderDomainSignals(document.getElementById('mapDomainSignals'), {
+    nodes:signalNodes, signals:domainSignals, camera:viewState, dpr:DPR, width:W / DPR, height:H / DPR, open:openDomainSignal,
+  });
+  drawAtlasScene(ctx, {
+    nodes, facts: attentionSnapshot, domainSignals, shownSignals, camera: viewState, dpr: DPR, width: W,
+    light: mapThemeIsLight(), selected: selectedNodeId, hovered: hoverNodeId,
+    keyboard: kbdNodeId, emphasis: taskEmphasis, knowledgeCounts: knowledgeCountFor(nodes, state.knowledge),
+    edges, showLinks: state.showLinks, showAging: state.showAging, showGlow: state.showGlow && allowGlow,
+    targetDomain: dropTargetDomainId, targetProject: dropTargetProjectId, pendingAttach, dragged: draggedNode,
   });
 
   // active object ring + navigation ping (drawn on top of everything)
